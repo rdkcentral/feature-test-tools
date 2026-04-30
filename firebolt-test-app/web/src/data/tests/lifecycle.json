@@ -1,0 +1,20 @@
+[
+  {
+    "id": "lifecycle_state",
+    "name": "Lifecycle2.state() [gateway]",
+    "description": "Returns the current lifecycle state of the application — spec-defined; called via Gateway JSON-RPC",
+    "method": "Lifecycle2.state",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "string"
+  },
+  {
+    "id": "lifecycle_close",
+    "name": "Lifecycle2.close() [gateway]",
+    "description": "Request the platform to deactivate the app with reason type=unload — spec-defined; called via Gateway JSON-RPC",
+    "method": "Lifecycle2.close",
+    "type": "gateway",
+    "gatewayParams": { "type": "unload" },
+    "expectedType": "null"
+  }
+]

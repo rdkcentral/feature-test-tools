@@ -1,0 +1,141 @@
+{
+  "screen": {
+    "width": 1920,
+    "height": 1080
+  },
+  "safeArea": {
+    "widthPercentage": 0.95,
+    "heightPercentage": 0.95
+  },
+  "debug": {
+    "showDimensionRuler": false,
+    "mockEnabled": false,
+    "verbose": false
+  },
+  "execution": {
+    "categoryBatchSize": 5,
+    "testBatchSize": 3
+  },
+  "layout": {
+    "screen": {
+      "width": 1920,
+      "height": 1080
+    },
+    "padding": {
+      "left": 40,
+      "top": 40,
+      "right": 40,
+      "bottom": 80
+    },
+    "header": {
+      "height": 120
+    },
+    "content": {
+      "offsetY": 160,
+      "menuWidth": 400,
+      "testRunnerOffsetX": 500
+    },
+    "legends": {
+      "offsetX": 1264,
+      "offsetY": 860,
+      "width": 520,
+      "height": 150
+    },
+    "footer": {
+      "offsetY": 1000
+    }
+  },
+  "components": {
+    "menu": {
+      "itemWidth": 400,
+      "itemHeight": 50,
+      "itemSpacing": 54,
+      "passRateGradientStep": 10,
+      "buttonWidth": 300,
+      "buttonHeight": 46
+    },
+    "testRunner": {
+      "testItemHeight": 50,
+      "testItemSpacing": 54,
+      "buttonWidth": 200,
+      "buttonHeight": 42
+    },
+    "resultsPanel": {
+      "resultItemHeight": 50,
+      "resultItemSpacing": 54
+    }
+  },
+  "colors": {
+    "background": "0xff0f1419",
+    "backgroundPattern": "0xff1a2332",
+    "cardBackground": "0xff1e2936",
+    "focusedBackground": "0xff2a3f5f",
+    "primary": "0xff00d9ff",
+    "primaryDark": "0xff0099cc",
+    "secondary": "0xff7c3aed",
+    "success": "0xff10b981",
+    "error": "0xffef4444",
+    "warning": "0xfff59e0b",
+    "textPrimary": "0xffffffff",
+    "textSecondary": "0xffa8b3cf",
+    "textTertiary": "0xff6b7785",
+    "accent": "0xffff6b6b",
+    "accentGreen": "0xff4ecdc4",
+    "titleBoxBgColor": "0x20ffffff",
+    "titleBoxBorderColor": "0xff00d9ff",
+    "titleTextColor": "0xff26c6da",
+    "subtitleTextColor": "0xff0097cc",
+    "headerGlowColorOff": "0x000097cc",
+    "headerGlowColorOn": "0x220097cc",
+    "connectionStatusConnected": "0xff22c55e",
+    "passRateStop0": "0xffee1111",
+    "passRateStop1": "0xffff8800",
+    "passRateStop2": "0xffffdd00",
+    "passRateStop3": "0xff22c55e",
+    "bevelHighlight": "0x35ffffff",
+    "bevelShadow": "0x45000000",
+    "bevelPressedOverlay": "0x55000000",
+    "focusGlowColor": "0x6600d9ff",
+    "cardBackgroundPass": "0xff1a3a1a",
+    "cardBackgroundFail": "0xff3a1a1a",
+    "categoryRunningBackground": "0xff2d4a6d",
+    "passRateColorDarkRed": "0xff8b0000",
+    "passRateColorOrangeRed": "0xffff4500",
+    "passRateColorOrange": "0xffffa500",
+    "passRateColorDarkGreen": "0xff006400"
+  },
+  "typography": {
+    "title": {
+      "fontSize": 48
+    },
+    "subtitle": {
+      "fontSize": 24
+    },
+    "headerSubtitle": {
+      "fontSize": 14
+    },
+    "heading": {
+      "fontSize": 36
+    },
+    "body": {
+      "fontSize": 20
+    },
+    "bodyLarge": {
+      "fontSize": 24
+    },
+    "bodySmall": {
+      "fontSize": 18
+    },
+    "caption": {
+      "fontSize": 16
+    },
+    "icon": {
+      "fontSize": 28
+    }
+  },
+  "radii": {
+    "card": 6,
+    "container": 8,
+    "panel": 12
+  }
+}

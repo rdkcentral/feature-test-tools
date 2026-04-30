@@ -1,0 +1,17 @@
+{
+  "appSettings": {
+    "stage": {
+      "w": 1920,
+      "h": 1080,
+      "clearColor": "0xff0f1419",
+      "useImageWorker": false
+    },
+    "debug": false,
+    "version": "1.0.0"
+  },
+  "platformSettings": {
+    "path": "./static",
+    "log": false,
+    "showVersion": false
+  }
+}

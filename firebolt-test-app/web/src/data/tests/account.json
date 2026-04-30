@@ -1,0 +1,20 @@
+[
+  {
+    "id": "account_id",
+    "name": "account.id() [mock-only]",
+    "description": "Platform back-office account identifier — Account is NOT in the @firebolt-js/core-client OpenRPC spec. Always returns mock data.",
+    "method": "account.id",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "account_uid",
+    "name": "account.uid() [mock-only]",
+    "description": "Platform back-office user identifier — Account is NOT in the @firebolt-js/core-client OpenRPC spec. Always returns mock data.",
+    "method": "account.uid",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  }
+]

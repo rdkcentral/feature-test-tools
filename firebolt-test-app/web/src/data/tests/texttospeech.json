@@ -1,0 +1,56 @@
+[
+  {
+    "id": "tts_listvoices",
+    "name": "TextToSpeech.listvoices() [gateway]",
+    "description": "List available TTS voices for the given language — spec-defined; called via Gateway JSON-RPC",
+    "method": "TextToSpeech.listvoices",
+    "type": "gateway",
+    "gatewayParams": { "language": "en" },
+    "expectedType": "object"
+  },
+  {
+    "id": "tts_getspeechstate",
+    "name": "TextToSpeech.getspeechstate() [gateway]",
+    "description": "Get current state of a TTS speech request (use speechId=0 for system default) — spec-defined",
+    "method": "TextToSpeech.getspeechstate",
+    "type": "gateway",
+    "gatewayParams": { "speechid": 0 },
+    "expectedType": "object"
+  },
+  {
+    "id": "tts_speak",
+    "name": "TextToSpeech.speak() [gateway]",
+    "description": "Synthesize and speak the given text via the platform TTS engine — spec-defined",
+    "method": "TextToSpeech.speak",
+    "type": "gateway",
+    "gatewayParams": { "text": "Hello from Firebolt Test App" },
+    "expectedType": "object"
+  },
+  {
+    "id": "tts_pause",
+    "name": "TextToSpeech.pause() [gateway]",
+    "description": "Pause an in-progress TTS speech request — spec-defined",
+    "method": "TextToSpeech.pause",
+    "type": "gateway",
+    "gatewayParams": { "speechid": 0 },
+    "expectedType": "object"
+  },
+  {
+    "id": "tts_resume",
+    "name": "TextToSpeech.resume() [gateway]",
+    "description": "Resume a paused TTS speech request — spec-defined",
+    "method": "TextToSpeech.resume",
+    "type": "gateway",
+    "gatewayParams": { "speechid": 0 },
+    "expectedType": "object"
+  },
+  {
+    "id": "tts_cancel",
+    "name": "TextToSpeech.cancel() [gateway]",
+    "description": "Cancel an in-progress TTS speech request — spec-defined",
+    "method": "TextToSpeech.cancel",
+    "type": "gateway",
+    "gatewayParams": { "speechid": 0 },
+    "expectedType": "object"
+  }
+]

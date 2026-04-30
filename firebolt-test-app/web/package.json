@@ -1,0 +1,47 @@
+{
+  "name": "firebolt-api-test-tool",
+  "version": "1.0.0",
+  "description": "Lightning-based web app for testing RDK8 Firebolt® API Specification",
+  "main": "index.html",
+  "scripts": {
+    "prepare:favicon": "node scripts/copy-favicon.js",
+    "start": "node scripts/dev-with-favicon.js",
+    "build": "lng build && node scripts/copy-favicon.js",
+    "serve": "npm run build && npx http-server build -p 9090 --cors",
+    "test": "jest"
+  },
+  "keywords": [
+    "lightning",
+    "firebolt",
+    "rdk8",
+    "api-testing"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@firebolt-js/core-client": "^1.0.0-next.5",
+    "@lightningjs/sdk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.28.6",
+    "@lightningjs/cli": "^2.11.0",
+    "babel-jest": "^29.0.0",
+    "jest": "^30.3.0",
+    "jest-webgl-canvas-mock": "^2.5.3"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "testEnvironmentOptions": { "resources": "usable" },
+    "setupFiles": [
+      "jest-webgl-canvas-mock"
+    ],
+    "moduleNameMapper": {
+      "^src(.*)": "<rootDir>/src$1",
+      "^test(.*)": "<rootDir>/test$1"
+    },
+    "transform": {
+      "^.+\\.[m|t]?js$": "babel-jest"
+    },
+    "transformIgnorePatterns": []
+  }
+}

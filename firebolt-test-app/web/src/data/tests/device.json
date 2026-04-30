@@ -1,0 +1,66 @@
+[
+  {
+    "id": "device_deviceClass",
+    "name": "Device.deviceClass()",
+    "description": "Returns the class of the device: ott | stb | tv",
+    "method": "Device.deviceClass",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "device_hdr",
+    "name": "Device.hdr()",
+    "description": "Returns HDR formats supported by the attached display: hdr10, hdr10Plus, dolbyVision, hlg",
+    "method": "Device.hdr",
+    "type": "getter",
+    "params": [],
+    "expectedType": "object"
+  },
+  {
+    "id": "device_uid",
+    "name": "Device.uid()",
+    "description": "Returns a persistent unique UUID for the current app and device (reset on app/device reset)",
+    "method": "Device.uid",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "device_chipsetId",
+    "name": "Device.chipsetId() [gateway]",
+    "description": "Returns the chipset identifier — spec-defined; called via Gateway JSON-RPC",
+    "method": "Device.chipsetId",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "string"
+  },
+  {
+    "id": "device_uptime",
+    "name": "Device.uptime() [gateway]",
+    "description": "Returns device uptime in seconds — spec-defined; called via Gateway JSON-RPC",
+    "method": "Device.uptime",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "number"
+  },
+  {
+    "id": "device_timeInActiveState",
+    "name": "Device.timeInActiveState() [gateway]",
+    "description": "Returns total time device has been in active state — spec-defined; called via Gateway JSON-RPC",
+    "method": "Device.timeInActiveState",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "number"
+  },
+  {
+    "id": "device_onHdrChanged",
+    "name": "Device.onHdrChanged [event]",
+    "description": "Subscribe to HDR format changes on the attached display",
+    "method": "Device.hdr",
+    "type": "event",
+    "listenEvent": "onHdrChanged",
+    "params": [],
+    "expectedType": "object"
+  }
+]
