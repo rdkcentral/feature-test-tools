@@ -59,6 +59,17 @@ add_executable(${APP_TARGET}
 )
 
 # ---------------------------------------------------------------------------
+# Linking mode: static by default, dynamic opt-in (-DLINK_STATIC=OFF)
+# ---------------------------------------------------------------------------
+option(LINK_STATIC "Link Firebolt libraries statically" ON)
+
+if(LINK_STATIC)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    # Prefer .a archives; fall back to .so if a static variant is absent
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+endif()
+
+# ---------------------------------------------------------------------------
 # Dependencies: find installed FireboltClient (and its transport)
 # ---------------------------------------------------------------------------
 find_package(FireboltTransport CONFIG REQUIRED)
