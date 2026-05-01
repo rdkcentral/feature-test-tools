@@ -40,7 +40,7 @@ sed -i 's/xhr\.status === 200/xhr.status === 200 || (xhr.status === 0 \&\& xhr.r
     && echo "Patched startApp.js (file:// XHR)"
 
 # ---------- patch appBundle.js: guard Transport.receive JSON.parse ----------
-python - "${BUILD_DIR}/appBundle.js" <<'PYEOF'
+python3 - "${BUILD_DIR}/appBundle.js" <<'PYEOF'
 import sys
 path = sys.argv[1]
 with open(path) as f:
