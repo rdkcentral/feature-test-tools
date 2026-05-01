@@ -23,7 +23,7 @@
 
 #include "utils.h"
 
-#include <cstring>  // strcasecmp / _stricmp
+#include <strings.h> // strcasecmp
 
 static AppConfig gAppConfig;
 
@@ -59,14 +59,14 @@ static int getNumericOption(int max, const std::string& quitLabel)
     while (true)
     {
         std::cout << "Select option (1-" << max << ") or q to " << quitLabel << ": ";
-        std::getline(std::cin, input);
+        if (!std::getline(std::cin, input))
+        {
+            // Treat EOF or input errors as a quit signal.
+            return -1;
+        }
 
         if (input.empty() ||
-#ifdef _WIN32
-            _stricmp(input.c_str(), "q") == 0)
-#else
             strcasecmp(input.c_str(), "q") == 0)
-#endif
         {
             return -1;
         }

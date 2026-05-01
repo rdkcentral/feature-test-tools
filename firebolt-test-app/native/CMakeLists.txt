@@ -38,30 +38,7 @@ endif()
 set(PROJECT_VERSION_PATCH ${GIT_COMMIT_SHA})
 set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
 
-# ---------------------------------------------------------------------------
-# Sysroot support (cross-compilation / RDK target device)
-# ---------------------------------------------------------------------------
-if (NOT SYSROOT_PATH AND DEFINED ENV{SYSROOT_PATH})
-    set(SYSROOT_PATH $ENV{SYSROOT_PATH})
-    message(STATUS "Using SYSROOT_PATH from environment: ${SYSROOT_PATH}")
-endif()
-
-if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    set(CMAKE_INSTALL_PREFIX "${SYSROOT_PATH}/usr" CACHE INTERNAL "" FORCE)
-endif()
-
-if (SYSROOT_PATH)
-    list(APPEND CMAKE_PREFIX_PATH
-        "${SYSROOT_PATH}/usr/lib/cmake"
-        "${SYSROOT_PATH}/usr/share/cmake"
-        "${SYSROOT_PATH}/tools/cmake"
-    )
-    list(APPEND CMAKE_MODULE_PATH
-        "${SYSROOT_PATH}/usr/lib/cmake"
-        "${SYSROOT_PATH}/usr/share/cmake"
-        "${SYSROOT_PATH}/tools/cmake"
-    )
-endif()
+include(GNUInstallDirs)
 
 # ---------------------------------------------------------------------------
 # Target
@@ -104,4 +81,4 @@ set_target_properties(${APP_TARGET} PROPERTIES
     CXX_STANDARD_REQUIRED YES
 )
 
-install(TARGETS ${APP_TARGET} DESTINATION bin)
+install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -32,9 +32,10 @@
 //   Piped stdin             – reads one "Module.method" name per line from stdin
 //
 // Example usage:
-//   firebolt-test-app --mock
+//   firebolt-test-app --url ws://127.0.0.1:9998
 //   firebolt-test-app --auto
-//   echo "Device.uid" | firebolt-test-app --mock
+//   FIREBOLT_ENDPOINT=ws://127.0.0.1:9998 firebolt-test-app
+//   echo "Device.uid" | firebolt-test-app --url ws://127.0.0.1:9998
 // ---------------------------------------------------------------------------
 
 #include "utils.h"
@@ -55,6 +56,7 @@
 #include <firebolt/firebolt.h>
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <future>
 #include <iostream>
@@ -62,17 +64,11 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
-#ifdef _WIN32
-#include <io.h>
-#define ISATTY(fd) _isatty(fd)
-#define STDIN_FD   _fileno(stdin)
-#else
-#include <unistd.h>
 #define ISATTY(fd) isatty(fd)
 #define STDIN_FD   fileno(stdin)
-#endif
 
 // ---------------------------------------------------------------------------
 // printUsage
@@ -90,8 +86,8 @@ static void printUsage(const char* argv0)
         << "  --dbg        Enable debug logging\n"
         << "  --help       Show this help and exit\n\n"
         << "ENVIRONMENT\n"
-        << "  FIREBOLT_ENDPOINT  WebSocket URL used when --mock/--url\n"
-        << "                     are not supplied.\n";
+        << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
+        << "                     is not supplied.\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -291,20 +287,25 @@ int main(int argc, char** argv)
         config.legacyRPCv1 = legacyRPCv1.value();
     }
 
-    std::promise<bool>   connPromise;
-    std::once_flag        connOnce;
-    auto                  connFuture = connPromise.get_future();
+    struct ConnectionState
+    {
+        std::promise<bool> promise;
+        std::once_flag     once;
+    };
+
+    auto connState  = std::make_shared<ConnectionState>();
+    auto connFuture = connState->promise.get_future();
 
     Firebolt::Error connectErr = Firebolt::IFireboltAccessor::Instance().Connect(
         config,
-        [&](const bool connected, const Firebolt::Error error)
+        [connState](const bool connected, const Firebolt::Error error)
         {
             std::cout << "Connection status changed: connected="
                       << std::boolalpha << connected
                       << "  error=" << static_cast<int>(error) << std::endl;
             // Signal the initial connection result exactly once.
-            std::call_once(connOnce, [&] {
-                connPromise.set_value(connected);
+            std::call_once(connState->once, [&] {
+                connState->promise.set_value(connected);
             });
         });
 
@@ -318,12 +319,14 @@ int main(int argc, char** argv)
     if (connFuture.wait_for(std::chrono::seconds(2)) == std::future_status::timeout)
     {
         std::cerr << "Timed out waiting for Firebolt connection." << std::endl;
+        Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
     if (!connFuture.get())
     {
         std::cerr << "Failed to connect to Firebolt endpoint." << std::endl;
+        Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 

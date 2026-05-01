@@ -39,14 +39,46 @@ TextToSpeechTest::TextToSpeechTest()
     methods_.push_back("TextToSpeech.resume");
     methods_.push_back("TextToSpeech.cancel");
     methods_.push_back("TextToSpeech.onSpeechStart.subscribe");
+    methods_.push_back("TextToSpeech.onSpeechStart.unsubscribe");
     methods_.push_back("TextToSpeech.onSpeechPause.subscribe");
+    methods_.push_back("TextToSpeech.onSpeechPause.unsubscribe");
     methods_.push_back("TextToSpeech.onSpeechResume.subscribe");
+    methods_.push_back("TextToSpeech.onSpeechResume.unsubscribe");
     methods_.push_back("TextToSpeech.onWillSpeak.subscribe");
+    methods_.push_back("TextToSpeech.onWillSpeak.unsubscribe");
+    methods_.push_back("TextToSpeech.unsubscribeAll");
 }
 
 void TextToSpeechTest::runMethod(const std::string& method)
 {
     std::cout << "[TextToSpeech] Running: " << method << std::endl;
+
+    auto hasSpeechId = [&]() {
+        if (lastSpeechId_ == 0)
+        {
+            std::cout << "  [WARN] No speechId available. Run TextToSpeech.speak first."
+                      << std::endl;
+            return false;
+        }
+        return true;
+    };
+
+    auto unsubscribeById = [&](Firebolt::SubscriptionId& subId, const std::string& label) {
+        if (subId == 0)
+        {
+            std::cout << "  [WARN] No active " << label << " subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+        std::cout << "  Unsubscribing ID: " << subId << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .TextToSpeechInterface()
+                     .unsubscribe(subId);
+        if (checkResult(r, method))
+        {
+            subId = 0;
+        }
+    };
 
     if (method == "TextToSpeech.speak")
     {
@@ -63,6 +95,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.getSpeechState")
     {
+        if (!hasSpeechId())
+        {
+            return;
+        }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .getSpeechState(lastSpeechId_);
@@ -88,6 +124,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.pause")
     {
+        if (!hasSpeechId())
+        {
+            return;
+        }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .pause(lastSpeechId_);
@@ -95,6 +135,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.resume")
     {
+        if (!hasSpeechId())
+        {
+            return;
+        }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .resume(lastSpeechId_);
@@ -102,6 +146,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.cancel")
     {
+        if (!hasSpeechId())
+        {
+            return;
+        }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .cancel(lastSpeechId_);
@@ -117,8 +165,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      });
         if (checkResult(r, method))
         {
-            std::cout << "  Subscribed onSpeechStart, sub ID: " << *r << std::endl;
+            onSpeechStartSubId_ = *r;
+            std::cout << "  Subscribed onSpeechStart, sub ID: " << onSpeechStartSubId_ << std::endl;
         }
+    }
+    else if (method == "TextToSpeech.onSpeechStart.unsubscribe")
+    {
+        unsubscribeById(onSpeechStartSubId_, "onSpeechStart");
     }
     else if (method == "TextToSpeech.onSpeechPause.subscribe")
     {
@@ -130,8 +183,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      });
         if (checkResult(r, method))
         {
-            std::cout << "  Subscribed onSpeechPause, sub ID: " << *r << std::endl;
+            onSpeechPauseSubId_ = *r;
+            std::cout << "  Subscribed onSpeechPause, sub ID: " << onSpeechPauseSubId_ << std::endl;
         }
+    }
+    else if (method == "TextToSpeech.onSpeechPause.unsubscribe")
+    {
+        unsubscribeById(onSpeechPauseSubId_, "onSpeechPause");
     }
     else if (method == "TextToSpeech.onSpeechResume.subscribe")
     {
@@ -143,8 +201,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      });
         if (checkResult(r, method))
         {
-            std::cout << "  Subscribed onSpeechResume, sub ID: " << *r << std::endl;
+            onSpeechResumeSubId_ = *r;
+            std::cout << "  Subscribed onSpeechResume, sub ID: " << onSpeechResumeSubId_ << std::endl;
         }
+    }
+    else if (method == "TextToSpeech.onSpeechResume.unsubscribe")
+    {
+        unsubscribeById(onSpeechResumeSubId_, "onSpeechResume");
     }
     else if (method == "TextToSpeech.onWillSpeak.subscribe")
     {
@@ -156,8 +219,22 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      });
         if (checkResult(r, method))
         {
-            std::cout << "  Subscribed onWillSpeak, sub ID: " << *r << std::endl;
+            onWillSpeakSubId_ = *r;
+            std::cout << "  Subscribed onWillSpeak, sub ID: " << onWillSpeakSubId_ << std::endl;
         }
+    }
+    else if (method == "TextToSpeech.onWillSpeak.unsubscribe")
+    {
+        unsubscribeById(onWillSpeakSubId_, "onWillSpeak");
+    }
+    else if (method == "TextToSpeech.unsubscribeAll")
+    {
+        IFireboltAccessor::Instance().TextToSpeechInterface().unsubscribeAll();
+        onSpeechStartSubId_ = 0;
+        onSpeechPauseSubId_ = 0;
+        onSpeechResumeSubId_ = 0;
+        onWillSpeakSubId_ = 0;
+        std::cout << "  Unsubscribed from all TextToSpeech events." << std::endl;
     }
     else
     {

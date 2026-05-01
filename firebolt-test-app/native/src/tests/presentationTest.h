@@ -31,4 +31,7 @@ public:
     PresentationTest();
     ~PresentationTest() override = default;
     void runMethod(const std::string& method) override;
+
+private:
+    Firebolt::SubscriptionId lastSubId_{ 0 };
 };

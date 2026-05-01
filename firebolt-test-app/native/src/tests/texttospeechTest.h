@@ -35,4 +35,8 @@ public:
 
 private:
     Firebolt::TextToSpeech::SpeechId lastSpeechId_{ 0 };
+    Firebolt::SubscriptionId onSpeechStartSubId_{ 0 };
+    Firebolt::SubscriptionId onSpeechPauseSubId_{ 0 };
+    Firebolt::SubscriptionId onSpeechResumeSubId_{ 0 };
+    Firebolt::SubscriptionId onWillSpeakSubId_{ 0 };
 };

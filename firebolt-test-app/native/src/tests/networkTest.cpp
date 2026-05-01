@@ -65,15 +65,25 @@ void NetworkTest::runMethod(const std::string& method)
     }
     else if (method == "Network.onConnectedChanged.unsubscribe")
     {
+        if (lastSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Network subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
         std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;
         auto r = IFireboltAccessor::Instance()
                      .NetworkInterface()
                      .unsubscribe(lastSubId_);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            lastSubId_ = 0;
+        }
     }
     else if (method == "Network.unsubscribeAll")
     {
         IFireboltAccessor::Instance().NetworkInterface().unsubscribeAll();
+        lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Network events." << std::endl;
     }
     else

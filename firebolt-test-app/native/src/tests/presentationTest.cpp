@@ -33,6 +33,8 @@ PresentationTest::PresentationTest()
 {
     methods_.push_back("Presentation.focused");
     methods_.push_back("Presentation.onFocusedChanged.subscribe");
+    methods_.push_back("Presentation.onFocusedChanged.unsubscribe");
+    methods_.push_back("Presentation.unsubscribeAll");
 }
 
 void PresentationTest::runMethod(const std::string& method)
@@ -59,8 +61,32 @@ void PresentationTest::runMethod(const std::string& method)
                      });
         if (checkResult(r, method))
         {
-            std::cout << "  Subscribed onFocusedChanged, sub ID: " << *r << std::endl;
+            lastSubId_ = *r;
+            std::cout << "  Subscribed onFocusedChanged, sub ID: " << lastSubId_ << std::endl;
         }
+    }
+    else if (method == "Presentation.onFocusedChanged.unsubscribe")
+    {
+        if (lastSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Presentation subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+        std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .PresentationInterface()
+                     .unsubscribe(lastSubId_);
+        if (checkResult(r, method))
+        {
+            lastSubId_ = 0;
+        }
+    }
+    else if (method == "Presentation.unsubscribeAll")
+    {
+        IFireboltAccessor::Instance().PresentationInterface().unsubscribeAll();
+        lastSubId_ = 0;
+        std::cout << "  Unsubscribed from all Presentation events." << std::endl;
     }
     else
     {

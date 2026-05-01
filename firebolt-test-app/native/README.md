@@ -11,7 +11,6 @@ and events/notifications across all supported Firebolt modules.
 ```
 native/
 ├── CMakeLists.txt          # Top-level CMake project
-├── build.sh                # Convenience build & run script
 └── src/
     ├── main.cpp            # Entry point, connection management, run-mode dispatch
     ├── utils.h / utils.cpp # Shared helpers: AppConfig, chooseFromList, TestModuleBase
@@ -37,7 +36,7 @@ native/
 | Requirement | Notes |
 |---|---|
 | **CMake ≥ 3.12** | |
-| **C++17 compiler** | GCC 7+, Clang 5+, or MSVC 2017+ |
+| **C++17 compiler** | GCC 7+ or Clang 5+ |
 | **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
 
@@ -147,7 +146,7 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app
 | **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage` |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event`, `appInfo` |
-| **Network** | `connected` |
+| **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Presentation** | `focused`, `onFocusedChanged` (subscribe) |
 | **Stats** | `memoryUsage` |
 | **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart`, `onSpeechPause`, `onSpeechResume`, `onWillSpeak` |

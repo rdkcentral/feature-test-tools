@@ -24,18 +24,15 @@
 #pragma once
 
 #include <firebolt/types.h>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <unistd.h>
+#include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#include <io.h>
-#define TERM_ISATTY() (_isatty(_fileno(stdout)) != 0)
-#else
-#include <unistd.h>
 #define TERM_ISATTY() (isatty(fileno(stdout)) != 0)
-#endif
 
 // ---------------------------------------------------------------------------
 // ANSI color helpers – no-op when stdout is not a TTY
@@ -46,13 +43,11 @@ inline bool termSupportsColor()
     {
         return false;
     }
-#ifndef _WIN32
     const char* term = std::getenv("TERM");
     if (!term || std::string(term) == "dumb")
     {
         return false;
     }
-#endif
     return true;
 }
 
