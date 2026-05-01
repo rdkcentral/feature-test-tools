@@ -36,7 +36,7 @@ native/
 
 | Requirement | Notes |
 |---|---|
-| **CMake ≥ 3.10** | |
+| **CMake ≥ 3.12** | |
 | **C++17 compiler** | GCC 7+, Clang 5+, or MSVC 2017+ |
 | **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
