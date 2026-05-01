@@ -76,6 +76,7 @@
 static void printUsage(const char* argv0)
 {
     std::cout
+        << argv0 << " version " << PROJECT_VERSION << "\n\n"
         << "SYNOPSIS\n"
         << "  " << argv0 << " [<options>]\n\n"
         << "OPTIONS\n"
