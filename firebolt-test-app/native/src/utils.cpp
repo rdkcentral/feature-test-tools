@@ -23,7 +23,8 @@
 
 #include "utils.h"
 
-#include <strings.h> // strcasecmp
+#include <stdexcept>
+#include <strings.h>
 
 static AppConfig gAppConfig;
 

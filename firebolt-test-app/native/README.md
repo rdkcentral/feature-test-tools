@@ -129,7 +129,7 @@ firebolt-test-app --auto
 ### 3. Piped stdin mode
 Reads one `Module.method` name per line from stdin. Unknown names print a warning.
 ```bash
-printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app
+printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --url ws://127.0.0.1:9998
 ```
 
 ---
@@ -147,9 +147,9 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage` |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event`, `appInfo` |
 | **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
-| **Presentation** | `focused`, `onFocusedChanged` (subscribe) |
+| **Presentation** | `focused`, `onFocusedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Stats** | `memoryUsage` |
-| **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart`, `onSpeechPause`, `onSpeechResume`, `onWillSpeak` |
+| **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart` (subscribe / unsubscribe), `onSpeechPause` (subscribe / unsubscribe), `onSpeechResume` (subscribe / unsubscribe), `onWillSpeak` (subscribe / unsubscribe), `unsubscribeAll` |
 
 ---
 
