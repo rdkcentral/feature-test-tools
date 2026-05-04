@@ -67,7 +67,7 @@ SRC_URI = "<repo url>/feature-test-tools.git;branch=main;protocol=https"
 SRCREV = "${AUTOREV}"
 PV = "1.0.0"
 
-S = "${WORKDIR}/git/FireboltTestApp/native"
+S = "${WORKDIR}/git/firebolt-test-app/native"
 
 DEPENDS = "firebolt-cpp-client"
 RDEPENDS:${PN} += "firebolt-cpp-client"
