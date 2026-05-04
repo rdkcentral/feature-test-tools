@@ -23,6 +23,7 @@
 
 #include "utils.h"
 
+#include <cctype>
 #include <stdexcept>
 #include <strings.h>
 
@@ -74,7 +75,16 @@ static int getNumericOption(int max, const std::string& quitLabel)
 
         try
         {
-            int num = std::stoi(input);
+            size_t idx = 0;
+            int num = std::stoi(input, &idx);
+            while (idx < input.size() && std::isspace(static_cast<unsigned char>(input[idx])))
+            {
+                ++idx;
+            }
+            if (idx != input.size())
+            {
+                throw std::invalid_argument("trailing characters");
+            }
             if (num >= 1 && num <= max)
             {
                 return num;

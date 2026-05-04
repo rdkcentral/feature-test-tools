@@ -242,8 +242,10 @@ void MetricsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
                      .appInfo("firebolt-test-app-build-001");
-        checkResult(r, method);
-        std::cout << "  appInfo reported." << std::endl;
+        if (checkResult(r, method))
+        {
+            std::cout << "  appInfo reported." << std::endl;
+        }
     }
     else
     {
