@@ -56,6 +56,7 @@
 #include <firebolt/firebolt.h>
 
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <future>
@@ -120,7 +121,16 @@ static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
     std::string line;
     while (std::getline(std::cin, line))
     {
-        if (line.empty())
+        // Normalize stdin input so trailing spaces/CRLF do not break exact method matching.
+        const auto first = std::find_if_not(line.begin(), line.end(), [](unsigned char ch) {
+            return std::isspace(ch) != 0;
+        });
+        const auto last = std::find_if_not(line.rbegin(), line.rend(), [](unsigned char ch) {
+            return std::isspace(ch) != 0;
+        }).base();
+        const std::string methodName = (first < last) ? std::string(first, last) : std::string();
+
+        if (methodName.empty())
         {
             continue;
         }
@@ -129,7 +139,7 @@ static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
         {
             for (const auto& m : mod->methods())
             {
-                if (m == line)
+                if (m == methodName)
                 {
                     mod->runMethod(m);
                     found = true;
@@ -143,7 +153,7 @@ static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
         }
         if (!found)
         {
-            std::cout << "Method not found: " << line << std::endl;
+            std::cout << "Method not found: " << methodName << std::endl;
         }
     }
 }

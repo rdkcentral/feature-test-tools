@@ -39,16 +39,19 @@
 // ---------------------------------------------------------------------------
 inline bool termSupportsColor()
 {
-    if (!TERM_ISATTY())
-    {
-        return false;
-    }
-    const char* term = std::getenv("TERM");
-    if (!term || std::string(term) == "dumb")
-    {
-        return false;
-    }
-    return true;
+    static const bool supportsColor = []() {
+        if (!TERM_ISATTY())
+        {
+            return false;
+        }
+        const char* term = std::getenv("TERM");
+        if (!term || std::string(term) == "dumb")
+        {
+            return false;
+        }
+        return true;
+    }();
+    return supportsColor;
 }
 
 namespace Color
