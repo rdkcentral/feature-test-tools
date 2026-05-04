@@ -59,7 +59,7 @@ static int getNumericOption(int max, const std::string& quitLabel)
     std::string input;
     while (true)
     {
-        std::cout << "Select option (1-" << max << ") or q to " << quitLabel << ": ";
+        std::cout << "Select option (1-" << max << ") or Enter/q to " << quitLabel << ": ";
         if (!std::getline(std::cin, input))
         {
             // Treat EOF or input errors as a quit signal.
@@ -83,7 +83,7 @@ static int getNumericOption(int max, const std::string& quitLabel)
         }
         catch (const std::invalid_argument&)
         {
-            std::cout << "Invalid input. Please enter a number or 'q'.\n";
+            std::cout << "Invalid input. Please enter a number, Enter, or 'q'.\n";
         }
         catch (const std::out_of_range&)
         {

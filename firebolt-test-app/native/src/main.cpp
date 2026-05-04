@@ -192,9 +192,7 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
         int modIdx = chooseFromList(moduleNames, "Select a module to test:", "exit");
         if (modIdx == -1)
         {
-            Firebolt::IFireboltAccessor::Instance().Disconnect();
-            std::cout << "Disconnected. Exiting." << std::endl;
-            std::exit(0);
+            return;
         }
 
         auto& selectedModule = modules[static_cast<size_t>(modIdx)];
