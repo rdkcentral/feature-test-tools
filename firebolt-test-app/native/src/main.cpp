@@ -344,15 +344,14 @@ int main(int argc, char** argv)
 
     auto modules = buildModuleList();
 
-    if (!ISATTY(STDIN_FD))
-    {
-        // stdin is a pipe – treat as piped mode
-        appConfig.autoRun = true;
-        runPipedMode(modules);
-    }
-    else if (appConfig.autoRun)
+    if (appConfig.autoRun)
     {
         runAutoMode(modules);
+    }
+    else if (!ISATTY(STDIN_FD))
+    {
+        // stdin is a pipe and --auto was not requested – treat as piped mode
+        runPipedMode(modules);
     }
     else
     {
