@@ -79,6 +79,13 @@ void LifecycleTest::runMethod(const std::string& method)
     }
     else if (method == "Lifecycle.onStateChanged.subscribe")
     {
+        if (lastSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Lifecycle.onStateChanged (ID: "
+                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         // Subscribe to lifecycle state changes and print each transition.
         auto callback = [](const std::vector<StateChange>& changes)
         {

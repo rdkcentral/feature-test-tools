@@ -53,6 +53,13 @@ void PresentationTest::runMethod(const std::string& method)
     }
     else if (method == "Presentation.onFocusedChanged.subscribe")
     {
+        if (lastSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Presentation.onFocusedChanged (ID: "
+                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .PresentationInterface()
                      .subscribeOnFocusedChanged([](bool focused) {

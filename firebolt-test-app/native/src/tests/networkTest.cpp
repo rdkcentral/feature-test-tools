@@ -51,6 +51,13 @@ void NetworkTest::runMethod(const std::string& method)
     }
     else if (method == "Network.onConnectedChanged.subscribe")
     {
+        if (lastSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Network.onConnectedChanged (ID: "
+                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .NetworkInterface()
                      .subscribeOnConnectedChanged([](bool connected) {

@@ -157,6 +157,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.onSpeechStart.subscribe")
     {
+        if (onSpeechStartSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechStart (ID: "
+                      << onSpeechStartSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .subscribeOnSpeechStart([](const SpeechIdEvent& e) {
@@ -175,6 +182,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.onSpeechPause.subscribe")
     {
+        if (onSpeechPauseSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechPause (ID: "
+                      << onSpeechPauseSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .subscribeOnSpeechPause([](const SpeechIdEvent& e) {
@@ -193,6 +207,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.onSpeechResume.subscribe")
     {
+        if (onSpeechResumeSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechResume (ID: "
+                      << onSpeechResumeSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .subscribeOnSpeechResume([](const SpeechIdEvent& e) {
@@ -211,6 +232,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.onWillSpeak.subscribe")
     {
+        if (onWillSpeakSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onWillSpeak (ID: "
+                      << onWillSpeakSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .subscribeOnWillSpeak([](const SpeechIdEvent& e) {
