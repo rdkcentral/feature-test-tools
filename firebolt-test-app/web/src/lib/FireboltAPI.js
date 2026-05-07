@@ -613,7 +613,7 @@ export default class FireboltAPI {
           } else if (def.type === 'gateway-event') {
             // Spec-defined event not in SDK — subscribe via raw WebSocket, wait for event to fire
             const eventFired = await Promise.race([
-              this._subscribeViaGateway(def.method, 7500).then(v => ({ fired: true, value: v })),
+              this._subscribeViaGateway(def.method, 7500).then(v => v !== null ? { fired: true, value: v } : { fired: false }),
               new Promise(resolve => setTimeout(() => resolve({ fired: false }), 7500))
             ])
             if (eventFired.fired) {
@@ -633,7 +633,7 @@ export default class FireboltAPI {
             // Event test: subscribe and wait for the event to fire within the test window
             const moduleName = def.method.split('.')[0]
             const eventFired = await Promise.race([
-              this._subscribeToEvent(moduleName, def.listenEvent, 7500).then(v => ({ fired: true, value: v })),
+              this._subscribeToEvent(moduleName, def.listenEvent, 7500).then(v => v !== null ? { fired: true, value: v } : { fired: false }),
               new Promise(resolve => setTimeout(() => resolve({ fired: false }), 7500))
             ])
             if (eventFired.fired) {

@@ -27,9 +27,12 @@ const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 function syncFavicon() {
   try {
-    spawn(process.execPath, [copyScript], {
+    const child = spawn(process.execPath, [copyScript], {
       cwd: rootDir,
       stdio: 'ignore'
+    });
+    child.on('error', () => {
+      // Keep dev server alive even if favicon sync fails.
     });
   } catch (err) {
     // Keep dev server alive even if favicon sync fails.
@@ -41,6 +44,12 @@ syncFavicon();
 const devChild = spawn(npxCmd, ['lng', 'dev'], {
   cwd: rootDir,
   stdio: 'inherit'
+});
+
+devChild.on('error', (err) => {
+  console.error('[dev-with-favicon] Failed to start dev server:', err.message);
+  clearInterval(interval);
+  process.exit(1);
 });
 
 const interval = setInterval(() => {

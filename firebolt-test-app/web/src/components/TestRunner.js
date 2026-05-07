@@ -242,6 +242,11 @@ export default class TestRunner extends Lightning.Component {
       this._navigationTimeout = null
     }
 
+    if (this._progressResetTimer) {
+      clearTimeout(this._progressResetTimer)
+      this._progressResetTimer = null
+    }
+
     // Reset progress bar to grey (inactive state)
     const { colors } = AppSettings
     this.tag('ProgressBar.ProgressFill').patch({
@@ -415,7 +420,9 @@ export default class TestRunner extends Lightning.Component {
     this._isRunning = false
 
     // Reset progress bar after 2s
-    setTimeout(() => {
+    if (this._progressResetTimer) clearTimeout(this._progressResetTimer)
+    this._progressResetTimer = setTimeout(() => {
+      this._progressResetTimer = null
       this.tag('ProgressBar.ProgressFill').patch({
         smooth: { w: [0, { duration: 0.3 }] },
         color: parseInt(colors.focusedBackground, 16)
@@ -570,6 +577,11 @@ export default class TestRunner extends Lightning.Component {
     if (this._navigationTimeout) {
       clearTimeout(this._navigationTimeout)
       this._navigationTimeout = null
+    }
+
+    if (this._progressResetTimer) {
+      clearTimeout(this._progressResetTimer)
+      this._progressResetTimer = null
     }
 
     // Reset progress bar to grey

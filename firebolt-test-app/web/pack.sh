@@ -49,7 +49,7 @@ done
 
 # ---------- build ----------
 echo "Building..."
-rm -rf "${BUILD_DIR}"
+rm -rf "${BUILD_DIR}" "${TAR_OUTPUT}"
 npm run build
 [ ! -d "${BUILD_DIR}" ] && { echo "ERROR: build directory not created!"; exit 1; }
 
