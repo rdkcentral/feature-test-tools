@@ -308,6 +308,8 @@ export default class TestRunner extends Lightning.Component {
   }
 
   _handleUp() {
+    if (this._isRunning) return
+
     if (this._focusOnButton) {
       this._focusOnButton = false
       this._unfocusButton()
@@ -324,6 +326,7 @@ export default class TestRunner extends Lightning.Component {
   }
 
   _handleDown() {
+    if (this._isRunning) return
     if (this._focusOnButton) return
 
     const colLen = Math.min(this._maxRows, this._tests.length - this._selectedColumn * this._maxRows)

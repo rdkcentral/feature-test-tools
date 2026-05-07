@@ -50,7 +50,7 @@ let _connectionSetup = false
 let _modulesInitPromise = null
 
 // Maps category IDs to their statically-imported JSON test definitions.
-// All 13 Firebolt OpenRPC modules are represented here.
+// Includes Firebolt module categories plus local-only categories (account, mockstress).
 const TEST_DEFINITIONS_BY_CATEGORY = {
   account: accountTests,
   accessibility: accessibilityTests,

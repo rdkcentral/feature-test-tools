@@ -698,6 +698,7 @@ export default class App extends Lightning.Component {
             return true  // Consume key — do NOT propagate; returning false closes the app
           }
           this._setState('Menu')
+          return true
         }
         $enter() {
           this.tag('SafeContainer.Content.Menu').visible = false
@@ -712,6 +713,7 @@ export default class App extends Lightning.Component {
         }
         _handleBack() {
           this._setState('Menu')
+          return true
         }
         $enter() {
           this.tag('SafeContainer.Content.Menu').visible = false

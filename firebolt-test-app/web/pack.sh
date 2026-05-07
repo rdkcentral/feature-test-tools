@@ -26,6 +26,25 @@ TAR_OUTPUT="${BUNDLER_WORKDIR}/fbttest.tgz"
 INSTALL_PATH="usr/share/fbttest"
 
 # ---------- deps ----------
+# ---------- resolve python executable ----------
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [ -z "${PYTHON_BIN}" ]; then
+    if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
+        PYTHON_BIN="python3"
+    elif command -v python >/dev/null 2>&1 && python -c "import sys" >/dev/null 2>&1; then
+        PYTHON_BIN="python"
+    else
+        echo "ERROR: Python executable not found. Install Python or set PYTHON_BIN=/path/to/python"
+        exit 1
+    fi
+fi
+# check for all the required tools before doing any work
+for tool in npm sed tar "$PYTHON_BIN" grep tr; do
+	if ! command -v "$tool" >/dev/null 2>&1; then
+		echo "ERROR: Required tool '$tool' not found in PATH. Please install it and try again."
+		exit 1
+	fi
+done
 [ ! -d "${START_DIR}/node_modules" ] && { echo "node_modules not found — running npm install..."; npm install; }
 
 # ---------- build ----------
@@ -40,7 +59,7 @@ sed -i 's/xhr\.status === 200/xhr.status === 200 || (xhr.status === 0 \&\& xhr.r
     && echo "Patched startApp.js (file:// XHR)"
 
 # ---------- patch appBundle.js: guard Transport.receive JSON.parse ----------
-python3 - "${BUILD_DIR}/appBundle.js" <<'PYEOF'
+"${PYTHON_BIN}" - "${BUILD_DIR}/appBundle.js" <<'PYEOF'
 import sys
 path = sys.argv[1]
 with open(path) as f:
@@ -66,3 +85,10 @@ cp -r "${BUILD_DIR}/." "${TMPDIR}/${INSTALL_PATH}/"
 mkdir -p "${BUNDLER_WORKDIR}"
 tar -C "${TMPDIR}" -czf "${TAR_OUTPUT}" usr
 echo "Package created: ${TAR_OUTPUT}"
+
+if ! tar -tzf "${TAR_OUTPUT}" | tr -d '\r' | grep -Eq '^(\./)?usr/share/fbttest/index.html$'; then
+    echo "ERROR: package verification failed (usr/share/fbttest/index.html missing)"
+    exit 1
+fi
+
+echo "Verified package contains: /usr/share/fbttest/index.html"
