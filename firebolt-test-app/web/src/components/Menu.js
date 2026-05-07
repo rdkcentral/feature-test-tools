@@ -121,7 +121,6 @@ export default class Menu extends Lightning.Component {
       ? categories
       : categories.filter(c => c.id !== 'mockstress')
     this._totalColumns = 0
-    this._scrollOffset = 0
 
     this._createListAsync()
   }
@@ -488,7 +487,7 @@ export default class Menu extends Lightning.Component {
     if (AppSettings.debug.verbose) console.log(`[RunAll] _maxRows=${this._maxRows}, runnableCategories=${runnableCategories.map(c => c.id).join(', ')}`)
 
     try {
-      // Split categories into parallel batches
+      // Process categories in sequential batches to limit concurrency against shared API state
       for (let i = 0; i < runnableCategories.length; i += categoryBatchSize) {
         const maxRows = this._maxRows || 10
         const batch = runnableCategories.slice(i, i + categoryBatchSize).map((category) => {
@@ -616,12 +615,9 @@ class CategoryItem extends Lightning.Component {
   _construct() {
     // Build template dynamically to get scaled values
     const { menu } = AppSettings.components
-    const { colors, typography } = AppSettings
 
     this._itemWidth = menu.itemWidth
     this._itemHeight = menu.itemHeight
-    this._colors = colors
-    this._typography = typography
   }
 
   static _template() {

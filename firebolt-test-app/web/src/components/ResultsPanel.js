@@ -71,8 +71,6 @@ export default class ResultsPanel extends Lightning.Component {
     // Store for use in _createResultsList and ResultItem
     this._listW = listW
     this._listH = listH
-    this._resultItemWidth = Math.floor(listW / 2) - 20
-    this._messageWordWrapWidth = this._resultItemWidth - 200
 
     this.tag('Title').patch({
       text: {
