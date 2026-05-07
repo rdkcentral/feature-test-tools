@@ -164,6 +164,86 @@ describe('FireboltAPI — runTest (mock mode)', () => {
     expect(result).toHaveProperty('success')
     expect(result).toHaveProperty('message')
   })
+
+  it('runTest should pass when the JS spec expects an error and a gateway error-shaped payload is returned', async () => {
+    const gatewayDef = {
+      id: 'tts_error_payload',
+      name: 'TextToSpeech.speak() [gateway]',
+      method: 'TextToSpeech.speak',
+      type: 'gateway',
+      expectedType: 'object',
+      execute: jest.fn().mockResolvedValue({
+        value: { code: 1001, message: 'Platform error' },
+        type: 'object',
+        backend: 'gateway'
+      })
+    }
+
+    const result = await api.runTest(gatewayDef)
+    expect(result.success).toBe(true)
+    expect(result.message).toContain('Expected JS error observed')
+    expect(result.message).toContain('\nReason:')
+  })
+
+  it('runTest should fail when the JS spec expects an error but the call returns a normal payload', async () => {
+    const gatewayDef = {
+      id: 'tts_unexpected_success',
+      name: 'TextToSpeech.speak() [gateway]',
+      method: 'TextToSpeech.speak',
+      type: 'gateway',
+      expectedType: 'object',
+      execute: jest.fn().mockResolvedValue({
+        value: { speechid: 1, TTS_Status: 0, success: true },
+        type: 'object',
+        backend: 'gateway'
+      })
+    }
+
+    const result = await api.runTest(gatewayDef)
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('Expected JS error, but returned a value')
+    expect(result.message).toContain('\nReason:')
+  })
+
+  it('runTest should pass no-return JS methods when the call completes without error', async () => {
+    const metricsDef = {
+      id: 'metrics_ready_none',
+      name: 'Metrics.ready()',
+      method: 'Metrics.ready',
+      type: 'getter',
+      execute: jest.fn().mockResolvedValue({ value: undefined, type: 'undefined', backend: 'core-client' })
+    }
+
+    const result = await api.runTest(metricsDef)
+    expect(result.success).toBe(true)
+    expect(result.message).toContain('Call succeeded')
+    expect(result.message).toContain('\nReturned:')
+  })
+
+  it('runTest should explain why Advertising.advertisingId fails spec validation', async () => {
+    const advertisingDef = {
+      id: 'advertising_id_shape',
+      name: 'Advertising.advertisingId()',
+      method: 'Advertising.advertisingId',
+      type: 'getter',
+      expectedType: 'object',
+      execute: jest.fn().mockResolvedValue({
+        value: {
+          ifa: '36d53d37-8e6f-4774-9220-8f61dab2648f',
+          ifa_type: 'sessionid',
+          limit: '1'
+        },
+        type: 'object',
+        backend: 'core-client'
+      })
+    }
+
+    const result = await api.runTest(advertisingDef)
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('\nReason:')
+    expect(result.message).toContain('missing required field lmt')
+    expect(result.message).toContain('limit instead of lmt')
+  })
 })
 
 // -------------------------------------------------------------------

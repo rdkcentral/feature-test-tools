@@ -84,6 +84,222 @@ function _hostFromEndpoint(endpoint) {
   try { return new URL(endpoint).hostname } catch (_) { return endpoint }
 }
 
+const UINT32_MAX = 0xffffffff
+
+function _isUnsigned(value) {
+  return Number.isInteger(value) && value >= 0 && value <= UINT32_MAX
+}
+
+function _isDouble(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function _isStringArray(value) {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+}
+
+function _isObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function _isBooleanRecord(value, keys) {
+  return _isObject(value) && keys.every(key => typeof value[key] === 'boolean')
+}
+
+function _typeLabel(value) {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  return typeof value
+}
+
+function _validateField(condition, reason) {
+  return condition ? null : reason
+}
+
+function _validateBoolean(value, fieldName) {
+  return _validateField(typeof value === 'boolean', `${fieldName} must be a boolean`)
+}
+
+function _validateString(value, fieldName) {
+  return _validateField(typeof value === 'string', `${fieldName} must be a string`)
+}
+
+function _validateNumber(value, fieldName) {
+  return _validateField(_isDouble(value), `${fieldName} must be a finite number`)
+}
+
+function _validateStringArrayField(value, fieldName) {
+  return _validateField(_isStringArray(value), `${fieldName} must be an array of strings`)
+}
+
+function _validateObject(value, fieldName = 'value') {
+  return _validateField(_isObject(value), `${fieldName} must be an object, got ${_typeLabel(value)}`)
+}
+
+function _validateOneOf(value, fieldName, allowedValues) {
+  return _validateField(allowedValues.includes(value), `${fieldName} must be one of ${allowedValues.join(', ')}`)
+}
+
+function _validateBooleanRecordField(value, fieldName, keys) {
+  const objectError = _validateObject(value, fieldName)
+  if (objectError) return objectError
+  for (const key of keys) {
+    const error = _validateBoolean(value[key], `${fieldName}.${key}`)
+    if (error) return error
+  }
+  return null
+}
+
+function _formatResultValue(result) {
+  return result.type === 'error' ? String(result.value) : JSON.stringify(result.value)
+}
+
+const JS_SPEC_ERROR_METHODS = new Set([
+  'Device.uptime',
+  'Device.timeInActiveState',
+  'Device.chipsetId',
+  'Display.edid',
+  'Display.size',
+  'Display.maxResolution',
+  'Lifecycle2.close',
+  'Lifecycle2.state',
+  'Lifecycle2.onStateChanged',
+  'Metrics.signIn',
+  'Metrics.signOut',
+  'Presentation.focused',
+  'Presentation.onFocusedChanged',
+  'Stats.memoryUsage',
+  'TextToSpeech.speak',
+  'TextToSpeech.pause',
+  'TextToSpeech.resume',
+  'TextToSpeech.cancel',
+  'TextToSpeech.getspeechstate',
+  'TextToSpeech.listvoices',
+  'TextToSpeech.onWillspeak',
+  'TextToSpeech.onSpeechstart',
+  'TextToSpeech.onSpeechpause',
+  'TextToSpeech.onSpeechresume',
+  'TextToSpeech.onSpeechcomplete',
+  'TextToSpeech.onSpeechinterrupted',
+  'TextToSpeech.onNetworkerror',
+  'TextToSpeech.onPlaybackerror'
+])
+
+const JS_SPEC_NONE_RETURN_METHODS = new Set([
+  'Discovery.watched',
+  'Metrics.ready',
+  'Metrics.page',
+  'Metrics.error',
+  'Metrics.event',
+  'Metrics.appInfo',
+  'Metrics.startContent',
+  'Metrics.stopContent',
+  'Metrics.mediaLoadStart',
+  'Metrics.mediaPlay',
+  'Metrics.mediaPlaying',
+  'Metrics.mediaPause',
+  'Metrics.mediaWaiting',
+  'Metrics.mediaSeeking',
+  'Metrics.mediaSeeked',
+  'Metrics.mediaRateChanged',
+  'Metrics.mediaRenditionChanged',
+  'Metrics.mediaEnded'
+])
+
+const JS_SPEC_VALIDATORS = {
+  'Accessibility.audioDescription': value => _validateBoolean(value, 'value'),
+  'Accessibility.onAudioDescriptionChanged': value => _validateBoolean(value, 'value'),
+  'Accessibility.closedCaptionsSettings': value => _validateObject(value)
+    || _validateBoolean(value.enabled, 'enabled')
+    || _validateStringArrayField(value.preferredLanguages, 'preferredLanguages'),
+  'Accessibility.onClosedCaptionsSettingsChanged': value => _validateObject(value)
+    || _validateBoolean(value.enabled, 'enabled')
+    || _validateStringArrayField(value.preferredLanguages, 'preferredLanguages'),
+  'Accessibility.highContrastUI': value => _validateBoolean(value, 'value'),
+  'Accessibility.onHighContrastUIChanged': value => _validateBoolean(value, 'value'),
+  'Accessibility.voiceGuidanceSettings': value => _validateObject(value)
+    || _validateBoolean(value.enabled, 'enabled')
+    || _validateNumber(value.rate, 'rate')
+    || _validateField(value.rate >= 0.1 && value.rate <= 10, 'rate must be between 0.1 and 10 inclusive')
+    || _validateBoolean(value.navigationHints, 'navigationHints'),
+  'Accessibility.onVoiceGuidanceSettingsChanged': value => _validateObject(value)
+    || _validateBoolean(value.enabled, 'enabled')
+    || _validateNumber(value.rate, 'rate')
+    || _validateField(value.rate >= 0.1 && value.rate <= 10, 'rate must be between 0.1 and 10 inclusive')
+    || _validateBoolean(value.navigationHints, 'navigationHints'),
+  'Advertising.advertisingId': value => _validateObject(value)
+    || _validateString(value.ifa, 'ifa')
+    || _validateOneOf(value.ifa_type, 'ifa_type', ['dpid', 'sspid', 'sessionid'])
+    || _validateField(value.lmt !== undefined, 'missing required field lmt (device returned limit instead of lmt)' )
+    || _validateOneOf(value.lmt, 'lmt', ['0', '1']),
+  'Device.uid': value => _validateString(value, 'value') || _validateField(value.length > 0, 'value must not be empty'),
+  'Device.deviceClass': value => _validateOneOf(value, 'value', ['ott', 'stb', 'tv']),
+  'Device.hdr': value => _validateBooleanRecordField(value, 'value', ['hdr10', 'hdr10Plus', 'dolbyVision', 'hlg']),
+  'Device.onHdrChanged': value => _validateBooleanRecordField(value, 'value', ['hdr10', 'hdr10Plus', 'dolbyVision', 'hlg']),
+  'Localization.country': value => _validateString(value, 'value'),
+  'Localization.onCountryChanged': value => _validateString(value, 'value'),
+  'Localization.preferredAudioLanguages': value => _validateStringArrayField(value, 'value'),
+  'Localization.onPreferredAudioLanguagesChanged': value => _validateStringArrayField(value, 'value'),
+  'Localization.presentationLanguage': value => _validateString(value, 'value'),
+  'Localization.onPresentationLanguageChanged': value => _validateString(value, 'value'),
+  'Network.connected': value => _validateBoolean(value, 'value'),
+  'Network.onConnectedChanged': value => _validateBoolean(value, 'value')
+}
+
+function _validateAgainstJsSpec(test, result) {
+  const actualHasError = result.type === 'error' || _looksLikeGatewayErrorPayload(result.value)
+
+  if (JS_SPEC_ERROR_METHODS.has(test.method)) {
+    return {
+      success: actualHasError,
+      message: actualHasError
+        ? `Expected JS error observed\nReason: ${_formatResultValue(result)}`
+        : `Expected JS error, but returned a value\nReason: ${_formatResultValue(result)}`
+    }
+  }
+
+  if (actualHasError) {
+    return {
+      success: false,
+      message: `Error\nReason: ${_formatResultValue(result)}`
+    }
+  }
+
+  if (JS_SPEC_NONE_RETURN_METHODS.has(test.method)) {
+    return {
+      success: true,
+      message: `Call succeeded\nReturned: ${_formatResultValue(result)}`
+    }
+  }
+
+  const validator = JS_SPEC_VALIDATORS[test.method]
+  if (!validator) return null
+
+  const validationError = validator(result.value)
+
+  return {
+    success: !validationError,
+    message: !validationError
+      ? `Returned: ${JSON.stringify(result.value)}`
+      : `Spec validation failed - ${test.method}: ${validationError}. Returned: ${JSON.stringify(result.value)}`
+  }
+}
+
+// Gateway methods can sometimes return application-level error objects inside result
+// instead of JSON-RPC top-level errors; treat these as test failures.
+function _looksLikeGatewayErrorPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  if (value.error !== undefined && value.error !== null) return true
+  if (value.success === false) return true
+  if (value.ok === false) return true
+  if (typeof value.status === 'string' && /error|failed|failure/i.test(value.status)) return true
+
+  const hasCode = typeof value.code === 'number' || typeof value.code === 'string'
+  const hasMessage = typeof value.message === 'string' && value.message.trim().length > 0
+  return hasCode && hasMessage
+}
+
 // Setup device connection configuration before importing modules — runs once
 function setupDeviceConnection() {
   if (_connectionSetup) return
@@ -258,8 +474,8 @@ export default class FireboltAPI {
           return
         }
         this._eventSockets.push(ws)
-        const id = Math.floor(Math.random() * 900000) + 100000
-        let subscribed = false
+              ? `Returned\nValue: ${JSON.stringify(result.value)}`
+              : `Spec validation failed for ${test.method}\nReason: ${validationError}\nReturned: ${JSON.stringify(result.value)}`
         ws.onopen = () => {
           ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params: { listen: true } }))
         }
@@ -824,17 +1040,30 @@ export default class FireboltAPI {
       const backend = result?.backend || this._lastCallBackend || (this.usingMock ? 'mock' : 'window.firebolt')
       const actualType = result.value === null ? 'null' : result.value === undefined ? 'undefined' : typeof result.value
       const expectedType = test.expectedType
+      const specValidation = _validateAgainstJsSpec(test, result)
+      if (specValidation) {
+        return {
+          test,
+          success: specValidation.success,
+          result,
+          backend,
+          duration,
+          message: specValidation.message
+        }
+      }
+
       // For event/gateway-event tests, success is determined by subscription (no error), not payload type
       const typeOk = !expectedType || test.type === 'event' || test.type === 'gateway-event' || actualType === expectedType
+      const gatewayPayloadError = test.type === 'gateway' && _looksLikeGatewayErrorPayload(result.value)
 
       return {
         test,
-        success: result.type !== 'error' && typeOk,
+        success: result.type !== 'error' && typeOk && !gatewayPayloadError,
         result,
         backend,
         duration,
-        message: result.type === 'error'
-          ? `Error: ${result.value}`
+        message: result.type === 'error' || gatewayPayloadError
+          ? `Error: ${JSON.stringify(result.value)}`
           : typeOk
             ? `Returned: ${JSON.stringify(result.value)} (${actualType})`
             : `Type mismatch: expected ${expectedType}, got ${actualType} — ${JSON.stringify(result.value)}`

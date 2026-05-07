@@ -40,10 +40,10 @@ if [ -z "${PYTHON_BIN}" ]; then
 fi
 # check for all the required tools before doing any work
 for tool in npm sed tar "$PYTHON_BIN" grep tr; do
-	if ! command -v "$tool" >/dev/null 2>&1; then
-		echo "ERROR: Required tool '$tool' not found in PATH. Please install it and try again."
-		exit 1
-	fi
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "ERROR: Required tool '$tool' not found in PATH. Please install it and try again."
+        exit 1
+    fi
 done
 [ ! -d "${START_DIR}/node_modules" ] && { echo "node_modules not found — running npm install..."; npm install; }
 
