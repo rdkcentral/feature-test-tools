@@ -271,7 +271,7 @@ export default class TestRunner extends Lightning.Component {
         this._focusItem(0)
       }
     }).catch(error => {
-      console.error('Error loading tests:' + JSON.stringify(error))
+      console.error('Error loading tests:', error?.message || String(error))
       this._tests = []
       this._createTestList()
       this.signal('onStatus', 'No tests available')
@@ -396,6 +396,11 @@ export default class TestRunner extends Lightning.Component {
   async _runSingleTest(index) {
     if (this._isRunning) return
     this._isRunning = true
+
+    if (this._progressResetTimer) {
+      clearTimeout(this._progressResetTimer)
+      this._progressResetTimer = null
+    }
 
     const test = this._tests[index]
     const { colors } = AppSettings

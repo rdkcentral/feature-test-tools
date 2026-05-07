@@ -145,8 +145,9 @@ describe('App — ExitConfirm state', () => {
   })
 
   it('Back again (from ExitConfirm) should hide ExitDialog and return to Menu', () => {
-    // Already in ExitConfirm from previous test
-    app._handleBack()
+    app._setState('Menu')
+    app._handleBack() // transitions to ExitConfirm, shows dialog
+    app._handleBack() // dismisses dialog, returns to Menu
     expect(app.tag('ExitDialog')?.visible).toBe(false)
   })
 })
