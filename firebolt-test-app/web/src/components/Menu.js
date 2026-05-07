@@ -423,7 +423,18 @@ export default class Menu extends Lightning.Component {
     this.tag('ProgressBar').visible = true
     const startTime = Date.now()
 
-    const { categoryBatchSize, testBatchSize } = AppSettings.execution
+    const { categoryBatchSize: rawCategoryBatchSize, testBatchSize: rawTestBatchSize } = AppSettings.execution
+    const parsedCategoryBatchSize = Math.floor(Number(rawCategoryBatchSize))
+    const parsedTestBatchSize = Math.floor(Number(rawTestBatchSize))
+    const categoryBatchSize = parsedCategoryBatchSize > 0 ? parsedCategoryBatchSize : 1
+    const testBatchSize = parsedTestBatchSize > 0 ? parsedTestBatchSize : 1
+
+    if (categoryBatchSize !== rawCategoryBatchSize || testBatchSize !== rawTestBatchSize) {
+      const configMessage = `Invalid execution batch size config; using categoryBatchSize=${categoryBatchSize}, testBatchSize=${testBatchSize}`
+      this.signal('onStatus', configMessage)
+      this.tag('ProgressBar.ProgressText').text.text = configMessage
+    }
+
     const runnableCategories = this._categories.filter(category => this._isCategoryInteractive(category) && !category.runAllExcluded)
     const totalCategories = runnableCategories.length
     const categoryResults = []
