@@ -41,6 +41,8 @@ function syncFavicon() {
 
 syncFavicon();
 
+let interval;
+
 const devChild = spawn(npxCmd, ['lng', 'dev'], {
   cwd: rootDir,
   stdio: 'inherit'
@@ -48,11 +50,11 @@ const devChild = spawn(npxCmd, ['lng', 'dev'], {
 
 devChild.on('error', (err) => {
   console.error('[dev-with-favicon] Failed to start dev server:', err.message);
-  clearInterval(interval);
+  if (interval) clearInterval(interval);
   process.exit(1);
 });
 
-const interval = setInterval(() => {
+interval = setInterval(() => {
   if (fs.existsSync(path.join(rootDir, 'build'))) {
     syncFavicon();
   }

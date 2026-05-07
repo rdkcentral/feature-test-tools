@@ -62,12 +62,24 @@ function bootApp() {
   )
 }
 
+function detachApp(app) {
+  if (app && typeof app._detach === 'function') {
+    app._detach()
+  }
+}
+
 describe('Menu — rendering', () => {
   let app, menu
 
   beforeAll(() => {
     app = bootApp()
     menu = app.tag('SafeContainer.Content.Menu')
+  })
+
+  afterAll(() => {
+    detachApp(app)
+    app = null
+    menu = null
   })
 
   it('Menu component should exist', () => {
@@ -90,6 +102,12 @@ describe('Menu — navigation', () => {
     app = bootApp()
     app._setState('Menu')
     menu = app.tag('SafeContainer.Content.Menu')
+  })
+
+  afterEach(() => {
+    detachApp(app)
+    app = null
+    menu = null
   })
 
   it('should handle Up key without throwing', () => {
@@ -116,6 +134,12 @@ describe('Menu — Run All button focus', () => {
     app = bootApp()
     app._setState('Menu')
     menu = app.tag('SafeContainer.Content.Menu')
+  })
+
+  afterAll(() => {
+    detachApp(app)
+    app = null
+    menu = null
   })
 
   it('pressing Down from last row should move focus to Run All button', () => {

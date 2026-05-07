@@ -50,6 +50,12 @@ function bootApp() {
   )
 }
 
+function detachApp(app) {
+  if (app && typeof app._detach === 'function') {
+    app._detach()
+  }
+}
+
 // -------------------------------------------------------------------
 // Suite
 // -------------------------------------------------------------------
@@ -59,6 +65,11 @@ describe('App — boot', () => {
 
   beforeEach(() => {
     app = bootApp()
+  })
+
+  afterEach(() => {
+    detachApp(app)
+    app = null
   })
 
   it('should render without throwing', () => {
@@ -76,6 +87,11 @@ describe('App — initial state', () => {
 
   beforeAll(() => {
     app = bootApp()
+  })
+
+  afterAll(() => {
+    detachApp(app)
+    app = null
   })
 
   it('should start in Menu state', () => {
@@ -111,6 +127,11 @@ describe('App — key filtering (_captureKey)', () => {
     app = bootApp()
   })
 
+  afterAll(() => {
+    detachApp(app)
+    app = null
+  })
+
   const ALLOWED_KEYCODES = [37, 38, 39, 40, 13, 8] // arrows, enter, backspace
 
   ALLOWED_KEYCODES.forEach(code => {
@@ -136,6 +157,11 @@ describe('App — ExitConfirm state', () => {
 
   beforeAll(() => {
     app = bootApp()
+  })
+
+  afterAll(() => {
+    detachApp(app)
+    app = null
   })
 
   it('Back on Menu should show ExitDialog', () => {

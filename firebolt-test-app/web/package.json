@@ -25,7 +25,7 @@
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.28.6",
     "@lightningjs/cli": "^2.11.0",
-    "babel-jest": "^29.0.0",
+    "babel-jest": "^30.3.0",
     "jest": "^30.3.0",
     "jest-webgl-canvas-mock": "^2.5.3"
   },

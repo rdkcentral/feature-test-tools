@@ -69,6 +69,12 @@ function bootApp() {
   )
 }
 
+function detachApp(app) {
+  if (app && typeof app._detach === 'function') {
+    app._detach()
+  }
+}
+
 const NETWORK_CATEGORY = { id: 'network', name: 'Network', description: 'Network connectivity status and events' }
 
 async function navigateToTestRunner(app, category = NETWORK_CATEGORY) {
@@ -87,6 +93,12 @@ describe('TestRunner — test loading', () => {
   beforeAll(async () => {
     app = bootApp()
     testRunner = await navigateToTestRunner(app)
+  })
+
+  afterAll(() => {
+    detachApp(app)
+    app = null
+    testRunner = null
   })
 
   it('should load tests for the "network" category', () => {
@@ -112,6 +124,12 @@ describe('TestRunner — navigation guards', () => {
   beforeEach(async () => {
     app = bootApp()
     testRunner = await navigateToTestRunner(app)
+  })
+
+  afterEach(() => {
+    detachApp(app)
+    app = null
+    testRunner = null
   })
 
   it('_isRunning should be false after loadTests', () => {
@@ -143,6 +161,12 @@ describe('TestRunner — UI structure', () => {
     testRunner = await navigateToTestRunner(app)
   })
 
+  afterAll(() => {
+    detachApp(app)
+    app = null
+    testRunner = null
+  })
+
   it('should have a RunButton', () => {
     expect(testRunner.tag('RunButton')).toBeDefined()
   })
@@ -164,6 +188,13 @@ describe('TestRunner — single test execution', () => {
     testRunner = await navigateToTestRunner(app)
     // Grab the mocked instance off the testRunner
     mockFireboltAPI = testRunner._fireboltAPI
+  })
+
+  afterAll(() => {
+    detachApp(app)
+    app = null
+    testRunner = null
+    mockFireboltAPI = null
   })
 
   it('should call runTest with a test definition when a test is run', async () => {
