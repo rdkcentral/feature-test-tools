@@ -57,7 +57,7 @@
     "id": "device_onHdrChanged",
     "name": "Device.onHdrChanged [event]",
     "description": "Subscribe to HDR format changes on the attached display",
-    "method": "Device.hdr",
+    "method": "Device.onHdrChanged",
     "type": "event",
     "listenEvent": "onHdrChanged",
     "params": [],

@@ -23,7 +23,6 @@
  * Tests category item rendering, focus navigation,
  * and Run All button visibility / disabled states.
  */
-import { Lightning } from '@lightningjs/sdk'
 import App from 'src/index'
 import settings from '../../settings.json'
 

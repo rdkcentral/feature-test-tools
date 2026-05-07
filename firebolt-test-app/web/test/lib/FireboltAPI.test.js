@@ -24,9 +24,6 @@
  * runTest dispatch (mock mode), and event listener tracking.
  */
 import FireboltAPI from 'src/lib/FireboltAPI'
-import networkTests from 'src/data/tests/network.json'
-import accessibilityTests from 'src/data/tests/accessibility.json'
-import deviceTests from 'src/data/tests/device.json'
 
 // -------------------------------------------------------------------
 // Mock WebSocket globally (no real network opened)
