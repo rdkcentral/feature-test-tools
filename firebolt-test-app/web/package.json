@@ -40,7 +40,7 @@
       "^test(.*)": "<rootDir>/test$1"
     },
     "transform": {
-      "^.+\\.[m|t]?js$": "babel-jest"
+      "^.+\\.m?js$": "babel-jest"
     },
     "transformIgnorePatterns": []
   }

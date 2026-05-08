@@ -25,9 +25,6 @@
 
 import DeviceConnectionConfig from './DeviceConnectionConfig'
 import AppSettings from './AppSettings'
-
-// Verbose debug logger — only emits when app-settings.json debug.verbose is true
-const dbg = (msg) => AppSettings.debug.verbose && console.log(msg)
 import accountTests from '../data/tests/account.json'
 import accessibilityTests from '../data/tests/accessibility.json'
 import advertisingTests from '../data/tests/advertising.json'
@@ -42,6 +39,9 @@ import presentationTests from '../data/tests/presentation.json'
 import statsTests from '../data/tests/stats.json'
 import texttospeechTests from '../data/tests/texttospeech.json'
 import mockstressTests from '../data/tests/mockstress.json'
+
+// Verbose debug logger — only emits when app-settings.json debug.verbose is true
+const dbg = (msg) => AppSettings.debug.verbose && console.log(msg)
 
 let FireboltModules = {}
 let useNpmPackage = false
@@ -1060,7 +1060,10 @@ export default class FireboltAPI {
       const timeoutPromise = new Promise((_, reject) => {
         _timeoutId = setTimeout(() => reject(new Error('Test timeout (8s)')), 8000)
       })
-      dbg(`[Firebolt] >> ${test.method} params=${JSON.stringify(test.params || test.gatewayParams || [])}`)
+      const debugParams = test.type === 'gateway'
+        ? (test.gatewayParams || {})
+        : (test.params || [])
+      dbg(`[Firebolt] >> ${test.method} params=${JSON.stringify(debugParams)}`)
       const result = await Promise.race([test.execute(), timeoutPromise])
       clearTimeout(_timeoutId)
       dbg(`[Firebolt] << ${test.method} result=${JSON.stringify(result)}`)
