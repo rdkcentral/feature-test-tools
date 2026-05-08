@@ -91,7 +91,7 @@ describe('FireboltAPI — TEST_DEFINITIONS_BY_CATEGORY', () => {
   const EXPECTED_CATEGORIES = [
     'account', 'accessibility', 'advertising', 'device', 'discovery',
     'display', 'lifecycle', 'localization', 'metrics', 'network',
-    'presentation', 'stats', 'texttospeech'
+    'presentation', 'stats', 'texttospeech', 'mockstress'
   ]
 
   it('should have all expected categories', () => {
@@ -243,6 +243,24 @@ describe('FireboltAPI — runTest (mock mode)', () => {
     expect(result.message).toContain('\nReason:')
     expect(result.message).toContain('missing required field lmt')
     expect(result.message).toContain('limit instead of lmt')
+  })
+
+  it('runTest should fail when an event subscription times out without firing', async () => {
+    const eventDef = {
+      id: 'network_timeout_event',
+      name: 'Network.onConnectedChanged [event]',
+      method: 'Network.onConnectedChanged',
+      type: 'event',
+      execute: jest.fn().mockResolvedValue({
+        value: 'Subscribed — no event fired in test window',
+        type: 'error',
+        backend: 'core-client'
+      })
+    }
+
+    const result = await api.runTest(eventDef)
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('no event fired in test window')
   })
 })
 

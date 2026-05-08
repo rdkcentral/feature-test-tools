@@ -868,7 +868,7 @@ export default class FireboltAPI {
             }
             return {
               value: 'Subscribed — no event fired in test window',
-              type: 'string',
+              type: 'error',
               backend: 'gateway'
             }
 
@@ -887,8 +887,8 @@ export default class FireboltAPI {
               }
             }
             return {
-              value: 'Subscribed \u2014 no event fired in test window',
-              type: 'string',
+              value: 'Subscribed — no event fired in test window',
+              type: 'error',
               backend: this._lastCallBackend
             }
 
