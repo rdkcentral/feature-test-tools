@@ -6,7 +6,7 @@
   "packageType": "application",
   "entryPoint": "file:///usr/share/fbttest/index.html",
   "dependencies": {
-    "com.rdkcentral.wpe": "0.3.0"
+    "com.rdkcentral.wpe": ">=0.3.0"
   },
   "permissions": [
     "urn:rdk:permission:home-app",
