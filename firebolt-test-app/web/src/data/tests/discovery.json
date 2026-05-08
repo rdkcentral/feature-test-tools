@@ -1,0 +1,11 @@
+[
+  {
+    "id": "discovery_watched",
+    "name": "Discovery.watched()",
+    "description": "Notify the platform that content was partially or fully watched. Returns true on success.",
+    "method": "Discovery.watched",
+    "type": "getter",
+    "params": ["test-entity-001", 0.95, true, "2021-04-23T18:25:43.511Z"],
+    "expectedType": "boolean"
+  }
+]

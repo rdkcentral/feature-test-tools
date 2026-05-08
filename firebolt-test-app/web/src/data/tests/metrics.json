@@ -1,0 +1,173 @@
+[
+  {
+    "id": "metrics_ready",
+    "name": "Metrics.ready()",
+    "description": "Inform platform the app is minimally usable (called automatically by Lifecycle.ready)",
+    "method": "Metrics.ready",
+    "type": "getter",
+    "params": [],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_page",
+    "name": "Metrics.page()",
+    "description": "Inform the platform the user navigated to a page or view",
+    "method": "Metrics.page",
+    "type": "getter",
+    "params": ["test-page-home"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_appInfo",
+    "name": "Metrics.appInfo()",
+    "description": "Inform the platform about the app build/version string",
+    "method": "Metrics.appInfo",
+    "type": "getter",
+    "params": ["1.0.0-test"],
+    "expectedType": "null"
+  },
+  {
+    "id": "metrics_startContent",
+    "name": "Metrics.startContent()",
+    "description": "Inform the platform the user started content playback",
+    "method": "Metrics.startContent",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_stopContent",
+    "name": "Metrics.stopContent()",
+    "description": "Inform the platform the user stopped content playback",
+    "method": "Metrics.stopContent",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_error",
+    "name": "Metrics.error()",
+    "description": "Inform the platform of an error that has occurred in the app",
+    "method": "Metrics.error",
+    "type": "getter",
+    "params": ["network", "ERR_TEST_001", "Test error from Firebolt test app", false],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_event",
+    "name": "Metrics.event()",
+    "description": "Inform the platform of 1st party distributor metrics via schema/data JSON",
+    "method": "Metrics.event",
+    "type": "getter",
+    "params": ["http://firebolt.io/schema/test", "{\"test\":true}"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaLoadStart",
+    "name": "Metrics.mediaLoadStart()",
+    "description": "Called when setting media asset URL to play, to infer load time",
+    "method": "Metrics.mediaLoadStart",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaPlay",
+    "name": "Metrics.mediaPlay()",
+    "description": "Called when media playback should start (autoplay, user-play, unpause)",
+    "method": "Metrics.mediaPlay",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaPlaying",
+    "name": "Metrics.mediaPlaying()",
+    "description": "Called when media playback actually starts",
+    "method": "Metrics.mediaPlaying",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaPause",
+    "name": "Metrics.mediaPause()",
+    "description": "Called when media playback pauses intentionally",
+    "method": "Metrics.mediaPause",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaWaiting",
+    "name": "Metrics.mediaWaiting()",
+    "description": "Called when playback halts due to network, buffer or other unintentional constraint",
+    "method": "Metrics.mediaWaiting",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaSeeking",
+    "name": "Metrics.mediaSeeking()",
+    "description": "Called when a seek is initiated during media playback",
+    "method": "Metrics.mediaSeeking",
+    "type": "getter",
+    "params": ["test-entity-001", 0.25],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaSeeked",
+    "name": "Metrics.mediaSeeked()",
+    "description": "Called when a seek completes during media playback",
+    "method": "Metrics.mediaSeeked",
+    "type": "getter",
+    "params": ["test-entity-001", 0.25],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaRateChanged",
+    "name": "Metrics.mediaRateChanged()",
+    "description": "Called when playback rate changes (e.g. 2x fast-forward)",
+    "method": "Metrics.mediaRateChanged",
+    "type": "getter",
+    "params": ["test-entity-001", 1.5],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaRenditionChanged",
+    "name": "Metrics.mediaRenditionChanged()",
+    "description": "Called when playback rendition changes (bitrate/dimensions/profile)",
+    "method": "Metrics.mediaRenditionChanged",
+    "type": "getter",
+    "params": ["test-entity-001", 3000, 1920, 1080, "HDR"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_mediaEnded",
+    "name": "Metrics.mediaEnded()",
+    "description": "Called when end-of-media is reached",
+    "method": "Metrics.mediaEnded",
+    "type": "getter",
+    "params": ["test-entity-001"],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_signIn",
+    "name": "Metrics.signIn() [gateway]",
+    "description": "Inform platform the user signed in — spec-defined; called via Gateway JSON-RPC",
+    "method": "Metrics.signIn",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "boolean"
+  },
+  {
+    "id": "metrics_signOut",
+    "name": "Metrics.signOut() [gateway]",
+    "description": "Inform platform the user signed out — spec-defined; called via Gateway JSON-RPC",
+    "method": "Metrics.signOut",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "boolean"
+  }
+]

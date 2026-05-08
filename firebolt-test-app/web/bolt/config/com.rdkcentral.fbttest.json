@@ -1,0 +1,23 @@
+{
+  "id": "com.rdkcentral.fbttest",
+  "version": "1.0.0",
+  "versionName": "1.0.0",
+  "name": "FireboltJS Test App",
+  "packageType": "application",
+  "entryPoint": "file:///usr/share/fbttest/index.html",
+  "dependencies": {
+    "com.rdkcentral.wpe": ">=0.3.0"
+  },
+  "permissions": [
+    "urn:rdk:permission:home-app",
+    "urn:rdk:permission.internet",
+    "urn:rdk:permission:firebolt",
+    "urn:rdk:permission:thunder",
+    "urn:rdk:permission:rialto",
+    "urn:rdk:permission:game-controller",
+    "urn:rdk:permission:display-overlay",
+    "urn:rdk:permission:compositor"
+  ],
+  "configuration": {
+  }
+}

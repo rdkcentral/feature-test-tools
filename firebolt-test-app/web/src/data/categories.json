@@ -1,0 +1,73 @@
+[
+  {
+    "id": "accessibility",
+    "name": "Accessibility",
+    "description": "Closed captions, voice guidance and audio description settings"
+  },
+  {
+    "id": "advertising",
+    "name": "Advertising",
+    "description": "Platform advertising identifier (IFA)"
+  },
+  {
+    "id": "device",
+    "name": "Device",
+    "description": "Device class, HDR capabilities and identifiers"
+  },
+  {
+    "id": "discovery",
+    "name": "Discovery",
+    "description": "Content watch history and discovery"
+  },
+  {
+    "id": "display",
+    "name": "Display",
+    "description": "Display EDID, size and max resolution [spec-defined, via Gateway]"
+  },
+  {
+    "id": "lifecycle",
+    "name": "Lifecycle",
+    "description": "Application lifecycle state and close [spec-defined, via Gateway]",
+    "runAllExcluded": true
+  },
+  {
+    "id": "localization",
+    "name": "Localization",
+    "description": "Country, preferred audio languages and presentation locale"
+  },
+  {
+    "id": "metrics",
+    "name": "Metrics",
+    "description": "App readiness, page, media playback and custom metrics"
+  },
+  {
+    "id": "network",
+    "name": "Network",
+    "description": "Network connectivity status and events"
+  },
+  {
+    "id": "presentation",
+    "name": "Presentation",
+    "description": "App focus/presentation state [spec-defined, via Gateway]"
+  },
+  {
+    "id": "stats",
+    "name": "Stats",
+    "description": "Application memory usage statistics [spec-defined, via Gateway]"
+  },
+  {
+    "id": "texttospeech",
+    "name": "TextToSpeech",
+    "description": "TTS synthesis, control and speech state [spec-defined, via Gateway]"
+  },
+  {
+    "id": "account",
+    "name": "Account (mock)",
+    "description": "Account ID — not in firebolt-js-client OpenRPC spec, falls back to mock"
+  },
+  {
+    "id": "mockstress",
+    "name": "Mock Stress Test",
+    "description": "35 synthetic mock tests to validate multi-column scroll layout under load"
+  }
+]

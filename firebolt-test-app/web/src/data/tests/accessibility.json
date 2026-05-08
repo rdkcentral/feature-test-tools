@@ -1,0 +1,78 @@
+[
+  {
+    "id": "accessibility_audioDescription",
+    "name": "Accessibility.audioDescription()",
+    "description": "Returns the audio description device setting",
+    "method": "Accessibility.audioDescription",
+    "type": "getter",
+    "params": [],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "accessibility_closedCaptionsSettings",
+    "name": "Accessibility.closedCaptionsSettings()",
+    "description": "Returns closed-captions settings: enabled flag and list of preferred languages",
+    "method": "Accessibility.closedCaptionsSettings",
+    "type": "getter",
+    "params": [],
+    "expectedType": "object"
+  },
+  {
+    "id": "accessibility_highContrastUI",
+    "name": "Accessibility.highContrastUI()",
+    "description": "Returns the high contrast UI device setting",
+    "method": "Accessibility.highContrastUI",
+    "type": "getter",
+    "params": [],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "accessibility_voiceGuidanceSettings",
+    "name": "Accessibility.voiceGuidanceSettings()",
+    "description": "Returns voice guidance settings: enabled, rate and navigationHints",
+    "method": "Accessibility.voiceGuidanceSettings",
+    "type": "getter",
+    "params": [],
+    "expectedType": "object"
+  },
+  {
+    "id": "accessibility_onAudioDescriptionChanged",
+    "name": "Accessibility.onAudioDescriptionChanged [event]",
+    "description": "Subscribe to audio description setting changes",
+    "method": "Accessibility.onAudioDescriptionChanged",
+    "type": "event",
+    "listenEvent": "onAudioDescriptionChanged",
+    "params": [],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "accessibility_onClosedCaptionsSettingsChanged",
+    "name": "Accessibility.onClosedCaptionsSettingsChanged [event]",
+    "description": "Subscribe to closed-captions settings changes",
+    "method": "Accessibility.onClosedCaptionsSettingsChanged",
+    "type": "event",
+    "listenEvent": "onClosedCaptionsSettingsChanged",
+    "params": [],
+    "expectedType": "object"
+  },
+  {
+    "id": "accessibility_onHighContrastUIChanged",
+    "name": "Accessibility.onHighContrastUIChanged [event]",
+    "description": "Subscribe to high contrast UI setting changes",
+    "method": "Accessibility.onHighContrastUIChanged",
+    "type": "event",
+    "listenEvent": "onHighContrastUIChanged",
+    "params": [],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "accessibility_onVoiceGuidanceSettingsChanged",
+    "name": "Accessibility.onVoiceGuidanceSettingsChanged [event]",
+    "description": "Subscribe to voice guidance settings changes",
+    "method": "Accessibility.onVoiceGuidanceSettingsChanged",
+    "type": "event",
+    "listenEvent": "onVoiceGuidanceSettingsChanged",
+    "params": [],
+    "expectedType": "object"
+  }
+]

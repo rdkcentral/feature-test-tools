@@ -1,0 +1,11 @@
+[
+  {
+    "id": "advertising_advertisingId",
+    "name": "Advertising.advertisingId()",
+    "description": "Returns the IFA (Identifier For Advertising): ifa UUID, ifa_type source, and lmt limit-ad-tracking flag",
+    "method": "Advertising.advertisingId",
+    "type": "getter",
+    "params": [],
+    "expectedType": "object"
+  }
+]

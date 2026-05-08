@@ -1,0 +1,21 @@
+[
+  {
+    "id": "network_connected",
+    "name": "Network.connected()",
+    "description": "Returns whether the device currently has a usable network connection",
+    "method": "Network.connected",
+    "type": "getter",
+    "params": [],
+    "expectedType": "boolean"
+  },
+  {
+    "id": "network_onConnectedChanged",
+    "name": "Network.onConnectedChanged [event]",
+    "description": "Subscribe to network connectivity changes",
+    "method": "Network.onConnectedChanged",
+    "type": "event",
+    "listenEvent": "onConnectedChanged",
+    "params": [],
+    "expectedType": "boolean"
+  }
+]
