@@ -32,7 +32,7 @@ import settings from '../settings.json'
 jest.mock('src/lib/FireboltAPI', () => {
   return jest.fn().mockImplementation(() => ({
     init: jest.fn().mockResolvedValue(undefined),
-    subscribeAllEvents: jest.fn(),
+    subscribeAllEvents: jest.fn().mockResolvedValue(undefined),
     unsubscribeAllEvents: jest.fn()
   }))
 })

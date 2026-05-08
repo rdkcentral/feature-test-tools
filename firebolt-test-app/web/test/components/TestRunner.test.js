@@ -43,7 +43,7 @@ jest.mock('src/lib/FireboltAPI', () => {
     getVersionInfo: jest.fn().mockResolvedValue({ sdkVersion: '1.0.0-test' }),
     getTestsForCategory: jest.fn().mockResolvedValue(stubTests),
     runTest: jest.fn().mockResolvedValue({ success: true, message: 'mock-value', backend: 'mock' }),
-    subscribeAllEvents: jest.fn(),
+    subscribeAllEvents: jest.fn().mockResolvedValue(undefined),
     unsubscribeAllEvents: jest.fn(),
     onEventLog: null
   }))
