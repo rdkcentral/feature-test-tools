@@ -214,6 +214,7 @@ export default class TestRunner extends Lightning.Component {
     this._focusOnButton = false
     this._isRunning = false
     this._navigationTimeout = null
+    this._loadRequestId = 0
     // NOTE: _containerW, _containerH, _buttonY, _columnWidth, _maxRows are
     // computed in _setup() which runs before _init() — do not reset them here.
   }
@@ -232,6 +233,7 @@ export default class TestRunner extends Lightning.Component {
   }
 
   loadTests(category) {
+    const requestId = ++this._loadRequestId
     this._category = category
     this._focusOnButton = false
     this._selectedTestIndex = 0
@@ -263,6 +265,9 @@ export default class TestRunner extends Lightning.Component {
     this._createTestList()
 
     this._fireboltAPI.getTestsForCategory(category.id).then(tests => {
+      if (requestId !== this._loadRequestId || !this._category || this._category.id !== category.id) {
+        return
+      }
       this._tests = tests.filter(t => t.type !== 'event' && t.type !== 'gateway-event')
       this._createTestList()
       this.signal('onStatus', `${this._tests.length} tests available`)
@@ -271,6 +276,9 @@ export default class TestRunner extends Lightning.Component {
         this._focusItem(0)
       }
     }).catch(error => {
+      if (requestId !== this._loadRequestId || !this._category || this._category.id !== category.id) {
+        return
+      }
       console.error('Error loading tests:', error?.message || String(error))
       this._tests = []
       this._createTestList()

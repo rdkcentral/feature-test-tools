@@ -578,7 +578,7 @@ export default class Menu extends Lightning.Component {
       })
 
       if (state === 'complete') {
-        item.tag('CategoryItem').setTestResult(color)
+        item.tag('CategoryItem').setTestResult()
       }
 
       if (passRate !== null && passRate !== undefined && state === 'complete') {

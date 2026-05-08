@@ -68,6 +68,10 @@ const TEST_DEFINITIONS_BY_CATEGORY = {
   mockstress: mockstressTests
 }
 
+const EVENT_SUBSCRIPTION_TIMEOUT_MS = 7500
+const DEFAULT_TEST_TIMEOUT_MS = 8000
+const EVENT_TEST_TIMEOUT_MS = EVENT_SUBSCRIPTION_TIMEOUT_MS + 2500
+
 // Validate that a Firebolt endpoint URL uses the ws:// or wss:// scheme.
 // This guards against non-WebSocket URL schemes; it does not restrict the target host.
 function _isValidFireboltEndpoint(url) {
@@ -849,7 +853,7 @@ export default class FireboltAPI {
 
           } else if (def.type === 'gateway-event') {
             // Spec-defined event not in SDK — subscribe via raw WebSocket, wait for event to fire
-            const gatewayValue = await this._subscribeViaGateway(def.method, 7500)
+            const gatewayValue = await this._subscribeViaGateway(def.method, EVENT_SUBSCRIPTION_TIMEOUT_MS)
             const eventFired = gatewayValue !== null
               ? { fired: true, value: gatewayValue }
               : { fired: false }
@@ -869,7 +873,7 @@ export default class FireboltAPI {
           } else if (def.type === 'event') {
             // Event test: subscribe and wait for the event to fire within the test window
             const moduleName = def.method.split('.')[0]
-            const eventValue = await this._subscribeToEvent(moduleName, def.listenEvent, 7500)
+            const eventValue = await this._subscribeToEvent(moduleName, def.listenEvent, EVENT_SUBSCRIPTION_TIMEOUT_MS)
             const eventFired = eventValue !== null
               ? { fired: true, value: eventValue }
               : { fired: false }
@@ -1053,8 +1057,11 @@ export default class FireboltAPI {
     try {
       this._lastCallBackend = 'unknown'
       const startTime = Date.now()
+      const timeoutMs = (test.type === 'event' || test.type === 'gateway-event')
+        ? EVENT_TEST_TIMEOUT_MS
+        : DEFAULT_TEST_TIMEOUT_MS
       const timeoutPromise = new Promise((_, reject) => {
-        _timeoutId = setTimeout(() => reject(new Error('Test timeout (8s)')), 8000)
+        _timeoutId = setTimeout(() => reject(new Error(`Test timeout (${(timeoutMs / 1000).toFixed(1)}s)`)), timeoutMs)
       })
       const debugParams = test.type === 'gateway'
         ? (test.gatewayParams || {})
@@ -1099,6 +1106,9 @@ export default class FireboltAPI {
       }
     } catch (error) {
       clearTimeout(_timeoutId)
+      if (error && typeof error.message === 'string' && error.message.startsWith('Test timeout') && typeof test.cancel === 'function') {
+        try { test.cancel() } catch (_) {}
+      }
       return {
         test,
         success: false,
