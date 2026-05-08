@@ -417,7 +417,7 @@ export default class App extends Lightning.Component {
 
       const status = await this._fireboltAPI.getConnectionStatus()
       const versionInfo = await this._fireboltAPI.getVersionInfo()
-      const target = status.endpoint ? status.endpoint.replace('ws://', '') : 'unknown-target'
+      const target = status.endpoint ? status.endpoint.replace(/^wss?:\/\//, '') : 'unknown-target'
 
       if (versionInfo.sdkVersion) {
         this.tag('SafeContainer.Header.Subtitle').patch({

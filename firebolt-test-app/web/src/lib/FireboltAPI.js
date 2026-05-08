@@ -160,9 +160,12 @@ function _extractFailureReason(value) {
   if (typeof value === 'string' && value.trim().length > 0) return value
   if (!value || typeof value !== 'object') return String(value)
 
-  if (typeof value.message === 'string' && value.message.trim().length > 0) {
-    return value.message
-  }
+  // Check for {code, message} first so the formatted [code] message is used when both are present
+  const hasCode = typeof value.code === 'number' || typeof value.code === 'string'
+  const hasMessage = typeof value.message === 'string' && value.message.trim().length > 0
+  if (hasCode && hasMessage) return `[${value.code}] ${value.message}`
+
+  if (hasMessage) return value.message
 
   if (value.error) {
     if (typeof value.error === 'string') return value.error
@@ -170,10 +173,6 @@ function _extractFailureReason(value) {
       return value.error.message
     }
   }
-
-  const hasCode = typeof value.code === 'number' || typeof value.code === 'string'
-  const hasMessage = typeof value.message === 'string' && value.message.trim().length > 0
-  if (hasCode && hasMessage) return `[${value.code}] ${value.message}`
 
   return JSON.stringify(value)
 }
@@ -1022,8 +1021,11 @@ export default class FireboltAPI {
   async getVersionInfo() {
     let deviceUid = 'UID-Error'
     try {
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-      deviceUid = await Promise.race([this._callMethod('Device.uid'), timeout])
+      let _timeoutId
+      const timeout = new Promise((_, reject) => {
+        _timeoutId = setTimeout(() => reject(new Error('timeout')), 3000)
+      })
+      deviceUid = await Promise.race([this._callMethod('Device.uid').finally(() => clearTimeout(_timeoutId)), timeout])
     } catch (_) {}
 
     return {
