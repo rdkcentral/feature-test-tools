@@ -518,7 +518,7 @@ export default class App extends Lightning.Component {
 
       const { colors } = AppSettings
       let color = parseInt(colors.warning, 16)
-      if (status.state === 'connected') {
+      if (status.state === 'connected' || status.state === 'connected-legacy') {
         color = parseInt(colors.connectionStatusConnected, 16)
       } else if (status.state === 'disconnected') {
         color = parseInt(colors.error, 16)

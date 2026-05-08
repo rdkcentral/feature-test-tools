@@ -518,7 +518,7 @@ export default class FireboltAPI {
                 subscribed = true
                 dbg(`[Event Monitor] Subscribed: ${label}`)
               }
-            } else if (subscribed && !msg.id && msg.method) {
+            } else if (subscribed && !msg.id && msg.method === method) {
               const payloadStr = JSON.stringify(msg)
               dbg(`[Event Monitor] ${label} fired`)
               dbg(`[Event Monitor] Full msg: ${payloadStr}`)
@@ -676,8 +676,8 @@ export default class FireboltAPI {
                   const safeListenerId = String(msg.result).replace(/[\r\n]/g, '')
                   dbg(`[Firebolt Gateway Event] Subscribed to ${method}, listener id:` + safeListenerId)
                 }
-              } else if (subscribed && !msg.id && msg.method) {
-                // Event notification — no id field, method matches
+              } else if (subscribed && !msg.id && msg.method === method) {
+                // Event notification — method matches subscribed event
                 clearTimeout(timeoutHandle)
                 dbg(`[Firebolt Gateway Event] ${method} fired`)
                 dbg(`[Firebolt Gateway Event] Full msg: ${JSON.stringify(msg)}`)

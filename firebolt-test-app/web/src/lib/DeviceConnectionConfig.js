@@ -66,11 +66,12 @@ export class DeviceConnectionConfig {
   static getConnectionInfo() {
     const ip = this.getDeviceIP()
     const isLocal = ip === this.DEFAULT_IP || ip === 'localhost'
+    const displayIp = ip === 'localhost' ? '127.0.0.1' : ip
     return {
       ip,
       endpoint: this.getEndpointURL(),
       isLocal,
-      display: isLocal ? 'Local Device (127.0.0.1)' : `Remote Device (${ip})`
+      display: isLocal ? `Local Device (${displayIp})` : `Remote Device (${ip})`
     }
   }
 
