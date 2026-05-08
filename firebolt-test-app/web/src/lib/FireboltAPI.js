@@ -151,7 +151,31 @@ function _validateBooleanRecordField(value, fieldName, keys) {
 }
 
 function _formatResultValue(result) {
-  return result.type === 'error' ? String(result.value) : JSON.stringify(result.value)
+  if (!result) return 'undefined'
+  if (result.type === 'error') return String(result.value)
+  return JSON.stringify(result.value)
+}
+
+function _extractFailureReason(value) {
+  if (typeof value === 'string' && value.trim().length > 0) return value
+  if (!value || typeof value !== 'object') return String(value)
+
+  if (typeof value.message === 'string' && value.message.trim().length > 0) {
+    return value.message
+  }
+
+  if (value.error) {
+    if (typeof value.error === 'string') return value.error
+    if (typeof value.error.message === 'string' && value.error.message.trim().length > 0) {
+      return value.error.message
+    }
+  }
+
+  const hasCode = typeof value.code === 'number' || typeof value.code === 'string'
+  const hasMessage = typeof value.message === 'string' && value.message.trim().length > 0
+  if (hasCode && hasMessage) return `[${value.code}] ${value.message}`
+
+  return JSON.stringify(value)
 }
 
 const JS_SPEC_ERROR_METHODS = new Set([
@@ -250,18 +274,22 @@ function _validateAgainstJsSpec(test, result) {
   const actualHasError = result.type === 'error' || _looksLikeGatewayErrorPayload(result.value)
 
   if (JS_SPEC_ERROR_METHODS.has(test.method)) {
+    const returned = _formatResultValue(result)
+    const reason = _extractFailureReason(result.value)
     return {
       success: actualHasError,
       message: actualHasError
-        ? `Expected JS error observed\nReason: ${_formatResultValue(result)}`
-        : `Expected JS error, but returned a value\nReason: ${_formatResultValue(result)}`
+        ? `Expected JS error observed\nReason: ${reason}\nReturned: ${returned}`
+        : `Expected JS error, but returned a value\nReason: method returned a normal payload\nReturned: ${returned}`
     }
   }
 
   if (actualHasError) {
+    const returned = _formatResultValue(result)
+    const reason = _extractFailureReason(result.value)
     return {
       success: false,
-      message: `Error\nReason: ${_formatResultValue(result)}`
+      message: `Error\nReason: ${reason}\nReturned: ${returned}`
     }
   }
 
@@ -281,7 +309,7 @@ function _validateAgainstJsSpec(test, result) {
     success: !validationError,
     message: !validationError
       ? `Returned: ${JSON.stringify(result.value)}`
-      : `Spec validation failed - ${test.method}: ${validationError}. Returned: ${JSON.stringify(result.value)}`
+      : `Spec validation failed\nReason: ${test.method} - ${validationError}\nReturned: ${JSON.stringify(result.value)}`
   }
 }
 
@@ -473,9 +501,9 @@ export default class FireboltAPI {
           dbg(`[Event Monitor] ${label}: cannot connect — ${err.message}`)
           return
         }
+        const id = Math.floor(Math.random() * 900000) + 100000
+        let subscribed = false
         this._eventSockets.push(ws)
-              ? `Returned\nValue: ${JSON.stringify(result.value)}`
-              : `Spec validation failed for ${test.method}\nReason: ${validationError}\nReturned: ${JSON.stringify(result.value)}`
         ws.onopen = () => {
           ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params: { listen: true } }))
         }
@@ -1055,6 +1083,8 @@ export default class FireboltAPI {
       // For event/gateway-event tests, success is determined by subscription (no error), not payload type
       const typeOk = !expectedType || test.type === 'event' || test.type === 'gateway-event' || actualType === expectedType
       const gatewayPayloadError = test.type === 'gateway' && _looksLikeGatewayErrorPayload(result.value)
+      const returned = _formatResultValue(result)
+      const reason = _extractFailureReason(result.value)
 
       return {
         test,
@@ -1063,10 +1093,10 @@ export default class FireboltAPI {
         backend,
         duration,
         message: result.type === 'error' || gatewayPayloadError
-          ? `Error: ${JSON.stringify(result.value)}`
+          ? `Error\nReason: ${reason}\nReturned: ${returned}`
           : typeOk
-            ? `Returned: ${JSON.stringify(result.value)} (${actualType})`
-            : `Type mismatch: expected ${expectedType}, got ${actualType} — ${JSON.stringify(result.value)}`
+            ? `Returned: ${returned} (${actualType})`
+            : `Type mismatch\nReason: expected ${expectedType}, got ${actualType}\nReturned: ${returned}`
       }
     } catch (error) {
       clearTimeout(_timeoutId)
@@ -1075,7 +1105,7 @@ export default class FireboltAPI {
         success: false,
         backend: this._lastCallBackend || (this.usingMock ? 'mock' : 'window.firebolt'),
         error: error.message,
-        message: `Error: ${error.message}`
+        message: `Error\nReason: ${error.message}\nReturned: null`
       }
     }
   }

@@ -27,6 +27,17 @@ import App from 'src/index'
 import settings from '../settings.json'
 
 // -------------------------------------------------------------------
+// Mock FireboltAPI so App tests don't open real WebSockets
+// -------------------------------------------------------------------
+jest.mock('src/lib/FireboltAPI', () => {
+  return jest.fn().mockImplementation(() => ({
+    init: jest.fn().mockResolvedValue(undefined),
+    subscribeAllEvents: jest.fn(),
+    unsubscribeAllEvents: jest.fn()
+  }))
+})
+
+// -------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------
 

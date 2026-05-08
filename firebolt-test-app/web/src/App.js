@@ -219,11 +219,11 @@ export default class App extends Lightning.Component {
           shader: { type: Lightning.shaders.RoundedRectangle, radius: 12 }
         },
         ConsoleTitle: {
-          x: 20, y: 12,
-          text: { text: 'API Console', fontSize: 18, textColor: 0xffa8b3cf }
+          x: 12, y: 6,
+          text: { text: 'API Console', fontSize: 13, textColor: 0x99a8b3cf }
         },
         ConsoleViewport: {
-          x: 0, y: 42, w: 100, h: 100, clipping: true, rect: true, color: 0x00000000,
+          x: 0, y: 24, w: 100, h: 100, clipping: true, rect: true, color: 0x00000000,
           ConsoleLines: { x: 12, y: 0 }
         }
       },
@@ -391,7 +391,7 @@ export default class App extends Lightning.Component {
     this.tag('SafeContainer.APIConsole').patch({ x: consoleX, y: consoleY, w: consoleW, h: consoleH })
     this.tag('SafeContainer.APIConsole.ConsoleBg').patch({ w: consoleW, h: consoleH })
 
-    const viewportH = consoleH - 44
+    const viewportH = consoleH - 26
     this.tag('SafeContainer.APIConsole.ConsoleViewport').patch({ w: consoleW, h: viewportH })
     this._consoleViewportH = viewportH
     this._consoleLineW = consoleW - 28
@@ -583,37 +583,48 @@ export default class App extends Lightning.Component {
   _addConsoleEntry(data) {
     const { colors } = AppSettings
     const i = this._consoleEntries.length
-    const lineH = this._consoleLineH
     const wrapW = this._consoleLineW
     const lines = this.tag('SafeContainer.APIConsole.ConsoleViewport.ConsoleLines')
+    const reqLineH = 20
+    const resLineH = 18
+    const responseLines = this._wrapConsoleText(`Response: ${data.response}`, wrapW)
+    const entryH = Math.max(48, 24 + responseLines.length * resLineH + 6)
+    const childY = this._consoleEntries.reduce((sum, entry) => sum + (entry._height || 0), 0)
+    const resChildren = {}
+    responseLines.forEach((line, idx) => {
+      resChildren[`Res${idx}`] = {
+        x: 0,
+        y: 24 + idx * resLineH,
+        text: {
+          text: line,
+          fontSize: 15,
+          textColor: data.success ? parseInt(colors.success, 16) : parseInt(colors.error, 16),
+          wordWrapWidth: wrapW,
+          maxLines: 1
+        }
+      }
+    })
     const child = lines.stage.c({
       ref: `CLEntry${i}`,
-      y: i * lineH,
+      y: childY,
       w: wrapW,
-      h: lineH,
+      h: entryH,
       Req: {
         x: 0, y: 1,
         text: {
           text: `Request:  ${data.method}`,
           fontSize: 15,
           textColor: parseInt(colors.textSecondary, 16),
-          wordWrapWidth: wrapW
+          wordWrapWidth: wrapW,
+          maxLines: 1
         }
       },
-      Res: {
-        x: 0, y: 23,
-        text: {
-          text: `Response: ${data.response}`,
-          fontSize: 15,
-          textColor: data.success ? parseInt(colors.success, 16) : parseInt(colors.error, 16),
-          wordWrapWidth: wrapW
-        }
-      }
+      ...resChildren
     })
     lines.childList.add(child)
-    this._consoleEntries.push(data)
+    this._consoleEntries.push({ ...data, _height: entryH, _lineH: reqLineH })
     this.tag('SafeContainer.APIConsole.ConsoleTitle').text.text = 'API Console'
-    const totalH = this._consoleEntries.length * lineH
+    const totalH = this._consoleEntries.reduce((sum, entry) => sum + (entry._height || 0), 0)
     const maxScroll = Math.max(0, totalH - this._consoleViewportH)
     if (maxScroll > 0) {
       lines.setSmooth('y', -maxScroll, { duration: 0.2 })
@@ -623,41 +634,77 @@ export default class App extends Lightning.Component {
   _addEventLogEntry(label, payload) {
     const { colors } = AppSettings
     const i = this._consoleEntries.length
-    const lineH = this._consoleLineH
     const wrapW = this._consoleLineW
     const lines = this.tag('SafeContainer.APIConsole.ConsoleViewport.ConsoleLines')
+    const resLineH = 18
+    const payloadLines = this._wrapConsoleText(`Payload: ${payload}`, wrapW)
+    const entryH = Math.max(48, 24 + payloadLines.length * resLineH + 6)
+    const childY = this._consoleEntries.reduce((sum, entry) => sum + (entry._height || 0), 0)
+    const payloadChildren = {}
+    payloadLines.forEach((line, idx) => {
+      payloadChildren[`Res${idx}`] = {
+        x: 0,
+        y: 24 + idx * resLineH,
+        text: {
+          text: line,
+          fontSize: 15,
+          textColor: parseInt(colors.textSecondary, 16),
+          wordWrapWidth: wrapW,
+          maxLines: 1
+        }
+      }
+    })
     const child = lines.stage.c({
       ref: `CLEntry${i}`,
-      y: i * lineH,
+      y: childY,
       w: wrapW,
-      h: lineH,
+      h: entryH,
       Req: {
         x: 0, y: 1,
         text: {
           text: `Event:   ${label}`,
           fontSize: 15,
           textColor: parseInt(colors.primary, 16),
-          wordWrapWidth: wrapW
+          wordWrapWidth: wrapW,
+          maxLines: 1
         }
       },
-      Res: {
-        x: 0, y: 23,
-        text: {
-          text: `Payload: ${payload}`,
-          fontSize: 15,
-          textColor: parseInt(colors.textSecondary, 16),
-          wordWrapWidth: wrapW
-        }
-      }
+      ...payloadChildren
     })
     lines.childList.add(child)
-    this._consoleEntries.push({ label, payload, isEvent: true })
+    this._consoleEntries.push({ label, payload, isEvent: true, _height: entryH })
     this.tag('SafeContainer.APIConsole.ConsoleTitle').text.text = 'API Console'
-    const totalH = this._consoleEntries.length * lineH
+    const totalH = this._consoleEntries.reduce((sum, entry) => sum + (entry._height || 0), 0)
     const maxScroll = Math.max(0, totalH - this._consoleViewportH)
     if (maxScroll > 0) {
       lines.setSmooth('y', -maxScroll, { duration: 0.2 })
     }
+  }
+
+  _wrapConsoleText(text, wrapW) {
+    const safeText = String(text == null ? '' : text)
+    const approxCharWidth = 8
+    const maxChars = Math.max(24, Math.floor((wrapW - 8) / approxCharWidth))
+    const lines = []
+
+    const chunks = safeText.split('\n')
+    for (const chunk of chunks) {
+      if (chunk.length === 0) {
+        lines.push('')
+        continue
+      }
+
+      let remaining = chunk
+      while (remaining.length > maxChars) {
+        let splitAt = remaining.lastIndexOf(' ', maxChars)
+        if (splitAt < Math.floor(maxChars * 0.5)) splitAt = maxChars
+        lines.push(remaining.slice(0, splitAt).trimEnd())
+        remaining = remaining.slice(splitAt).trimStart()
+      }
+      lines.push(remaining)
+    }
+
+    return lines.length ? lines : ['']
   }
 
   _clearConsole() {
