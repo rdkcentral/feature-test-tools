@@ -653,7 +653,6 @@ class TestItem extends Lightning.Component {
     const itemHeight = testRunner.testItemHeight
 
     // Calculate vertical positions relative to item height
-    const padding = 10
     const nameHeight = typography.body.fontSize
     const methodHeight = typography.caption.fontSize
     const totalTextHeight = nameHeight + methodHeight + 4 // 4px gap between texts

@@ -84,12 +84,6 @@ function _hostFromEndpoint(endpoint) {
   try { return new URL(endpoint).hostname } catch (_) { return endpoint }
 }
 
-const UINT32_MAX = 0xffffffff
-
-function _isUnsigned(value) {
-  return Number.isInteger(value) && value >= 0 && value <= UINT32_MAX
-}
-
 function _isDouble(value) {
   return typeof value === 'number' && Number.isFinite(value)
 }

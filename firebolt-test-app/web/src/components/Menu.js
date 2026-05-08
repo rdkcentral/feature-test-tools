@@ -780,7 +780,7 @@ class CategoryItem extends Lightning.Component {
     this.setFocus(value)
   }
 
-  setTestResult(color) {
+  setTestResult() {
     this._hasTestResult = true
   }
 
