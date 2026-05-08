@@ -21,24 +21,25 @@ const fs = require('fs');
 const path = require('path');
 
 const rootDir = path.resolve(__dirname, '..');
-const source = path.join(rootDir, 'static', 'icon.png');
-const rootTarget = path.join(rootDir, 'favicon.png');
-const buildTarget = path.join(rootDir, 'build', 'favicon.png');
+const buildDir = path.join(rootDir, 'build');
+const target = path.join(buildDir, 'favicon.ico');
 
-function copyIfAvailable(target) {
-  const targetDir = path.dirname(target);
-  if (!fs.existsSync(targetDir)) {
-    return false;
-  }
+const candidates = [
+  path.join(rootDir, 'static', 'favicon.ico'),
+  path.join(rootDir, 'favicon.ico')
+];
 
-  fs.copyFileSync(source, target);
-  return true;
+const source = candidates.find((p) => fs.existsSync(p));
+
+if (!source) {
+  console.warn('[copy-favicon-ico] No favicon.ico source found (checked static/ and root).');
+  process.exit(0);
 }
 
-if (!fs.existsSync(source)) {
-  console.error('Missing source icon:' + source);
-  process.exit(1);
+if (!fs.existsSync(buildDir)) {
+  console.warn('[copy-favicon-ico] build/ directory not found; skipping favicon.ico copy.');
+  process.exit(0);
 }
 
-copyIfAvailable(rootTarget);
-copyIfAvailable(buildTarget);
+fs.copyFileSync(source, target);
+console.log(`[copy-favicon-ico] Copied ${path.relative(rootDir, source)} -> build/favicon.ico`);

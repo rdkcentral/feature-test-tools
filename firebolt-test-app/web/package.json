@@ -4,9 +4,9 @@
   "description": "Lightning-based web app for testing RDK8 Firebolt® API Specification",
   "main": "index.html",
   "scripts": {
-    "prepare:favicon": "node scripts/copy-favicon.js",
-    "start": "node scripts/dev-with-favicon.js",
-    "build": "lng build && node scripts/copy-favicon.js",
+    "start": "lng dev",
+    "build": "lng build",
+    "postbuild": "node scripts/copy-favicon-ico.js",
     "serve": "npm run build && npx http-server build -p 9090 --cors",
     "test": "jest"
   },
