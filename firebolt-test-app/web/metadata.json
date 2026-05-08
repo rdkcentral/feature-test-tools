@@ -2,6 +2,6 @@
   "name": "Firebolt API Test Tool",
   "identifier": "com.rdkcentral.fbttest",
   "version": "1.0.0",
-  "icon": "./static/icon.png",
+  "icon": "./static/favicon.png",
   "appBundle": "./appBundle.js"
 }
