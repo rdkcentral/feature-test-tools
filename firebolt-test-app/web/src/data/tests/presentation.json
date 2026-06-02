@@ -1,0 +1,19 @@
+[
+  {
+    "id": "presentation_focused",
+    "name": "Presentation.focused() [gateway]",
+    "description": "Returns whether the app is currently in a focused/presentation state — spec-defined; called via Gateway JSON-RPC",
+    "method": "Presentation.focused",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "boolean"
+  },
+  {
+    "id": "presentation_onFocusedChanged",
+    "name": "Presentation.onFocusedChanged [gateway-event]",
+    "description": "Subscribe to presentation focus changes via Gateway JSON-RPC — spec-defined",
+    "method": "Presentation.onFocusedChanged",
+    "type": "gateway-event",
+    "expectedType": "boolean"
+  }
+]

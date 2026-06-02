@@ -1,0 +1,29 @@
+[
+  {
+    "id": "display_edid",
+    "name": "Display.edid() [gateway]",
+    "description": "Returns the raw EDID data from the attached display — spec-defined; called via Gateway JSON-RPC",
+    "method": "Display.edid",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "string"
+  },
+  {
+    "id": "display_size",
+    "name": "Display.size() [gateway]",
+    "description": "Returns the physical display size in centimetres — spec-defined; called via Gateway JSON-RPC",
+    "method": "Display.size",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "object"
+  },
+  {
+    "id": "display_maxResolution",
+    "name": "Display.maxResolution() [gateway]",
+    "description": "Returns the maximum supported display resolution — spec-defined; called via Gateway JSON-RPC",
+    "method": "Display.maxResolution",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "object"
+  }
+]

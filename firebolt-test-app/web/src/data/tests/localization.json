@@ -1,0 +1,59 @@
+[
+  {
+    "id": "localization_country",
+    "name": "Localization.country()",
+    "description": "Returns the ISO 3166-1 alpha-2 country code for the device location",
+    "method": "Localization.country",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "localization_preferredAudioLanguages",
+    "name": "Localization.preferredAudioLanguages()",
+    "description": "Returns list of ISO 639-2/B language codes for preferred audio in order of preference",
+    "method": "Localization.preferredAudioLanguages",
+    "type": "getter",
+    "params": [],
+    "expectedType": "object"
+  },
+  {
+    "id": "localization_presentationLanguage",
+    "name": "Localization.presentationLanguage()",
+    "description": "Returns the full BCP 47 code (including script, region, variant) for the preferred locale",
+    "method": "Localization.presentationLanguage",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "localization_onCountryChanged",
+    "name": "Localization.onCountryChanged [event]",
+    "description": "Subscribe to country code changes",
+    "method": "Localization.onCountryChanged",
+    "type": "event",
+    "listenEvent": "onCountryChanged",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "localization_onPreferredAudioLanguagesChanged",
+    "name": "Localization.onPreferredAudioLanguagesChanged [event]",
+    "description": "Subscribe to preferred audio language changes",
+    "method": "Localization.onPreferredAudioLanguagesChanged",
+    "type": "event",
+    "listenEvent": "onPreferredAudioLanguagesChanged",
+    "params": [],
+    "expectedType": "object"
+  },
+  {
+    "id": "localization_onPresentationLanguageChanged",
+    "name": "Localization.onPresentationLanguageChanged [event]",
+    "description": "Subscribe to presentation language/locale changes",
+    "method": "Localization.onPresentationLanguageChanged",
+    "type": "event",
+    "listenEvent": "onPresentationLanguageChanged",
+    "params": [],
+    "expectedType": "string"
+  }
+]

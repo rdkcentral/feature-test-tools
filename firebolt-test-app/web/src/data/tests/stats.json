@@ -1,0 +1,11 @@
+[
+  {
+    "id": "stats_memoryUsage",
+    "name": "Stats.memoryUsage() [gateway]",
+    "description": "Returns application-level memory usage statistics — spec-defined; called via Gateway JSON-RPC",
+    "method": "Stats.memoryUsage",
+    "type": "gateway",
+    "gatewayParams": {},
+    "expectedType": "object"
+  }
+]
