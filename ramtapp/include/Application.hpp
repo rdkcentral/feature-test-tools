@@ -2,7 +2,6 @@
 #define APPLICATION_HPP
 
 #include "ThunderBridge.hpp"
-#include "CatalogManager.hpp"
 #include "Menu.hpp"
 #include "ManagerRegistry.hpp"
 #include "ManagerFactory.hpp"
@@ -21,11 +20,9 @@ private:
     void showAppManagerMenu();
     void showPackageManagerMenu();
     void showRDKWindowMgrCtrlMenu();
-    void performCatalogRetrieval();
     void showPerformanceTests();
     
     ThunderBridge thunderBridge;
-    CatalogManager catalogManager;
     PerfTestMgr perfTestMgr;
     ManagerRegistry managerRegistry;
     Menu mainMenu;

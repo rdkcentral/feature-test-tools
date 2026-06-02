@@ -25,7 +25,7 @@ void Application::initialize()
     managerRegistry.add("InstallManager", installManagerFactory->createManager(thunderBridge));
     managerRegistry.add("RDKWindowMgrCtrl", rdkWindowManagerFactory->createManager(thunderBridge));
 
-    catalogManager.initialize();
+
 
     perfTestMgr.initialize(&managerRegistry);
 }
@@ -40,8 +40,6 @@ void Application::createMainMenu()
                        { this->showPackageManagerMenu(); });
     mainMenu.addOption("RDK Window Manager related functions", [this]()
                        { this->showRDKWindowMgrCtrlMenu(); });
-    mainMenu.addOption("Perform Catalog retrieval", [this]()
-                       { this->performCatalogRetrieval(); });
     mainMenu.addOption("Performance tests", [this]()
                        { this->showPerformanceTests(); });
     mainMenu.setExitOption(true);
@@ -116,10 +114,6 @@ void Application::showPackageManagerMenu()
     }
 }
 
-void Application::performCatalogRetrieval()
-{
-    catalogManager.displayMenu();
-}
 
 void Application::showPerformanceTests()
 {

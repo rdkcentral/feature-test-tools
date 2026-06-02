@@ -11,7 +11,6 @@ add_executable(${TARGET} main.cpp
     managers/PkgMgrControl.cpp  
     managers/DownloadMgrCtrl.cpp
     managers/InstallMgrCtrl.cpp
-    managers/CatalogManager.cpp
     managers/RDKWindowMgrCtrl.cpp
     )
 
