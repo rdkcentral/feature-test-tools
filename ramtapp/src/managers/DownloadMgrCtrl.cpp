@@ -89,7 +89,7 @@ void DownloadMgrControl::handleStartDownloadRequest()
     assert(dwldCtl != nullptr && "IPackageDownloader interface is not initialized.");
 
     std::string url = retrieveInputFromUser<std::string>("Enter Download URL: ", false, "");
-    bool highPriority = retrieveInputFromUser<bool>("Is this a high priority download? (true/false): ", true, false);
+    bool highPriority = retrieveInputFromUser<bool>("Is this a high priority download? (1 for yes, 0 for no): ", true, false);
     int maxSpeed = retrieveInputFromUser<int>("Enter maximum download speed (KB/s, 0 for unlimited): ", true, 0);
     int retries = retrieveInputFromUser<int>("Enter number of retries: default 2 ", true, 2);
 
