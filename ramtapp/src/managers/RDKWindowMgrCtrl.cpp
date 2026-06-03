@@ -86,8 +86,7 @@ void RDKWindowMgrCtrl::displayMenu()
         std::cout << "5. GetScreenshot\n";
         std::cout << "6. Send Key to Client\n";
         std::cout << "7. Send Key Event\n";
-        std::cout << "0. Exit Package Manager Menu\n";
-
+        std::cout << "0. Exit RDK Window Manager Menu\n";
         int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
         std::cout << "------------------------------------------------------------" << std::endl;
 
