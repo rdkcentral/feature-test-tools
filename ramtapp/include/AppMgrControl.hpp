@@ -74,13 +74,11 @@ public:
     }
     uint32_t AddRef() const
     {
-        cout << " Hey I (AppManagerEventHandler::AddRef) am getting called  " << endl;
-        return Core::ERROR_NONE;
+        return 1;
     }
     uint32_t Release() const
     {
-        cout << " Hey I (AppManagerEventHandler::Release) am getting called " << endl;
-        return Core::ERROR_NONE;
+        return 1;
     }
     void *QueryInterface(const uint32_t interfaceNumber)
     {
