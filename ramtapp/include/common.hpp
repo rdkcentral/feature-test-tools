@@ -22,7 +22,7 @@
 #define COMMON_HPP
 
 #ifndef MODULE_NAME
-#define MODULE_NAME ramfapp
+#define MODULE_NAME ramtapp
 #endif
 
 #include <WPEFramework/com/com.h>
