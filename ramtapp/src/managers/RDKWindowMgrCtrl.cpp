@@ -211,7 +211,7 @@ void RDKWindowMgrCtrl::handleKeyRequest()
     while (true)
     {
         std::cout << "Up[38] Left[37] Down[40] Right[39] OK[13] Home[36] PageUp[33] PageDown[34] Back [8] Exit[0]" << std::endl;
-        int keyCode = retrieveInputFromUser<int>("Enter Keycode to sent: ", false, 0);
+        int keyCode = retrieveInputFromUser<int>("Enter keycode to send: ", false, 0);
         std::cout << "Key code entered: " << keyCode << std::endl;
         if (keyCode == 0)
         {
