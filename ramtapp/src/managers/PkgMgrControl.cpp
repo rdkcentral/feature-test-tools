@@ -19,6 +19,8 @@
  * @author Josekutty Kuriakose
  */
 #include "PkgMgrControl.hpp"
+#include <cassert>
+
 PkgMgrControl::PkgMgrControl() : pkgCtrl(nullptr)
 {
 }

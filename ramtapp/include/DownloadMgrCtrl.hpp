@@ -44,7 +44,6 @@ public:
     }
     void *QueryInterface(const uint32_t interfaceNumber)
     {
-        cout << " Hey I (PkgDownloaderEvtHandler::QueryInterface) am getting called " << endl;
         if (interfaceNumber == Exchange::IDownloadManager::INotification::ID)
         {
             return static_cast<Exchange::IDownloadManager::INotification *>(this);

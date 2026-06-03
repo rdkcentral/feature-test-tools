@@ -31,7 +31,6 @@
 #include "MgrControl.hpp"
 using namespace std;
 
-extern void writeToFile(const std::string &filePath, const std::string &data);
 class WMgrEvtHandler : public Exchange::IRDKWindowManager::INotification
 {
 public:
@@ -54,7 +53,6 @@ public:
     }
     void *QueryInterface(const uint32_t interfaceNumber)
     {
-        cout << " Hey I (WMgrEvtHandler::QueryInterface) am getting called " << endl;
         if (interfaceNumber == Exchange::IRDKWindowManager::INotification::ID)
         {
             return static_cast<Exchange::IRDKWindowManager::INotification *>(this);
@@ -112,10 +110,7 @@ public:
         // This is Base64 encoded image data (PNG format). We need to export this to a file to view the screenshot.
         // For demonstration, we will just print the size of the image data.
         cout << "Screenshot Image Data Size: " << imageData.size() << " bytes" << endl;
-        // Let us also save the screenshot to a file for viewing. We will decode the Base64 data and save it as a PNG file.
-        string outputFilePath = "/tmp/screenshot.png";
-        writeToFile(outputFilePath, imageData);
-        cout << "Screenshot saved as /tmp/screenshot.png" << endl;
+
     }
 };
 

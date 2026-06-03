@@ -25,7 +25,7 @@
 #include "WPEFramework/interfaces/IAppPackageManager.h"
 #include "MgrControl.hpp"
 
-inline std::string to_string(Exchange::IPackageInstaller::InstallState state)
+inline std::string PkgInstallStateToString(Exchange::IPackageInstaller::InstallState state)
 {
     switch (state)
     {
@@ -66,7 +66,6 @@ public:
     }
     void *QueryInterface(const uint32_t interfaceNumber)
     {
-        cout << " Hey I (PkgInstallEvtHandler::QueryInterface) am getting called " << endl;
         if (interfaceNumber == Exchange::IPackageInstaller::INotification::ID)
         {
             return static_cast<Exchange::IPackageInstaller::INotification *>(this);

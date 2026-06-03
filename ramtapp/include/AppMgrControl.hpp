@@ -104,7 +104,6 @@ public:
     }
     void *QueryInterface(const uint32_t interfaceNumber)
     {
-        cout << " Hey I (AppManagerEventHandler::QueryInterface) am getting called " << endl;
         if (interfaceNumber == Exchange::IAppManager::INotification::ID)
         {
             return static_cast<Exchange::IAppManager::INotification *>(this);

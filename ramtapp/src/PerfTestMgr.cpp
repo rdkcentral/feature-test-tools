@@ -176,7 +176,6 @@ bool PerfTestMgr::handleAppLaunchTestRequest(const std::string &appId, int itera
                 std::cerr << "Iteration " << (i + 1) << ": Failed to terminate application: " << appId << ", state: " << state << std::endl;
                 return false;
             }
-            }
             else
             {
                 std::cout << "Iteration " << (i + 1) << ": App " << appId << " terminated successfully." << std::endl;

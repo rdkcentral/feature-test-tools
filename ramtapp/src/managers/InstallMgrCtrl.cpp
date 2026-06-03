@@ -187,7 +187,7 @@ void InstallMgrCtrl::handlePackageInstallStateRequest()
 
     if (result == Core::ERROR_NONE)
     {
-        std::cout << "Package Install State: " << to_string(installState) << std::endl;
+        std::cout << "Package Install State: " << PkgInstallStateToString(installState) << std::endl;
     }
     else
     {

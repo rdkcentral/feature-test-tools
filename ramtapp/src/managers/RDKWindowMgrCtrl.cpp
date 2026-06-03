@@ -21,24 +21,7 @@
 #include "RDKWindowMgrCtrl.hpp"
 #include <fstream>
 #include <json/json.h>
-
-void writeToFile(const std::string &filename, const std::string &imageData)
-{
-    // This function should implement the logic to write PNG data to a file.
-    // For demonstration purposes, we will just write the raw data to a file.
-    // In a real implementation, you would need to use a PNG library like libpng to properly format the PNG file.
-
-    std::ofstream outFile(filename, std::ios::binary);
-    if (!outFile)
-    {
-        std::cerr << "Failed to open file for writing: " << filename << std::endl;
-        return;
-    }
-
-    // TODO This is just a dump. We need to make it proper format.
-    outFile.write(imageData.c_str(), imageData.size());
-    outFile.close();
-}
+#include <cassert>
 
 RDKWindowMgrCtrl::RDKWindowMgrCtrl() : MgrCtrl()
 {
@@ -47,7 +30,12 @@ RDKWindowMgrCtrl::RDKWindowMgrCtrl() : MgrCtrl()
 
 RDKWindowMgrCtrl::~RDKWindowMgrCtrl()
 {
-    // Destructor implementation
+    if (windowMgrCtrl != nullptr)
+    {
+        windowMgrCtrl->Release();
+        windowMgrCtrl = nullptr;
+    }
+    wMgrEventHandler.reset();
 }
 
 bool RDKWindowMgrCtrl::initialize(Core::ProxyType<RPC::CommunicatorClient> &client)
