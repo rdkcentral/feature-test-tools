@@ -173,7 +173,8 @@ bool PerfTestMgr::handleAppLaunchTestRequest(const std::string &appId, int itera
             if (state != Exchange::IAppManager::APP_STATE_UNKNOWN)
             {
                 std::cerr << "Iteration " << (i + 1) << ": Failed to terminate application: " << appId << ", state: " << state << std::endl;
-                break;
+                return false;
+            }
             }
             else
             {
