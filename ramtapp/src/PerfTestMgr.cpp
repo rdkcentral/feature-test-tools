@@ -88,14 +88,14 @@ void PerfTestMgr::handleAppLifeCycleRequest()
     int iterations = retrieveInputFromUser<int>("Enter number of launch iterations: ", true, 100);
     int delayIns = retrieveInputFromUser<int>("Enter delay between iterations (seconds): ", true, 5);
     std::cout << "Launching application " << appId << " for " << iterations << " iterations." << std::endl;
-    m_perfTestThread = std::thread([this, appId, iterations, delayIns]()
-                                   {
-                                        bool result = handleAppLaunchTestRequest(appId, iterations, delayIns * 1000);
-                                        if (!result)
-                                        {
-                                        std::cerr << "App launch test failed for app " << appId << std::endl;
-                                }
-                                std::cout << "Completed " << iterations << " iterations for app " << appId << std::endl; });
+    m_perfTestThread = std::thread([this, appId, iterations, delayIns]() {
+        const bool ok = handleAppLaunchTestRequest(appId, iterations, delayIns * 1000);
+        if (!ok) {
+            std::cerr << "App launch test failed for app " << appId << std::endl;
+            return;
+        }
+        std::cout << "Completed " << iterations << " iterations for app " << appId << std::endl;
+    });
     std::cout << "Performance test started in background thread." << std::endl;
 }
 
