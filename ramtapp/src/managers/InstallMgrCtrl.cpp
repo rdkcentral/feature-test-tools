@@ -156,7 +156,7 @@ void InstallMgrCtrl::handleListPackagesRequest()
     assert(instlCtl != nullptr && "IPackageInstaller interface is not initialized.");
 
     using IPackageIterator = RPC::IIteratorType<Exchange::IPackageInstaller::Package, Exchange::ID_PACKAGE_ITERATOR>;
-    IPackageIterator *packageItr;
+    IPackageIterator *packageItr = nullptr;
     uint32_t result = instlCtl->ListPackages(packageItr);
 
     if (result == Core::ERROR_NONE)
