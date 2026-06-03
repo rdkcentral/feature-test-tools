@@ -165,7 +165,7 @@ bool PerfTestMgr::handleAppLaunchTestRequest(const std::string &appId, int itera
             if (result != Core::ERROR_NONE)
             {
                 std::cerr << "Iteration " << (i + 1) << ": Failed to terminate application: " << appId << std::endl;
-                break;
+                return false;
             }
             std::cout << "Iteration " << (i + 1) << ": App " << appId << " termination requested. Waiting for " << delayBetweenIterationsMs << " milliseconds." << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(delayBetweenIterationsMs));
