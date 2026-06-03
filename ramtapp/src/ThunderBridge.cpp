@@ -19,6 +19,7 @@
  * @author Josekutty Kuriakose
  */
 #include "ThunderBridge.hpp"
+#include <cstdlib>
 #include <iostream>
 
 #define comrpcPath "/tmp/communicator"
