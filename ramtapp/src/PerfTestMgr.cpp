@@ -22,6 +22,7 @@
 #include "ManagerRegistry.hpp"
 #include "AppMgrControl.hpp"
 #include "Menu.hpp"
+#include <chrono>
 #include <iostream>
 
 PerfTestMgr::PerfTestMgr() : m_managerRegistry(nullptr), m_stopPerfTest(false) {}
