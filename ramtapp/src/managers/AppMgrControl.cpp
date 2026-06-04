@@ -475,7 +475,7 @@ void AppMgrControl::handleIsAppInstalledRequest()
         std::cerr << "Failed to check if app is installed." << std::endl;
         return;
     }
-    std::cout << appId << " is  ?" << (isInstalled ? "Installed" : "Not Installed") << std::endl;
+    std::cout << appId << " is " << (isInstalled ? "Installed" : "Not Installed") << std::endl;
 }
 void AppMgrControl::handleLoadedAppsRequest()
 {
