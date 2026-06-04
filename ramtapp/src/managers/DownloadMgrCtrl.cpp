@@ -211,8 +211,8 @@ void DownloadMgrControl::handleGetStorageDetailsRequest()
         return;
     }
     std::cout << "Storage Details: Total - " << quotaKb
-              << " bytes, Used - " << usedKb
-              << " bytes, Free - " << (quotaKb - usedKb) << " bytes." << std::endl;
+              << " KB, Used - " << usedKb
+              << " KB, Free - " << (quotaKb - usedKb) << " KB." << std::endl;
 }
 void DownloadMgrControl::handleSetRateLimitRequest()
 {
