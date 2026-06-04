@@ -110,7 +110,7 @@ void DownloadMgrControl::displayMenu()
 }
 void DownloadMgrControl::handleStartDownloadRequest()
 {
-    assert(dwldCtl != nullptr && "IPackageDownloader interface is not initialized.");
+    assert(dwldCtl != nullptr && "IDownloadManager interface is not initialized.");
 
     std::string url = retrieveInputFromUser<std::string>("Enter Download URL: ", false, "");
     bool highPriority = retrieveInputFromUser<bool>("Is this a high priority download? (1 for yes, 0 for no): ", true, false);
