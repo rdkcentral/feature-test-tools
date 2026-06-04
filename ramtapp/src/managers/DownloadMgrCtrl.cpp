@@ -28,10 +28,14 @@ DownloadMgrControl::~DownloadMgrControl()
 {
     if (dwldCtl != nullptr)
     {
+        if (dwldEventHandler != nullptr)
+        {
+            dwldCtl->Unregister(dwldEventHandler.get());
+        }
         dwldCtl->Release();
         dwldCtl = nullptr;
     }
-    dwldEventHandler = nullptr;
+    dwldEventHandler.reset();
 }
 bool DownloadMgrControl::initialize(Core::ProxyType<RPC::CommunicatorClient> &client)
 {
