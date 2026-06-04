@@ -220,14 +220,13 @@ void InstallMgrCtrl::handlePackageMetadataRequest()
 void InstallMgrCtrl::handlePackageConfigurationRequest()
 {
     assert(instlCtl != nullptr && "IPackageInstaller interface is not initialized.");
-    std::string packageId = retrieveInputFromUser<std::string>("Enter the package Id to get metadata: ", false, "");
     std::string fileLocator = retrieveInputFromUser<std::string>("Enter the file locator: ", false, "");
-    std::string version = retrieveInputFromUser<std::string>("Enter the package version: ", false, "");
+    std::string packageId;
+    std::string version;
 
     Exchange::RuntimeConfig config;
 
     uint32_t result = instlCtl->GetConfigForPackage(fileLocator, packageId, version, config);
-
     if (result == Core::ERROR_NONE)
     {
         std::cout << "Package Configuration retrieved successfully." << std::endl;
