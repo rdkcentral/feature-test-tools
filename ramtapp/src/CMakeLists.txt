@@ -33,6 +33,7 @@ add_executable(${TARGET} main.cpp
 
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Threads REQUIRED)
 
 pkg_check_modules(WPEFRAMEWORKCORE REQUIRED WPEFrameworkCore)
 pkg_check_modules(WPEFRAMEWORKPLUGINS REQUIRED WPEFrameworkPlugins)
@@ -55,6 +56,7 @@ set(COMMON_LIBRARIES
     ${WPEFRAMEWORKWEBSOCKET_LIBRARIES}
     ${WPEFRAMEWORKDEFINITIONS_LIBRARIES}
     jsoncpp
+    Threads::Threads
     curl
     )
 
