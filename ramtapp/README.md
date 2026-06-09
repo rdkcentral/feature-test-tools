@@ -32,6 +32,6 @@ inherit cmake pkgconfig
 ## Using cmake
 Make sure you build all dependencies first. These can be built using CMake.
 ```
-cmake ': cmake -B build -DCMAKE_INSTALL_INCLUDEDIR= -DCMAKE_PREFIX_PATH="<path to dependecy insallation>"  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=" -g -std=c++17 -I <dependecy header path> -L<dependency library path"
-make -C build
+cmake -B build -DCMAKE_PREFIX_PATH="<path to dependency installation>" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-g -std=c++17 -I<dependency header path> -L<dependency library path>"
+cmake --build build
 ```
