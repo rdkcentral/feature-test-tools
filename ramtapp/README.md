@@ -14,7 +14,7 @@ DESCRIPTION      = "C++ utility to test the various components in \
 RDK app managers framework and perform basic benchmark testing. \
 "
 
-HOMEPAGE         = "https://github.com/rdkcentral/feature-test-tools/develop/ramtapp"
+HOMEPAGE         = "https://github.com/rdkcentral/feature-test-tools/tree/develop/ramtapp"
 
 LICENSE          = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://../LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
