@@ -30,7 +30,7 @@ PACKAGE_ARCH = "${MIDDLEWARE_ARCH}"
 inherit cmake pkgconfig
 ```
 ## Using cmake
-Make you build all the dependencies first. This can be build using cmake 
+Make sure you build all dependencies first. These can be built using CMake.
 ```
 cmake ': cmake -B build -DCMAKE_INSTALL_INCLUDEDIR= -DCMAKE_PREFIX_PATH="<path to dependecy insallation>"  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=" -g -std=c++17 -I <dependecy header path> -L<dependency library path"
 make -C build
