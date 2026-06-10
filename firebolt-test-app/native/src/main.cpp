@@ -91,7 +91,9 @@ static void printUsage(const char* argv0)
         << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
         << "  --dbg          Enable debug logging\n"
         << "  --firebolt8    Restrict to Firebolt 8 APIs only (default; excludes Firebolt 9 modules e.g. Actions)\n"
+    #ifdef ENABLE_FIREBOLT9
         << "  --firebolt9    Enable Firebolt 9 APIs (Actions module); Firebolt 8 only is the default\n"
+    #endif
         << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
         << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
@@ -229,9 +231,13 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
-    std::cout << "Firebolt Test App v" << PROJECT_VERSION
-              << " (Firebolt v8.0 by default — use --firebolt9 to enable v9 APIs)"
-              << std::endl;
+    std::cout << "Firebolt Test App v" << PROJECT_VERSION;
+#ifdef ENABLE_FIREBOLT9
+    std::cout << " (Firebolt v8.0 by default - use --firebolt9 to enable v9 APIs)";
+#else
+    std::cout << " (Firebolt v8.0 only; rebuild with -DENABLE_FIREBOLT9=ON for v9 APIs)";
+#endif
+    std::cout << std::endl;
 
     auto& appConfig = GetAppConfig();
 
@@ -274,7 +280,13 @@ int main(int argc, char** argv)
         }
         else if (arg == "--firebolt9")
         {
+#ifdef ENABLE_FIREBOLT9
             appConfig.firebolt8Only = false;
+#else
+            std::cerr << "Error: --firebolt9 is unavailable in this build. "
+                      << "Rebuild with -DENABLE_FIREBOLT9=ON to enable Firebolt 9 modules.\n";
+            return 1;
+#endif
         }
         else if (arg == "--firebolt8")
         {
