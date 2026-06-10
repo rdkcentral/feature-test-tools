@@ -27,6 +27,7 @@ import DeviceConnectionConfig from './DeviceConnectionConfig'
 import AppSettings from './AppSettings'
 import accountTests from '../data/tests/account.json'
 import accessibilityTests from '../data/tests/accessibility.json'
+import actionsTests from '../data/tests/actions.json'
 import advertisingTests from '../data/tests/advertising.json'
 import deviceTests from '../data/tests/device.json'
 import discoveryTests from '../data/tests/discovery.json'
@@ -54,6 +55,7 @@ let _modulesInitPromise = null
 const TEST_DEFINITIONS_BY_CATEGORY = {
   account: accountTests,
   accessibility: accessibilityTests,
+  actions: actionsTests,
   advertising: advertisingTests,
   device: deviceTests,
   discovery: discoveryTests,
@@ -248,6 +250,8 @@ const JS_SPEC_VALIDATORS = {
     || _validateNumber(value.rate, 'rate')
     || _validateField(value.rate >= 0.1 && value.rate <= 10, 'rate must be between 0.1 and 10 inclusive')
     || _validateBoolean(value.navigationHints, 'navigationHints'),
+  'Actions.intent': value => _validateString(value, 'value') || _validateField(value.length > 0, 'value must not be empty'),
+  'Actions.onIntent': value => _validateString(value, 'value'),
   'Advertising.advertisingId': value => _validateObject(value)
     || _validateString(value.ifa, 'ifa')
     || _validateOneOf(value.ifa_type, 'ifa_type', ['dpid', 'sspid', 'sessionid'])

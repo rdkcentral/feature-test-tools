@@ -119,7 +119,7 @@ export default class Menu extends Lightning.Component {
     this._fireboltAPI = new FireboltAPI()
     this._categories = AppSettings.debug.mockEnabled
       ? categories
-      : categories.filter(c => c.id !== 'mockstress')
+      : categories.filter(c => c.id !== 'mockstress' && !(AppSettings.firebolt8Mode && c.firebolt9Only))
     this._totalColumns = 0
 
     this._createListAsync()

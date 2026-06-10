@@ -57,6 +57,25 @@ class AppSettings {
     return this._settings.execution
   }
 
+  get firebolt8Mode() {
+    const defaultMode = !!this._settings.execution.firebolt8Mode
+
+    // Runtime override: ?firebolt9=1 (or true) enables Firebolt 9 mode.
+    // Explicit ?firebolt8=1 (or true) forces Firebolt 8 mode.
+    try {
+      const params = new URLSearchParams(window.location.search || '')
+      const firebolt9 = (params.get('firebolt9') || '').toLowerCase()
+      const firebolt8 = (params.get('firebolt8') || '').toLowerCase()
+
+      if (firebolt9 === '1' || firebolt9 === 'true') return false
+      if (firebolt8 === '1' || firebolt8 === 'true') return true
+    } catch (_) {
+      // Ignore URL parsing issues and use the configured default.
+    }
+
+    return defaultMode
+  }
+
   get screen() {
     return this._settings.screen
   }

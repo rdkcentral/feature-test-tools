@@ -14,7 +14,8 @@
   },
   "execution": {
     "categoryBatchSize": 5,
-    "testBatchSize": 3
+    "testBatchSize": 3,
+    "firebolt8Mode": true
   },
   "layout": {
     "screen": {

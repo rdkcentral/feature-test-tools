@@ -1,0 +1,21 @@
+[
+  {
+    "id": "actions_intent",
+    "name": "Actions.intent()",
+    "description": "Returns the current intent string dispatched to the app",
+    "method": "Actions.intent",
+    "type": "getter",
+    "params": [],
+    "expectedType": "string"
+  },
+  {
+    "id": "actions_onIntent",
+    "name": "Actions.onIntent [event]",
+    "description": "Subscribe to intent changes dispatched to the app",
+    "method": "Actions.onIntent",
+    "type": "event",
+    "listenEvent": "onIntent",
+    "params": [],
+    "expectedType": "string"
+  }
+]

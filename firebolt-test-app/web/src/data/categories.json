@@ -5,6 +5,12 @@
     "description": "Closed captions, voice guidance and audio description settings"
   },
   {
+    "id": "actions",
+    "name": "Actions",
+    "description": "App intent dispatch and subscription [Firebolt 9]",
+    "firebolt9Only": true
+  },
+  {
     "id": "advertising",
     "name": "Advertising",
     "description": "Platform advertising identifier (IFA)"
