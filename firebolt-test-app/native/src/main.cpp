@@ -88,6 +88,7 @@ static void printUsage(const char* argv0)
         << "  --legacy       Force legacy (v1) RPC protocol\n"
         << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
         << "  --dbg          Enable debug logging\n"
+        << "  --firebolt8    Restrict to Firebolt 8 APIs only (default; excludes Firebolt 9 modules e.g. Actions)\n"
         << "  --firebolt9    Enable Firebolt 9 APIs (Actions module); Firebolt 8 only is the default\n"
         << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
@@ -270,6 +271,10 @@ int main(int argc, char** argv)
         else if (arg == "--firebolt9")
         {
             appConfig.firebolt8Only = false;
+        }
+        else if (arg == "--firebolt8")
+        {
+            appConfig.firebolt8Only = true;
         }
         else if (arg == "--help")
         {

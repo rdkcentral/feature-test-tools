@@ -59,13 +59,14 @@ cmake --build build --parallel
 SUMMARY = "Firebolt C++ Test Application"
 DESCRIPTION = "Native C++ test application for exercising firebolt-cpp-client APIs and events"
 LICENSE = "Apache-2.0"
-LIC_FILES_CHKSUM = "file://<path-to-license-file>/LICENSE;md5=<md5sum of license file>"
+LIC_FILES_CHKSUM = "file://LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 inherit cmake pkgconfig
 
-SRC_URI = "<repo url>/feature-test-tools.git;branch=main;protocol=https"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CMF_GITHUB_ROOT}/feature-test-tools;${CMF_GITHUB_SRC_URI_SUFFIX}"
+SRCREV = "${AUTOREV}"  <=== Replace with SHA
 PV = "1.0.0"
+PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
@@ -96,7 +97,8 @@ firebolt-test-app
 ### Command-line options
 ```
 firebolt-test-app [--auto] [--url <URL>]
-                  [--legacy | --rpc-v2] [--dbg] [--help]
+                  [--legacy | --rpc-v2] [--dbg]
+                  [--firebolt8 | --firebolt9] [--help]
 ```
 
 | Option | Description |
@@ -106,7 +108,8 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--legacy` | Force legacy (v1) RPC protocol |
 | `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
 | `--dbg` | Enable debug logging |
-| `--firebolt8` | Restrict to Firebolt 8 APIs only — excludes Firebolt 9 modules (currently: Actions) |
+| `--firebolt8` | Restrict to Firebolt 8 APIs only — excludes Firebolt 9 modules (currently: Actions). This is the default mode. |
+| `--firebolt9` | Enable Firebolt 9 APIs and include Firebolt 9 modules (currently: Actions). |
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
