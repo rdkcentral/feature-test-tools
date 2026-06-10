@@ -51,9 +51,9 @@ add_compile_definitions(
 )
 
 # ---------------------------------------------------------------------------
-# Firebolt 9 opt-in (default OFF so Firebolt 8-only SDKs compile cleanly)
+# Optional Actions/Intents opt-in (default OFF so older SDKs compile cleanly)
 # ---------------------------------------------------------------------------
-option(ENABLE_FIREBOLT9 "Enable Firebolt 9 APIs (e.g. Actions module)" OFF)
+option(ENABLE_FIREBOLT9 "Enable optional Actions/Intents APIs (e.g. Actions module)" OFF)
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
 

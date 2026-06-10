@@ -108,8 +108,8 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--legacy` | Force legacy (v1) RPC protocol |
 | `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
 | `--dbg` | Enable debug logging |
-| `--firebolt8` | Restrict to Firebolt 8 APIs only — excludes Firebolt 9 modules (currently: Actions). This is the default mode. |
-| `--firebolt9` | Enable Firebolt 9 APIs and include Firebolt 9 modules (currently: Actions). Requires building with `-DENABLE_FIREBOLT9=ON`; otherwise this option is unavailable. |
+| `--firebolt8` | Restrict to the base API set — excludes optional Actions/Intents module. This is the default mode. |
+| `--firebolt9` | Enable optional Actions/Intents module in addition to the base API set. Requires building with `-DENABLE_FIREBOLT9=ON`; otherwise this option is unavailable. |
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
@@ -143,7 +143,7 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Actions** *(Firebolt 9)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll) |
+| **Actions / Intents** *(optional build/runtime module)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context, data? }` model, where `context.source` is required. Unsupported or incomplete intents are ignored without surfacing user errors. Schema reference: `firebolt-js-client/src/schemas/intents.json`. |
 | **Advertising** | `advertisingId` |
 | **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Discovery** | `watched` |

@@ -69,8 +69,13 @@ void LifecycleTest::runMethod(const std::string& method)
     }
     else if (method == "Lifecycle.close")
     {
+        const std::string closeTypeStr = paramFromConsole(
+            "closeType (DEACTIVATE/UNLOAD/KILL_RELOAD/KILL_REACTIVATE)", "DEACTIVATE");
         CloseType closeType = CloseType::DEACTIVATE;
-        std::cout << "  closeType: DEACTIVATE" << std::endl;
+        if      (closeTypeStr == "UNLOAD")          closeType = CloseType::UNLOAD;
+        else if (closeTypeStr == "KILL_RELOAD")     closeType = CloseType::KILL_RELOAD;
+        else if (closeTypeStr == "KILL_REACTIVATE") closeType = CloseType::KILL_REACTIVATE;
+        std::cout << "  closeType: " << closeTypeStr << std::endl;
 
         auto r = IFireboltAccessor::Instance()
                      .LifecycleInterface()

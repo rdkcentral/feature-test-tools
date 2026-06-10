@@ -90,9 +90,9 @@ static void printUsage(const char* argv0)
         << "  --legacy       Force legacy (v1) RPC protocol\n"
         << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
         << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Restrict to Firebolt 8 APIs only (default; excludes Firebolt 9 modules e.g. Actions)\n"
+        << "  --firebolt8    Restrict to base API set only (default; excludes optional Actions/Intents module)\n"
     #ifdef ENABLE_FIREBOLT9
-        << "  --firebolt9    Enable Firebolt 9 APIs (Actions module); Firebolt 8 only is the default\n"
+        << "  --firebolt9    Enable optional Actions/Intents module; base API set is the default\n"
     #endif
         << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
@@ -233,9 +233,9 @@ int main(int argc, char** argv)
 {
     std::cout << "Firebolt Test App v" << PROJECT_VERSION;
 #ifdef ENABLE_FIREBOLT9
-    std::cout << " (Firebolt v8.0 by default - use --firebolt9 to enable v9 APIs)";
+    std::cout << " (base API set by default - use --firebolt9 to enable optional Actions/Intents)";
 #else
-    std::cout << " (Firebolt v8.0 only; rebuild with -DENABLE_FIREBOLT9=ON for v9 APIs)";
+    std::cout << " (base API set only; rebuild with -DENABLE_FIREBOLT9=ON for optional Actions/Intents)";
 #endif
     std::cout << std::endl;
 
@@ -380,11 +380,11 @@ int main(int argc, char** argv)
 
     if (appConfig.firebolt8Only)
     {
-        std::cout << "[Mode] Firebolt 8 only (default) — Actions (Firebolt 9) excluded." << std::endl;
+        std::cout << "[Mode] Base API set only (default) - Actions/Intents excluded." << std::endl;
     }
     else
     {
-        std::cout << "[Mode] Firebolt 9 — all modules including Actions enabled." << std::endl;
+        std::cout << "[Mode] Extended set - all modules including Actions/Intents enabled." << std::endl;
     }
 
     auto modules = buildModuleList(appConfig.firebolt8Only);

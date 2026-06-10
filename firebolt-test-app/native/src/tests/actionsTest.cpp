@@ -20,16 +20,249 @@
  *
  * @author Arun Madhavan
  *
- * NOTE: Actions is a Firebolt 9 API. This module is excluded when the
- *       application is started with --firebolt8.
+ * NOTE: Actions/Intents availability depends on build/runtime configuration.
+ *       This module is excluded when the application is started with --firebolt8.
  */
 
 #include "actionsTest.h"
 
 #include <firebolt/firebolt.h>
+#include <algorithm>
+#include <array>
 #include <iostream>
+#include <string>
 
 using namespace Firebolt;
+
+namespace
+{
+// ---------------------------------------------------------------------------
+// Minimal JSON field extractors (no external JSON library required)
+// ---------------------------------------------------------------------------
+
+// Finds the first occurrence of "fieldName": "value" and returns value.
+std::string extractJsonStringField(const std::string& json, const std::string& fieldName)
+{
+    const std::string key = "\"" + fieldName + "\"";
+    const size_t keyPos = json.find(key);
+    if (keyPos == std::string::npos)
+        return "";
+
+    const size_t colonPos = json.find(':', keyPos + key.size());
+    if (colonPos == std::string::npos)
+        return "";
+
+    const size_t valueStart = json.find('"', colonPos + 1);
+    if (valueStart == std::string::npos)
+        return "";
+
+    const size_t valueEnd = json.find('"', valueStart + 1);
+    if (valueEnd == std::string::npos)
+        return "";
+
+    return json.substr(valueStart + 1, valueEnd - valueStart - 1);
+}
+
+// Finds the first occurrence of "fieldName": true|false and returns the value.
+bool extractJsonBoolField(const std::string& json, const std::string& fieldName, bool& outValue)
+{
+    const std::string key = "\"" + fieldName + "\"";
+    const size_t keyPos = json.find(key);
+    if (keyPos == std::string::npos)
+        return false;
+
+    const size_t colonPos = json.find(':', keyPos + key.size());
+    if (colonPos == std::string::npos)
+        return false;
+
+    size_t pos = colonPos + 1;
+    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos])))
+        ++pos;
+
+    if (json.compare(pos, 4, "true") == 0)  { outValue = true;  return true; }
+    if (json.compare(pos, 5, "false") == 0) { outValue = false; return true; }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Spec-aligned supported action list
+// Ref: RDK8 Firebolt® Intents Specification
+// ---------------------------------------------------------------------------
+bool isSupportedIntentAction(const std::string& action)
+{
+    static constexpr std::array<const char*, 17> kSupportedActions = {
+        "home", "launch", "pre-load", "entity", "playback", "search", "section", "tune",
+        "play-entity", "play-query", "previous", "next", "repeat", "shuffle",
+        "skip-ad", "skip-recap", "skip-intro"
+    };
+    return std::find(kSupportedActions.begin(), kSupportedActions.end(), action) != kSupportedActions.end();
+}
+
+// ---------------------------------------------------------------------------
+// Per-action data field printing, matching each action's data object from spec
+// ---------------------------------------------------------------------------
+void printActionData(const std::string& json, const std::string& action)
+{
+    // No data object defined for these action types
+    if (action == "home"     || action == "pre-load"   || action == "previous" ||
+        action == "next"     || action == "repeat"     || action == "shuffle"  ||
+        action == "skip-ad"  || action == "skip-recap" || action == "skip-intro")
+    {
+        return;
+    }
+
+    if (action == "launch")
+    {
+        const std::string appContentData = extractJsonStringField(json, "appContentData");
+        if (!appContentData.empty())
+            std::cout << "    appContentData: " << appContentData << std::endl;
+        return;
+    }
+
+    if (action == "entity" || action == "playback")
+    {
+        // entityId is required by spec; the rest are optional
+        const std::string entityId = extractJsonStringField(json, "entityId");
+        if (!entityId.empty())
+            std::cout << "    entityId: " << entityId << std::endl;
+
+        const std::string entityType = extractJsonStringField(json, "entityType");
+        if (!entityType.empty())
+            std::cout << "    entityType: " << entityType << std::endl;
+
+        const std::string programType = extractJsonStringField(json, "programType");
+        if (!programType.empty())
+            std::cout << "    programType: " << programType << std::endl;
+
+        const std::string assetId = extractJsonStringField(json, "assetId");
+        if (!assetId.empty())
+            std::cout << "    assetId: " << assetId << std::endl;
+
+        const std::string seasonId = extractJsonStringField(json, "seasonId");
+        if (!seasonId.empty())
+            std::cout << "    seasonId: " << seasonId << std::endl;
+
+        const std::string seriesId = extractJsonStringField(json, "seriesId");
+        if (!seriesId.empty())
+            std::cout << "    seriesId: " << seriesId << std::endl;
+
+        const std::string appContentData = extractJsonStringField(json, "appContentData");
+        if (!appContentData.empty())
+            std::cout << "    appContentData: " << appContentData << std::endl;
+        return;
+    }
+
+    if (action == "search")
+    {
+        // query is required by spec
+        const std::string query = extractJsonStringField(json, "query");
+        if (!query.empty())
+            std::cout << "    query: " << query << std::endl;
+        return;
+    }
+
+    if (action == "section")
+    {
+        // sectionName is required by spec
+        const std::string sectionName = extractJsonStringField(json, "sectionName");
+        if (!sectionName.empty())
+            std::cout << "    sectionName: " << sectionName << std::endl;
+
+        const std::string appContentData = extractJsonStringField(json, "appContentData");
+        if (!appContentData.empty())
+            std::cout << "    appContentData: " << appContentData << std::endl;
+        return;
+    }
+
+    if (action == "tune")
+    {
+        // entity object fields (required)
+        const std::string entityType  = extractJsonStringField(json, "entityType");
+        const std::string channelType = extractJsonStringField(json, "channelType");
+        const std::string entityId    = extractJsonStringField(json, "entityId");
+        if (!entityType.empty())  std::cout << "    entity.entityType: "  << entityType  << std::endl;
+        if (!channelType.empty()) std::cout << "    entity.channelType: " << channelType << std::endl;
+        if (!entityId.empty())    std::cout << "    entity.entityId: "    << entityId    << std::endl;
+
+        // options object fields (all optional; spec allows at most one)
+        bool restart = false;
+        if (extractJsonBoolField(json, "restartCurrentProgram", restart))
+            std::cout << "    options.restartCurrentProgram: " << std::boolalpha << restart << std::endl;
+
+        const std::string assetId = extractJsonStringField(json, "assetId");
+        if (!assetId.empty())
+            std::cout << "    options.assetId: " << assetId << std::endl;
+
+        const std::string time = extractJsonStringField(json, "time");
+        if (!time.empty())
+            std::cout << "    options.time: " << time << std::endl;
+        return;
+    }
+
+    if (action == "play-entity")
+    {
+        // entity.entityType = 'playlist' and entity.entityId required
+        const std::string entityType = extractJsonStringField(json, "entityType");
+        const std::string entityId   = extractJsonStringField(json, "entityId");
+        if (!entityType.empty()) std::cout << "    entity.entityType: " << entityType << std::endl;
+        if (!entityId.empty())   std::cout << "    entity.entityId: "   << entityId   << std::endl;
+
+        // options (optional)
+        const std::string playFirstId = extractJsonStringField(json, "playFirstId");
+        if (!playFirstId.empty())
+            std::cout << "    options.playFirstId: " << playFirstId << std::endl;
+        return;
+    }
+
+    if (action == "play-query")
+    {
+        // query is required by spec
+        const std::string query = extractJsonStringField(json, "query");
+        if (!query.empty())
+            std::cout << "    query: " << query << std::endl;
+        return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Top-level intent display: validates required fields, logs all spec parameters
+// ---------------------------------------------------------------------------
+void printIntentSummary(const std::string& intentValue, const std::string& prefix)
+{
+    if (intentValue.empty() || intentValue.front() != '{')
+    {
+        std::cout << prefix << " action: " << intentValue << std::endl;
+        return;
+    }
+
+    // action and context.source are both required by spec
+    const std::string action = extractJsonStringField(intentValue, "action");
+    const std::string source = extractJsonStringField(intentValue, "source");
+
+    if (action.empty() || source.empty())
+    {
+        std::cout << prefix << " ignored: missing required field(s) action/context.source."
+                  << std::endl;
+        return;
+    }
+
+    if (!isSupportedIntentAction(action))
+    {
+        std::cout << prefix << " ignored: unsupported action '" << action << "'." << std::endl;
+        return;
+    }
+
+    // Print header: action + context fields
+    std::cout << prefix << " action=" << action << ", source=" << source;
+    const std::string agePolicy = extractJsonStringField(intentValue, "agePolicy");
+    if (!agePolicy.empty())
+        std::cout << ", agePolicy=" << agePolicy;
+    std::cout << std::endl;
+
+    // Print action-specific data fields
+    printActionData(intentValue, action);
+}
+} // namespace
 
 ActionsTest::ActionsTest()
     : TestModuleBase("Actions")
@@ -51,7 +284,7 @@ void ActionsTest::runMethod(const std::string& method)
                      .intent();
         if (checkResult(r, method))
         {
-            std::cout << "  intent: " << *r << std::endl;
+            printIntentSummary(*r, "  intent");
         }
     }
     else if (method == "Actions.onIntent.subscribe")
@@ -66,7 +299,7 @@ void ActionsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .ActionsInterface()
                      .subscribeOnIntent([](const std::string& intent) {
-                         std::cout << "  [EVENT] onIntent: " << intent << std::endl;
+                         printIntentSummary(intent, "  [EVENT] onIntent");
                      });
         if (checkResult(r, method))
         {

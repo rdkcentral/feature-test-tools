@@ -25,10 +25,35 @@
 
 #include <firebolt/firebolt.h>
 #include <iostream>
+#include <map>
 #include <optional>
 
 using namespace Firebolt;
 using namespace Firebolt::Metrics;
+
+namespace
+{
+Firebolt::AgePolicy parseAgePolicy(const std::string& s)
+{
+    if (s == "child" || s == "CHILD") return Firebolt::AgePolicy::CHILD;
+    if (s == "teen"  || s == "TEEN")  return Firebolt::AgePolicy::TEEN;
+    return Firebolt::AgePolicy::ADULT;
+}
+
+bool parseBool(const std::string& s)
+{
+    return (s == "true" || s == "1" || s == "yes");
+}
+
+ErrorType parseErrorType(const std::string& s)
+{
+    if (s == "Network")     return ErrorType::Network;
+    if (s == "Restriction") return ErrorType::Restriction;
+    if (s == "Entitlement") return ErrorType::Entitlement;
+    if (s == "Other")       return ErrorType::Other;
+    return ErrorType::Media;
+}
+} // namespace
 
 MetricsTest::MetricsTest()
     : TestModuleBase("Metrics")
@@ -58,14 +83,12 @@ void MetricsTest::runMethod(const std::string& method)
 {
     std::cout << "[Metrics] Running: " << method << std::endl;
 
-    const std::string entityId = "entity001";
-
     if (method == "Metrics.ready")
     {
         auto r = IFireboltAccessor::Instance().MetricsInterface().ready();
         if (checkResult(r, method))
         {
-            std::cout << "  ready: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  ready reported." << std::endl;
         }
     }
     else if (method == "Metrics.signIn")
@@ -73,7 +96,7 @@ void MetricsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().MetricsInterface().signIn();
         if (checkResult(r, method))
         {
-            std::cout << "  signIn: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  signIn reported." << std::endl;
         }
     }
     else if (method == "Metrics.signOut")
@@ -81,167 +104,221 @@ void MetricsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().MetricsInterface().signOut();
         if (checkResult(r, method))
         {
-            std::cout << "  signOut: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  signOut reported." << std::endl;
         }
     }
     else if (method == "Metrics.startContent")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .startContent(entityId, std::nullopt);
+                     .startContent(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  startContent: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  startContent reported." << std::endl;
         }
     }
     else if (method == "Metrics.stopContent")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .stopContent(entityId, std::nullopt);
+                     .stopContent(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  stopContent: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  stopContent reported." << std::endl;
         }
     }
     else if (method == "Metrics.page")
     {
+        const std::string pageId       = paramFromConsole("pageId", "homePage");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .page("homePage", std::nullopt);
+                     .page(pageId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  page: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  page reported." << std::endl;
         }
     }
     else if (method == "Metrics.error")
     {
+        const std::string typeStr      = paramFromConsole("type (Network/Media/Restriction/Entitlement/Other)", "Media");
+        const std::string code         = paramFromConsole("code", "ERR001");
+        const std::string description  = paramFromConsole("description", "Test error");
+        const std::string visibleStr   = paramFromConsole("visible (true/false)", "true");
+        const std::string paramKey     = paramFromConsole("parameters key (leave empty to skip)", "severity");
+        const std::string paramValue   = paramFromConsole("parameters value", "high");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+
+        std::optional<std::map<std::string, std::string>> parameters;
+        if (!paramKey.empty())
+        {
+            parameters = std::map<std::string, std::string>{{paramKey, paramValue}};
+        }
+
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .error(ErrorType::Media, "ERR001", "Test error", true,
-                            std::nullopt, std::nullopt);
+                     .error(parseErrorType(typeStr), code, description, parseBool(visibleStr),
+                            parameters, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  error reported: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  error reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaLoadStart")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaLoadStart(entityId, std::nullopt);
+                     .mediaLoadStart(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaLoadStart: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaLoadStart reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaPlay")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaPlay(entityId, std::nullopt);
+                     .mediaPlay(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaPlay: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaPlay reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaPlaying")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaPlaying(entityId, std::nullopt);
+                     .mediaPlaying(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaPlaying: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaPlaying reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaPause")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaPause(entityId, std::nullopt);
+                     .mediaPause(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaPause: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaPause reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaWaiting")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaWaiting(entityId, std::nullopt);
+                     .mediaWaiting(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaWaiting: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaWaiting reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaSeeking")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string targetStr    = paramFromConsole("target (0.0-0.999 for VOD, seconds for live)", "0.5");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaSeeking(entityId, 30.0, std::nullopt);
+                     .mediaSeeking(entityId, std::stod(targetStr), parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaSeeking: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaSeeking reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaSeeked")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string posStr       = paramFromConsole("position (0.0-0.999 for VOD, seconds for live)", "0.5");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaSeeked(entityId, 30.0, std::nullopt);
+                     .mediaSeeked(entityId, std::stod(posStr), parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaSeeked: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaSeeked reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaRateChanged")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string rateStr      = paramFromConsole("rate", "1.5");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaRateChanged(entityId, 1.5, std::nullopt);
+                     .mediaRateChanged(entityId, std::stod(rateStr), parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaRateChanged: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaRateChanged reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaRenditionChanged")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string bitrateStr   = paramFromConsole("bitrate (kbps)", "3000");
+        const std::string widthStr     = paramFromConsole("width", "1920");
+        const std::string heightStr    = paramFromConsole("height", "1080");
+        const std::string profile      = paramFromConsole("profile", "HDR");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaRenditionChanged(entityId, 3000, 1920, 1080, "HDR",
-                                           std::nullopt);
+                     .mediaRenditionChanged(entityId,
+                                            static_cast<unsigned>(std::stoul(bitrateStr)),
+                                            static_cast<unsigned>(std::stoul(widthStr)),
+                                            static_cast<unsigned>(std::stoul(heightStr)),
+                                            profile,
+                                            parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaRenditionChanged: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaRenditionChanged reported." << std::endl;
         }
     }
     else if (method == "Metrics.mediaEnded")
     {
+        const std::string entityId     = paramFromConsole("entityId", "entity001");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaEnded(entityId, std::nullopt);
+                     .mediaEnded(entityId, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  mediaEnded: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  mediaEnded reported." << std::endl;
         }
     }
     else if (method == "Metrics.event")
     {
+        const std::string schema       = paramFromConsole("schema", "https://com.example.firebolt-test-app.event");
+        const std::string data         = paramFromConsole("data (JSON)", "{\"key\":\"value\"}");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .event("https://com.example.firebolt-test-app.event",
-                            "{\"key\":\"value\"}", std::nullopt);
+                     .event(schema, data, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
-            std::cout << "  custom event: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  custom event reported." << std::endl;
         }
     }
     else if (method == "Metrics.appInfo")
     {
+        const std::string build = paramFromConsole("build", "firebolt-test-app-build-001");
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .appInfo("firebolt-test-app-build-001");
+                     .appInfo(build);
         if (checkResult(r, method))
         {
             std::cout << "  appInfo reported." << std::endl;
