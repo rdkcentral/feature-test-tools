@@ -145,7 +145,7 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Actions** *(Firebolt 9)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll) |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe ), `unsubscribeAll` |
+| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Discovery** | `watched` |
 | **Display** | `edid`, `maxResolution`, `size` |
 | **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
