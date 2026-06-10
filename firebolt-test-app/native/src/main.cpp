@@ -41,7 +41,9 @@
 #include "utils.h"
 
 #include "tests/accessibilityTest.h"
+#ifdef ENABLE_FIREBOLT9
 #include "tests/actionsTest.h"
+#endif
 #include "tests/advertisingTest.h"
 #include "tests/deviceTest.h"
 #include "tests/discoveryTest.h"
@@ -116,11 +118,13 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(bool firebol
     modules.emplace_back(std::make_unique<PresentationTest>());
     modules.emplace_back(std::make_unique<StatsTest>());
     modules.emplace_back(std::make_unique<TextToSpeechTest>());
-    // Firebolt 9 modules — omitted when --firebolt8 is set
+    // Firebolt 9 modules — omitted when --firebolt8 is set or not compiled in
+#ifdef ENABLE_FIREBOLT9
     if (!firebolt8Only)
     {
         modules.emplace_back(std::make_unique<ActionsTest>());
     }
+#endif
     return modules;
 }
 
