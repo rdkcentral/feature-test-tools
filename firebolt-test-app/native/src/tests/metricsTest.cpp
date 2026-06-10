@@ -65,7 +65,7 @@ void MetricsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().MetricsInterface().ready();
         if (checkResult(r, method))
         {
-            std::cout << "  ready: " << std::boolalpha << *r << std::endl;
+            std::cout << "  ready: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.signIn")
@@ -73,7 +73,7 @@ void MetricsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().MetricsInterface().signIn();
         if (checkResult(r, method))
         {
-            std::cout << "  signIn: " << std::boolalpha << *r << std::endl;
+            std::cout << "  signIn: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.signOut")
@@ -81,7 +81,7 @@ void MetricsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().MetricsInterface().signOut();
         if (checkResult(r, method))
         {
-            std::cout << "  signOut: " << std::boolalpha << *r << std::endl;
+            std::cout << "  signOut: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.startContent")
@@ -91,7 +91,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .startContent(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  startContent: " << std::boolalpha << *r << std::endl;
+            std::cout << "  startContent: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.stopContent")
@@ -101,7 +101,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .stopContent(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  stopContent: " << std::boolalpha << *r << std::endl;
+            std::cout << "  stopContent: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.page")
@@ -111,7 +111,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .page("homePage", std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  page: " << std::boolalpha << *r << std::endl;
+            std::cout << "  page: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.error")
@@ -122,7 +122,7 @@ void MetricsTest::runMethod(const std::string& method)
                             std::nullopt, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  error reported: " << std::boolalpha << *r << std::endl;
+            std::cout << "  error reported: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaLoadStart")
@@ -132,7 +132,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaLoadStart(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaLoadStart: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaLoadStart: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaPlay")
@@ -142,7 +142,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaPlay(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaPlay: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaPlay: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaPlaying")
@@ -152,7 +152,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaPlaying(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaPlaying: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaPlaying: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaPause")
@@ -162,7 +162,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaPause(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaPause: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaPause: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaWaiting")
@@ -172,7 +172,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaWaiting(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaWaiting: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaWaiting: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaSeeking")
@@ -182,7 +182,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaSeeking(entityId, 30.0, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaSeeking: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaSeeking: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaSeeked")
@@ -192,7 +192,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaSeeked(entityId, 30.0, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaSeeked: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaSeeked: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaRateChanged")
@@ -202,7 +202,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaRateChanged(entityId, 1.5, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaRateChanged: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaRateChanged: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaRenditionChanged")
@@ -213,7 +213,7 @@ void MetricsTest::runMethod(const std::string& method)
                                            std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaRenditionChanged: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaRenditionChanged: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.mediaEnded")
@@ -223,7 +223,7 @@ void MetricsTest::runMethod(const std::string& method)
                      .mediaEnded(entityId, std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  mediaEnded: " << std::boolalpha << *r << std::endl;
+            std::cout << "  mediaEnded: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.event")
@@ -234,7 +234,7 @@ void MetricsTest::runMethod(const std::string& method)
                             "{\"key\":\"value\"}", std::nullopt);
         if (checkResult(r, method))
         {
-            std::cout << "  custom event: " << std::boolalpha << *r << std::endl;
+            std::cout << "  custom event: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else if (method == "Metrics.appInfo")

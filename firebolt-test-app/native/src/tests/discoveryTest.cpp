@@ -53,7 +53,7 @@ void DiscoveryTest::runMethod(const std::string& method)
                      .watched(entityId, progress, completed, watchedOn, agePolicy);
         if (checkResult(r, method))
         {
-            std::cout << "  watched result: " << std::boolalpha << *r << std::endl;
+            std::cout << "  watched result: " << std::boolalpha << static_cast<bool>(r) << std::endl;
         }
     }
     else
