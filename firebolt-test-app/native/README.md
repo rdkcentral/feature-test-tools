@@ -59,7 +59,7 @@ cmake --build build --parallel
 SUMMARY = "Firebolt C++ Test Application"
 DESCRIPTION = "Native C++ test application for exercising firebolt-cpp-client APIs and events"
 LICENSE = "Apache-2.0"
-LIC_FILES_CHKSUM = "file://LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
+LIC_FILES_CHKSUM = "file://../../LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 inherit cmake pkgconfig
 
@@ -145,7 +145,7 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Actions** *(Firebolt 9)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll) |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
+| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Discovery** | `watched` |
 | **Display** | `edid`, `maxResolution`, `size` |
 | **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
