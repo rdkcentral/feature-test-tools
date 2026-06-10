@@ -68,7 +68,7 @@ struct AppConfig
 {
     bool autoRun      = false; // skip interactive prompts, use defaults
     bool verbose      = false; // print extra diagnostic output
-    bool firebolt8Only = false; // restrict to Firebolt 8 APIs (excludes Firebolt 9 modules)
+    bool firebolt8Only = true;  // restrict to Firebolt 8 APIs (excludes Firebolt 9 modules); default ON
 };
 
 AppConfig& GetAppConfig();

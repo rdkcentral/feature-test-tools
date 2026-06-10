@@ -88,7 +88,7 @@ static void printUsage(const char* argv0)
         << "  --legacy       Force legacy (v1) RPC protocol\n"
         << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
         << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Restrict to Firebolt 8 APIs only (skips Firebolt 9 modules e.g. Actions)\n"
+        << "  --firebolt9    Enable Firebolt 9 APIs (Actions module); Firebolt 8 only is the default\n"
         << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
         << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
@@ -225,7 +225,7 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
 int main(int argc, char** argv)
 {
     std::cout << "Firebolt Test App v" << PROJECT_VERSION
-              << " (Firebolt v8.0/v9.0 — use --firebolt8 to restrict to v8 APIs)"
+              << " (Firebolt v8.0 by default — use --firebolt9 to enable v9 APIs)"
               << std::endl;
 
     auto& appConfig = GetAppConfig();
@@ -267,9 +267,9 @@ int main(int argc, char** argv)
             logLevel          = Firebolt::LogLevel::Debug;
             appConfig.verbose = true;
         }
-        else if (arg == "--firebolt8")
+        else if (arg == "--firebolt9")
         {
-            appConfig.firebolt8Only = true;
+            appConfig.firebolt8Only = false;
         }
         else if (arg == "--help")
         {
@@ -359,7 +359,11 @@ int main(int argc, char** argv)
 
     if (appConfig.firebolt8Only)
     {
-        std::cout << "[Mode] Firebolt 8 only — Actions (Firebolt 9) excluded." << std::endl;
+        std::cout << "[Mode] Firebolt 8 only (default) — Actions (Firebolt 9) excluded." << std::endl;
+    }
+    else
+    {
+        std::cout << "[Mode] Firebolt 9 — all modules including Actions enabled." << std::endl;
     }
 
     auto modules = buildModuleList(appConfig.firebolt8Only);
