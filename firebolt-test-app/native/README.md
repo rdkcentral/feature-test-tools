@@ -106,6 +106,7 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--legacy` | Force legacy (v1) RPC protocol |
 | `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
 | `--dbg` | Enable debug logging |
+| `--firebolt8` | Restrict to Firebolt 8 APIs only — excludes Firebolt 9 modules (currently: Actions) |
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
@@ -138,18 +139,17 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 
 | Module | Methods / Events |
 |---|---|
-| **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings` |
-| **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime` |
+| **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` || **Actions** *(Firebolt 9)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll) || **Advertising** | `advertisingId` |
+| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Discovery** | `watched` |
 | **Display** | `edid`, `maxResolution`, `size` |
 | **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage` |
+| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event`, `appInfo` |
 | **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Presentation** | `focused`, `onFocusedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Stats** | `memoryUsage` |
-| **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart` (subscribe / unsubscribe), `onSpeechPause` (subscribe / unsubscribe), `onSpeechResume` (subscribe / unsubscribe), `onWillSpeak` (subscribe / unsubscribe), `unsubscribeAll` |
+| **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart` (subscribe / unsubscribe), `onSpeechPause` (subscribe / unsubscribe), `onSpeechResume` (subscribe / unsubscribe), `onWillSpeak` (subscribe / unsubscribe), `onSpeechComplete` (subscribe / unsubscribe), `onSpeechInterrupted` (subscribe / unsubscribe), `onNetworkError` (subscribe / unsubscribe), `onPlaybackError` (subscribe / unsubscribe), `unsubscribeAll` |
 
 ---
 

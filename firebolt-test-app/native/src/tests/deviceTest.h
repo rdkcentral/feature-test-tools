@@ -24,6 +24,7 @@
 #pragma once
 
 #include "../utils.h"
+#include <firebolt/types.h>
 
 class DeviceTest : public TestModuleBase
 {
@@ -31,4 +32,7 @@ public:
     DeviceTest();
     ~DeviceTest() override = default;
     void runMethod(const std::string& method) override;
+
+private:
+    Firebolt::SubscriptionId onHdrChangedSubId_{ 0 };
 };

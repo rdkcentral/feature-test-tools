@@ -19,6 +19,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @author Arun Madhavan
+ *
+ * NOTE: Actions is a Firebolt 9 API. This module is excluded when the
+ *       application is started with --firebolt8.
  */
 
 #pragma once
@@ -26,15 +29,13 @@
 #include "../utils.h"
 #include <firebolt/types.h>
 
-class LocalizationTest : public TestModuleBase
+class ActionsTest : public TestModuleBase
 {
 public:
-    LocalizationTest();
-    ~LocalizationTest() override = default;
+    ActionsTest();
+    ~ActionsTest() override = default;
     void runMethod(const std::string& method) override;
 
 private:
-    Firebolt::SubscriptionId onCountryChangedSubId_{ 0 };
-    Firebolt::SubscriptionId onPreferredAudioLanguagesChangedSubId_{ 0 };
-    Firebolt::SubscriptionId onPresentationLanguageChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onIntentSubId_{ 0 };
 };

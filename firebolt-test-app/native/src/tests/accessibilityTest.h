@@ -24,6 +24,7 @@
 #pragma once
 
 #include "../utils.h"
+#include <firebolt/types.h>
 
 class AccessibilityTest : public TestModuleBase
 {
@@ -31,4 +32,10 @@ public:
     AccessibilityTest();
     ~AccessibilityTest() override = default;
     void runMethod(const std::string& method) override;
+
+private:
+    Firebolt::SubscriptionId onAudioDescriptionChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onClosedCaptionsSettingsChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onHighContrastUIChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onVoiceGuidanceSettingsChangedSubId_{ 0 };
 };

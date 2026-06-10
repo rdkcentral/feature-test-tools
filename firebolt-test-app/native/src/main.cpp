@@ -41,6 +41,7 @@
 #include "utils.h"
 
 #include "tests/accessibilityTest.h"
+#include "tests/actionsTest.h"
 #include "tests/advertisingTest.h"
 #include "tests/deviceTest.h"
 #include "tests/discoveryTest.h"
@@ -82,12 +83,13 @@ static void printUsage(const char* argv0)
         << "SYNOPSIS\n"
         << "  " << argv0 << " [<options>]\n\n"
         << "OPTIONS\n"
-        << "  --auto       Run all methods for all modules without user input\n"
-        << "  --url <URL>  Specify a custom WebSocket endpoint URL\n"
-        << "  --legacy     Force legacy (v1) RPC protocol\n"
-        << "  --rpc-v2     Force JSON-RPC v2 compliant protocol\n"
-        << "  --dbg        Enable debug logging\n"
-        << "  --help       Show this help and exit\n\n"
+        << "  --auto         Run all methods for all modules without user input\n"
+        << "  --url <URL>    Specify a custom WebSocket endpoint URL\n"
+        << "  --legacy       Force legacy (v1) RPC protocol\n"
+        << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
+        << "  --dbg          Enable debug logging\n"
+        << "  --firebolt8    Restrict to Firebolt 8 APIs only (skips Firebolt 9 modules e.g. Actions)\n"
+        << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
         << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
         << "                     is not supplied.\n";
@@ -95,8 +97,10 @@ static void printUsage(const char* argv0)
 
 // ---------------------------------------------------------------------------
 // buildModuleList – registers all test modules
+//
+// firebolt8Only: when true, Firebolt 9-only modules (Actions) are excluded.
 // ---------------------------------------------------------------------------
-static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList()
+static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(bool firebolt8Only)
 {
     std::vector<std::unique_ptr<TestModuleBase>> modules;
     modules.emplace_back(std::make_unique<AccessibilityTest>());
@@ -111,6 +115,11 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList()
     modules.emplace_back(std::make_unique<PresentationTest>());
     modules.emplace_back(std::make_unique<StatsTest>());
     modules.emplace_back(std::make_unique<TextToSpeechTest>());
+    // Firebolt 9 modules — omitted when --firebolt8 is set
+    if (!firebolt8Only)
+    {
+        modules.emplace_back(std::make_unique<ActionsTest>());
+    }
     return modules;
 }
 
@@ -215,7 +224,9 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
-    std::cout << "Firebolt Test App v" << PROJECT_VERSION << " (Firebolt v8.0.0)" << std::endl;
+    std::cout << "Firebolt Test App v" << PROJECT_VERSION
+              << " (Firebolt v8.0/v9.0 — use --firebolt8 to restrict to v8 APIs)"
+              << std::endl;
 
     auto& appConfig = GetAppConfig();
 
@@ -253,8 +264,12 @@ int main(int argc, char** argv)
         }
         else if (arg == "--dbg")
         {
-            logLevel        = Firebolt::LogLevel::Debug;
+            logLevel          = Firebolt::LogLevel::Debug;
             appConfig.verbose = true;
+        }
+        else if (arg == "--firebolt8")
+        {
+            appConfig.firebolt8Only = true;
         }
         else if (arg == "--help")
         {
@@ -342,7 +357,12 @@ int main(int argc, char** argv)
 
     std::cout << "Connected to Firebolt." << std::endl;
 
-    auto modules = buildModuleList();
+    if (appConfig.firebolt8Only)
+    {
+        std::cout << "[Mode] Firebolt 8 only — Actions (Firebolt 9) excluded." << std::endl;
+    }
+
+    auto modules = buildModuleList(appConfig.firebolt8Only);
 
     if (appConfig.autoRun)
     {

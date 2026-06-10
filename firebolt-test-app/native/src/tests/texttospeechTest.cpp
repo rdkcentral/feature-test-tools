@@ -46,6 +46,14 @@ TextToSpeechTest::TextToSpeechTest()
     methods_.push_back("TextToSpeech.onSpeechResume.unsubscribe");
     methods_.push_back("TextToSpeech.onWillSpeak.subscribe");
     methods_.push_back("TextToSpeech.onWillSpeak.unsubscribe");
+    methods_.push_back("TextToSpeech.onSpeechComplete.subscribe");
+    methods_.push_back("TextToSpeech.onSpeechComplete.unsubscribe");
+    methods_.push_back("TextToSpeech.onSpeechInterrupted.subscribe");
+    methods_.push_back("TextToSpeech.onSpeechInterrupted.unsubscribe");
+    methods_.push_back("TextToSpeech.onNetworkError.subscribe");
+    methods_.push_back("TextToSpeech.onNetworkError.unsubscribe");
+    methods_.push_back("TextToSpeech.onPlaybackError.subscribe");
+    methods_.push_back("TextToSpeech.onPlaybackError.unsubscribe");
     methods_.push_back("TextToSpeech.unsubscribeAll");
 }
 
@@ -255,6 +263,106 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         unsubscribeById(onWillSpeakSubId_, "onWillSpeak");
     }
+    else if (method == "TextToSpeech.onSpeechComplete.subscribe")
+    {
+        if (onSpeechCompleteSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechComplete (ID: "
+                      << onSpeechCompleteSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .TextToSpeechInterface()
+                     .subscribeOnSpeechComplete([](const SpeechIdEvent& e) {
+                         std::cout << "  [EVENT] onSpeechComplete: speechId="
+                                   << e.speechId << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onSpeechCompleteSubId_ = *r;
+            std::cout << "  Subscribed onSpeechComplete, sub ID: " << onSpeechCompleteSubId_ << std::endl;
+        }
+    }
+    else if (method == "TextToSpeech.onSpeechComplete.unsubscribe")
+    {
+        unsubscribeById(onSpeechCompleteSubId_, "onSpeechComplete");
+    }
+    else if (method == "TextToSpeech.onSpeechInterrupted.subscribe")
+    {
+        if (onSpeechInterruptedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechInterrupted (ID: "
+                      << onSpeechInterruptedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .TextToSpeechInterface()
+                     .subscribeOnSpeechInterrupted([](const SpeechIdEvent& e) {
+                         std::cout << "  [EVENT] onSpeechInterrupted: speechId="
+                                   << e.speechId << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onSpeechInterruptedSubId_ = *r;
+            std::cout << "  Subscribed onSpeechInterrupted, sub ID: " << onSpeechInterruptedSubId_ << std::endl;
+        }
+    }
+    else if (method == "TextToSpeech.onSpeechInterrupted.unsubscribe")
+    {
+        unsubscribeById(onSpeechInterruptedSubId_, "onSpeechInterrupted");
+    }
+    else if (method == "TextToSpeech.onNetworkError.subscribe")
+    {
+        if (onNetworkErrorSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onNetworkError (ID: "
+                      << onNetworkErrorSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .TextToSpeechInterface()
+                     .subscribeOnNetworkError([](const SpeechIdEvent& e) {
+                         std::cout << "  [EVENT] onNetworkError: speechId="
+                                   << e.speechId << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onNetworkErrorSubId_ = *r;
+            std::cout << "  Subscribed onNetworkError, sub ID: " << onNetworkErrorSubId_ << std::endl;
+        }
+    }
+    else if (method == "TextToSpeech.onNetworkError.unsubscribe")
+    {
+        unsubscribeById(onNetworkErrorSubId_, "onNetworkError");
+    }
+    else if (method == "TextToSpeech.onPlaybackError.subscribe")
+    {
+        if (onPlaybackErrorSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to TextToSpeech.onPlaybackError (ID: "
+                      << onPlaybackErrorSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .TextToSpeechInterface()
+                     .subscribeOnPlaybackError([](const SpeechIdEvent& e) {
+                         std::cout << "  [EVENT] onPlaybackError: speechId="
+                                   << e.speechId << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onPlaybackErrorSubId_ = *r;
+            std::cout << "  Subscribed onPlaybackError, sub ID: " << onPlaybackErrorSubId_ << std::endl;
+        }
+    }
+    else if (method == "TextToSpeech.onPlaybackError.unsubscribe")
+    {
+        unsubscribeById(onPlaybackErrorSubId_, "onPlaybackError");
+    }
     else if (method == "TextToSpeech.unsubscribeAll")
     {
         IFireboltAccessor::Instance().TextToSpeechInterface().unsubscribeAll();
@@ -262,6 +370,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         onSpeechPauseSubId_ = 0;
         onSpeechResumeSubId_ = 0;
         onWillSpeakSubId_ = 0;
+        onSpeechCompleteSubId_ = 0;
+        onSpeechInterruptedSubId_ = 0;
+        onNetworkErrorSubId_ = 0;
+        onPlaybackErrorSubId_ = 0;
         std::cout << "  Unsubscribed from all TextToSpeech events." << std::endl;
     }
     else

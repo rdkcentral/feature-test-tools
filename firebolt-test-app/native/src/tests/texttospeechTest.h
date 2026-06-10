@@ -39,4 +39,8 @@ private:
     Firebolt::SubscriptionId onSpeechPauseSubId_{ 0 };
     Firebolt::SubscriptionId onSpeechResumeSubId_{ 0 };
     Firebolt::SubscriptionId onWillSpeakSubId_{ 0 };
+    Firebolt::SubscriptionId onSpeechCompleteSubId_{ 0 };
+    Firebolt::SubscriptionId onSpeechInterruptedSubId_{ 0 };
+    Firebolt::SubscriptionId onNetworkErrorSubId_{ 0 };
+    Firebolt::SubscriptionId onPlaybackErrorSubId_{ 0 };
 };
