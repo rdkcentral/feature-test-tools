@@ -20,7 +20,7 @@
   {
     "id": "metrics_appInfo",
     "name": "Metrics.appInfo()",
-    "description": "Inform the platform about the app build/version string",
+    "description": "Inform the platform about the app build/version string (prompts for input when running this test)",
     "method": "Metrics.appInfo",
     "type": "getter",
     "params": ["1.0.0-test"],

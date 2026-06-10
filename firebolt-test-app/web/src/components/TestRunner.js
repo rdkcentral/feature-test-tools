@@ -413,6 +413,17 @@ export default class TestRunner extends Lightning.Component {
     const test = this._tests[index]
     const { colors } = AppSettings
 
+    if (test && test.id === 'metrics_appInfo' && typeof window !== 'undefined' && typeof window.prompt === 'function') {
+      const defaultValue = Array.isArray(test.params) && test.params.length > 0 ? String(test.params[0]) : ''
+      const inputValue = window.prompt('Enter Metrics.appInfo build/version value:', defaultValue)
+      if (inputValue === null) {
+        this._isRunning = false
+        this.signal('onStatus', 'Cancelled: Metrics.appInfo input not provided')
+        return
+      }
+      test.runtimeParams = [inputValue]
+    }
+
     this.tag('ProgressBar.ProgressFill').patch({ color: parseInt(colors.primary, 16), w: 0 })
     this.tag('ProgressBar.ProgressText').text.text = `Running: ${test.name}...`
     this.signal('onStatus', `Running: ${test.name}...`)

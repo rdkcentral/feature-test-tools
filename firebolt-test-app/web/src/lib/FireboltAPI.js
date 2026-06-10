@@ -840,6 +840,7 @@ export default class FireboltAPI {
 
   _createTestFromDefinition(def) {
     return {
+      id: def.id,
       name: def.name,
       method: def.method || def.name,
       description: def.description,
@@ -847,7 +848,7 @@ export default class FireboltAPI {
       expectedType: def.expectedType,
       params: def.params || [],
       gatewayParams: def.gatewayParams || {},
-      execute: async () => {
+      execute: async (paramsOverride) => {
         try {
           let response
 
@@ -897,7 +898,7 @@ export default class FireboltAPI {
 
           } else {
             // Default: getter/method call through the SDK or mock fallback chain
-            response = await this._callMethod(def.method, def.params || [])
+            response = await this._callMethod(def.method, Array.isArray(paramsOverride) ? paramsOverride : (def.params || []))
             return { value: response, type: typeof response, backend: this._lastCallBackend }
           }
 
@@ -1068,11 +1069,12 @@ export default class FireboltAPI {
       const timeoutPromise = new Promise((_, reject) => {
         _timeoutId = setTimeout(() => reject(new Error(`Test timeout (${(timeoutMs / 1000).toFixed(1)}s)`)), timeoutMs)
       })
+      const paramsOverride = Array.isArray(test.runtimeParams) ? test.runtimeParams : null
       const debugParams = test.type === 'gateway'
         ? (test.gatewayParams || {})
-        : (test.params || [])
+        : (paramsOverride || test.params || [])
       dbg(`[Firebolt] >> ${test.method} params=${JSON.stringify(debugParams)}`)
-      const result = await Promise.race([test.execute(), timeoutPromise])
+      const result = await Promise.race([test.execute(paramsOverride), timeoutPromise])
       clearTimeout(_timeoutId)
       dbg(`[Firebolt] << ${test.method} result=${JSON.stringify(result)}`)
       const duration = Date.now() - startTime
