@@ -24,8 +24,11 @@
 #include "metricsTest.h"
 
 #include <firebolt/firebolt.h>
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <map>
+#include <limits>
 #include <optional>
 
 using namespace Firebolt;
@@ -33,25 +36,109 @@ using namespace Firebolt::Metrics;
 
 namespace
 {
+std::string toLowerCopy(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+const char* agePolicyToString(Firebolt::AgePolicy agePolicy)
+{
+    switch (agePolicy)
+    {
+        case Firebolt::AgePolicy::CHILD: return "CHILD";
+        case Firebolt::AgePolicy::TEEN:  return "TEEN";
+        case Firebolt::AgePolicy::ADULT: return "ADULT";
+        default:                         return "ADULT";
+    }
+}
+
 Firebolt::AgePolicy parseAgePolicy(const std::string& s)
 {
-    if (s == "child" || s == "CHILD") return Firebolt::AgePolicy::CHILD;
-    if (s == "teen"  || s == "TEEN")  return Firebolt::AgePolicy::TEEN;
+    const std::string normalized = toLowerCopy(s);
+    if (normalized == "child") return Firebolt::AgePolicy::CHILD;
+    if (normalized == "teen")  return Firebolt::AgePolicy::TEEN;
+    if (normalized != "adult")
+    {
+        std::cout << "  [WARN] Invalid agePolicy '" << s
+                  << "'. Expected adult/teen/child. Using "
+                  << agePolicyToString(Firebolt::AgePolicy::ADULT) << "." << std::endl;
+    }
     return Firebolt::AgePolicy::ADULT;
 }
 
 bool parseBool(const std::string& s)
 {
-    return (s == "true" || s == "1" || s == "yes");
+    const std::string normalized = toLowerCopy(s);
+    if (normalized == "true" || normalized == "1" || normalized == "yes") return true;
+    if (normalized == "false" || normalized == "0" || normalized == "no") return false;
+
+    std::cout << "  [WARN] Invalid boolean value '" << s
+              << "'. Expected true/false (or 1/0, yes/no). Using false." << std::endl;
+    return false;
+}
+
+const char* errorTypeToString(ErrorType type)
+{
+    switch (type)
+    {
+        case ErrorType::Network:     return "Network";
+        case ErrorType::Media:       return "Media";
+        case ErrorType::Restriction: return "Restriction";
+        case ErrorType::Entitlement: return "Entitlement";
+        case ErrorType::Other:       return "Other";
+        default:                     return "Media";
+    }
 }
 
 ErrorType parseErrorType(const std::string& s)
 {
-    if (s == "Network")     return ErrorType::Network;
-    if (s == "Restriction") return ErrorType::Restriction;
-    if (s == "Entitlement") return ErrorType::Entitlement;
-    if (s == "Other")       return ErrorType::Other;
+    const std::string normalized = toLowerCopy(s);
+    if (normalized == "network")     return ErrorType::Network;
+    if (normalized == "restriction") return ErrorType::Restriction;
+    if (normalized == "entitlement") return ErrorType::Entitlement;
+    if (normalized == "other")       return ErrorType::Other;
+    if (normalized != "media")
+    {
+        std::cout << "  [WARN] Invalid error type '" << s
+                  << "'. Expected Network/Media/Restriction/Entitlement/Other. Using "
+                  << errorTypeToString(ErrorType::Media) << "." << std::endl;
+    }
     return ErrorType::Media;
+}
+
+double parseDoubleOrDefault(const std::string& input, double fallback, const char* fieldName)
+{
+    try
+    {
+        return std::stod(input);
+    }
+    catch (...)
+    {
+        std::cout << "  [WARN] Invalid numeric value for " << fieldName << ": '" << input
+                  << "'. Using " << fallback << "." << std::endl;
+        return fallback;
+    }
+}
+
+unsigned parseUnsignedOrDefault(const std::string& input, unsigned fallback, const char* fieldName)
+{
+    try
+    {
+        const unsigned long value = std::stoul(input);
+        if (value > std::numeric_limits<unsigned>::max())
+        {
+            throw std::out_of_range("unsigned overflow");
+        }
+        return static_cast<unsigned>(value);
+    }
+    catch (...)
+    {
+        std::cout << "  [WARN] Invalid unsigned value for " << fieldName << ": '" << input
+                  << "'. Using " << fallback << "." << std::endl;
+        return fallback;
+    }
 }
 } // namespace
 
@@ -159,9 +246,12 @@ void MetricsTest::runMethod(const std::string& method)
             parameters = std::map<std::string, std::string>{{paramKey, paramValue}};
         }
 
+        const ErrorType parsedType = parseErrorType(typeStr);
+        std::cout << "  parsed error type: " << errorTypeToString(parsedType) << std::endl;
+
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .error(parseErrorType(typeStr), code, description, parseBool(visibleStr),
+                     .error(parsedType, code, description, parseBool(visibleStr),
                             parameters, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
@@ -233,9 +323,11 @@ void MetricsTest::runMethod(const std::string& method)
         const std::string entityId     = paramFromConsole("entityId", "entity001");
         const std::string targetStr    = paramFromConsole("target (0.0-0.999 for VOD, seconds for live)", "0.5");
         const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+        const double target = parseDoubleOrDefault(targetStr, 0.5, "target");
+        std::cout << "  parsed target: " << target << std::endl;
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaSeeking(entityId, std::stod(targetStr), parseAgePolicy(agePolicyStr));
+                     .mediaSeeking(entityId, target, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
             std::cout << "  mediaSeeking reported." << std::endl;
@@ -246,9 +338,11 @@ void MetricsTest::runMethod(const std::string& method)
         const std::string entityId     = paramFromConsole("entityId", "entity001");
         const std::string posStr       = paramFromConsole("position (0.0-0.999 for VOD, seconds for live)", "0.5");
         const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+        const double position = parseDoubleOrDefault(posStr, 0.5, "position");
+        std::cout << "  parsed position: " << position << std::endl;
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaSeeked(entityId, std::stod(posStr), parseAgePolicy(agePolicyStr));
+                     .mediaSeeked(entityId, position, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
             std::cout << "  mediaSeeked reported." << std::endl;
@@ -259,9 +353,11 @@ void MetricsTest::runMethod(const std::string& method)
         const std::string entityId     = paramFromConsole("entityId", "entity001");
         const std::string rateStr      = paramFromConsole("rate", "1.5");
         const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+        const double rate = parseDoubleOrDefault(rateStr, 1.5, "rate");
+        std::cout << "  parsed rate: " << rate << std::endl;
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .mediaRateChanged(entityId, std::stod(rateStr), parseAgePolicy(agePolicyStr));
+                     .mediaRateChanged(entityId, rate, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
             std::cout << "  mediaRateChanged reported." << std::endl;
@@ -275,12 +371,17 @@ void MetricsTest::runMethod(const std::string& method)
         const std::string heightStr    = paramFromConsole("height", "1080");
         const std::string profile      = paramFromConsole("profile", "HDR");
         const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+        const unsigned bitrate = parseUnsignedOrDefault(bitrateStr, 3000U, "bitrate");
+        const unsigned width = parseUnsignedOrDefault(widthStr, 1920U, "width");
+        const unsigned height = parseUnsignedOrDefault(heightStr, 1080U, "height");
+        std::cout << "  parsed rendition: bitrate=" << bitrate
+              << ", width=" << width << ", height=" << height << std::endl;
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
                      .mediaRenditionChanged(entityId,
-                                            static_cast<unsigned>(std::stoul(bitrateStr)),
-                                            static_cast<unsigned>(std::stoul(widthStr)),
-                                            static_cast<unsigned>(std::stoul(heightStr)),
+                            bitrate,
+                            width,
+                            height,
                                             profile,
                                             parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))

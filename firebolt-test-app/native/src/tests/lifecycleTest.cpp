@@ -24,6 +24,8 @@
 #include "lifecycleTest.h"
 
 #include <firebolt/firebolt.h>
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -43,6 +45,40 @@ static const char* lifecycleStateStr(LifecycleState s)
         case LifecycleState::TERMINATING:  return "TERMINATING";
         default:                           return "UNKNOWN";
     }
+}
+
+std::string toUpperCopy(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    return s;
+}
+
+const char* closeTypeToString(CloseType closeType)
+{
+    switch (closeType)
+    {
+        case CloseType::DEACTIVATE:      return "DEACTIVATE";
+        case CloseType::UNLOAD:          return "UNLOAD";
+        case CloseType::KILL_RELOAD:     return "KILL_RELOAD";
+        case CloseType::KILL_REACTIVATE: return "KILL_REACTIVATE";
+        default:                         return "DEACTIVATE";
+    }
+}
+
+CloseType parseCloseType(const std::string& s)
+{
+    const std::string normalized = toUpperCopy(s);
+    if (normalized == "UNLOAD")          return CloseType::UNLOAD;
+    if (normalized == "KILL_RELOAD")     return CloseType::KILL_RELOAD;
+    if (normalized == "KILL_REACTIVATE") return CloseType::KILL_REACTIVATE;
+    if (normalized != "DEACTIVATE")
+    {
+        std::cout << "  [WARN] Invalid closeType '" << s
+                  << "'. Expected DEACTIVATE/UNLOAD/KILL_RELOAD/KILL_REACTIVATE. Using "
+                  << closeTypeToString(CloseType::DEACTIVATE) << "." << std::endl;
+    }
+    return CloseType::DEACTIVATE;
 }
 
 LifecycleTest::LifecycleTest()
@@ -71,11 +107,8 @@ void LifecycleTest::runMethod(const std::string& method)
     {
         const std::string closeTypeStr = paramFromConsole(
             "closeType (DEACTIVATE/UNLOAD/KILL_RELOAD/KILL_REACTIVATE)", "DEACTIVATE");
-        CloseType closeType = CloseType::DEACTIVATE;
-        if      (closeTypeStr == "UNLOAD")          closeType = CloseType::UNLOAD;
-        else if (closeTypeStr == "KILL_RELOAD")     closeType = CloseType::KILL_RELOAD;
-        else if (closeTypeStr == "KILL_REACTIVATE") closeType = CloseType::KILL_REACTIVATE;
-        std::cout << "  closeType: " << closeTypeStr << std::endl;
+        const CloseType closeType = parseCloseType(closeTypeStr);
+        std::cout << "  parsed closeType: " << closeTypeToString(closeType) << std::endl;
 
         auto r = IFireboltAccessor::Instance()
                      .LifecycleInterface()

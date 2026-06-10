@@ -61,6 +61,25 @@ namespace Color
     inline const char* reset() { return termSupportsColor() ? "\033[0m"    : ""; }
 }
 
+inline const char* fireboltErrorCodeToString(int errorCode)
+{
+    switch (errorCode)
+    {
+        case -50100: return "Not supported";
+        case -32600: return "Invalid request";
+        case -32601: return "Method not found";
+        case -32602: return "Invalid params";
+        case -32603: return "Internal error";
+        case -32000: return "Server error";
+        default:
+            if (errorCode <= -32000 && errorCode >= -32099)
+            {
+                return "Server error";
+            }
+            return "Unknown error";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Global test-run configuration
 // ---------------------------------------------------------------------------
@@ -112,9 +131,11 @@ protected:
                       << " " << label << std::endl;
             return true;
         }
+        const int errorCode = static_cast<int>(result.error());
         std::cerr << Color::red() << "[FAIL]" << Color::reset()
                   << " " << label
-                  << " – error code: " << static_cast<int>(result.error())
+                  << " – error code: " << errorCode
+                  << " (" << fireboltErrorCodeToString(errorCode) << ")"
                   << std::endl;
         return false;
     }
