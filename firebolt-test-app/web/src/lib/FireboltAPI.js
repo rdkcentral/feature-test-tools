@@ -250,7 +250,8 @@ const JS_SPEC_VALIDATORS = {
     || _validateNumber(value.rate, 'rate')
     || _validateField(value.rate >= 0.1 && value.rate <= 10, 'rate must be between 0.1 and 10 inclusive')
     || _validateBoolean(value.navigationHints, 'navigationHints'),
-  'Actions.intent': value => _validateString(value, 'value') || _validateField(value.length > 0, 'value must not be empty'),
+  'Actions.intent': value => _validateString(value, 'value')
+    || _validateField(value.length > 0, 'value must not be empty'),
   'Actions.onIntent': value => _validateString(value, 'value'),
   'Advertising.advertisingId': value => _validateObject(value)
     || _validateString(value.ifa, 'ifa')
