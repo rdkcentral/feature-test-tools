@@ -1,7 +1,7 @@
 # Introduction
 This folder contains sample applications for testing RDK-E RDK App Managers.
 # Building the code
-There are two ways you can build the code. 
+There are two ways you can build the code.
 ## Using Yocto
 Try this command
 ```
