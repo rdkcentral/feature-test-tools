@@ -24,6 +24,7 @@
 #include "metricsTest.h"
 
 #include <firebolt/firebolt.h>
+#include <cctype>
 #include <iostream>
 #include <limits>
 #include <map>
