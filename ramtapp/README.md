@@ -11,8 +11,7 @@ or use this recipe
 ```
 SUMMARY          = "ramtapp - RDK app managers test app"
 DESCRIPTION      = "C++ utility to test the various components in \
-RDK app managers framework and perform basic benchmark testing. \
-"
+RDK app managers framework and perform basic benchmark testing."
 
 HOMEPAGE         = "https://github.com/rdkcentral/feature-test-tools/tree/develop/ramtapp"
 
