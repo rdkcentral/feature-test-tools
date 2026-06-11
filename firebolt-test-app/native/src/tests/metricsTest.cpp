@@ -188,13 +188,13 @@ void MetricsTest::runMethod(const std::string& method)
         const std::string code         = paramFromConsole("code", "ERR001");
         const std::string description  = paramFromConsole("description", "Test error");
         const std::string visibleStr   = paramFromConsole("visible (true/false)", "true");
-        const std::string paramKey     = paramFromConsole("parameters key (leave empty to skip)", "severity");
-        const std::string paramValue   = paramFromConsole("parameters value", "high");
+        const std::string paramKey     = paramFromConsole("parameters key (leave empty to skip)", "");
         const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
 
         std::optional<std::map<std::string, std::string>> parameters;
         if (!paramKey.empty())
         {
+            const std::string paramValue = paramFromConsole("parameters value", "high");
             parameters = std::map<std::string, std::string>{{paramKey, paramValue}};
         }
 
