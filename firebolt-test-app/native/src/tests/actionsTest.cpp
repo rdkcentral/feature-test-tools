@@ -57,11 +57,25 @@ std::string extractJsonStringField(const std::string& json, const std::string& f
     if (valueStart == std::string::npos)
         return "";
 
-    const size_t valueEnd = json.find('"', valueStart + 1);
-    if (valueEnd == std::string::npos)
-        return "";
+    // Find the closing quote, honoring escaped quotes (\").
+    for (size_t i = valueStart + 1; i < json.size(); ++i)
+    {
+        if (json[i] != '"')
+            continue;
 
-    return json.substr(valueStart + 1, valueEnd - valueStart - 1);
+        size_t backslashCount = 0;
+        size_t j = i;
+        while (j > valueStart + 1 && json[j - 1] == '\\')
+        {
+            ++backslashCount;
+            --j;
+        }
+
+        if ((backslashCount % 2) == 0)
+            return json.substr(valueStart + 1, i - valueStart - 1);
+    }
+
+    return "";
 }
 
 // Finds the first occurrence of "fieldName": true|false and returns the value.
@@ -105,8 +119,26 @@ std::string extractJsonSubObject(const std::string& json, const std::string& fie
         return "";
 
     int depth = 0;
+    bool inString = false;
     for (size_t i = bracePos; i < json.size(); ++i)
     {
+        if (json[i] == '"')
+        {
+            size_t backslashCount = 0;
+            size_t j = i;
+            while (j > bracePos && json[j - 1] == '\\')
+            {
+                ++backslashCount;
+                --j;
+            }
+            if ((backslashCount % 2) == 0)
+                inString = !inString;
+            continue;
+        }
+
+        if (inString)
+            continue;
+
         if (json[i] == '{')
             ++depth;
         else if (json[i] == '}')

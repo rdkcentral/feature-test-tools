@@ -28,6 +28,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <stdexcept>
 
 using namespace Firebolt;
 using namespace Firebolt::Metrics;
