@@ -103,10 +103,13 @@ std::string extractJsonStringField(const std::string& json, const std::string& f
     if (colonPos == std::string::npos)
         return "";
 
-    const size_t valueStart = json.find('"', colonPos + 1);
-    if (valueStart == std::string::npos)
+    size_t pos = colonPos + 1;
+    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos])))
+        ++pos;
+    if (pos >= json.size() || json[pos] != '"')
         return "";
 
+    const size_t valueStart = pos;
     // Find the closing quote, honoring escaped quotes (\").
     for (size_t i = valueStart + 1; i < json.size(); ++i)
     {
