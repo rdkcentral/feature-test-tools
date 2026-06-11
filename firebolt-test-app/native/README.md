@@ -143,7 +143,7 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Actions / Intents** *(optional build/runtime module)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context, data? }` model, where `context.source` is required. Unsupported or incomplete intents are ignored without surfacing user errors. Schema reference: _RDK8 Firebolt® Intents Specification_ (see project wiki). |
+| **Actions / Intents** *(optional build/runtime module)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context, data? }` model, where `context.source` is required. Unsupported or incomplete intents are logged with "ignored: ..." messages to stdout. Schema reference: _RDK8 Firebolt® Intents Specification_ (see project wiki). |
 | **Advertising** | `advertisingId` |
 | **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Discovery** | `watched` |

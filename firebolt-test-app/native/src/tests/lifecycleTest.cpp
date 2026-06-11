@@ -51,6 +51,13 @@ namespace
 {
 std::string toUpperCopy(std::string s)
 {
+    const size_t start = s.find_first_not_of(" \t\n\r\f\v");
+    if (start == std::string::npos)
+        return "";
+
+    const size_t end = s.find_last_not_of(" \t\n\r\f\v");
+    s = s.substr(start, end - start + 1);
+
     std::transform(s.begin(), s.end(), s.begin(),
                    [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     return s;
