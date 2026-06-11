@@ -24,72 +24,10 @@
 #include "discoveryTest.h"
 
 #include <firebolt/firebolt.h>
-#include <algorithm>
-#include <cctype>
 #include <iostream>
 #include <optional>
 
 using namespace Firebolt;
-
-namespace
-{
-std::string toLowerCopy(std::string s)
-{
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
-
-const char* agePolicyToString(Firebolt::AgePolicy agePolicy)
-{
-    switch (agePolicy)
-    {
-        case Firebolt::AgePolicy::CHILD: return "CHILD";
-        case Firebolt::AgePolicy::TEEN:  return "TEEN";
-        case Firebolt::AgePolicy::ADULT: return "ADULT";
-        default:                         return "ADULT";
-    }
-}
-
-Firebolt::AgePolicy parseAgePolicy(const std::string& s)
-{
-    const std::string normalized = toLowerCopy(s);
-    if (normalized == "child") return Firebolt::AgePolicy::CHILD;
-    if (normalized == "teen")  return Firebolt::AgePolicy::TEEN;
-    if (normalized != "adult")
-    {
-        std::cout << "  [WARN] Invalid agePolicy '" << s
-                  << "'. Expected adult/teen/child. Using "
-                  << agePolicyToString(Firebolt::AgePolicy::ADULT) << "." << std::endl;
-    }
-    return Firebolt::AgePolicy::ADULT;
-}
-
-bool parseBool(const std::string& s)
-{
-    const std::string normalized = toLowerCopy(s);
-    if (normalized == "true" || normalized == "1" || normalized == "yes") return true;
-    if (normalized == "false" || normalized == "0" || normalized == "no") return false;
-
-    std::cout << "  [WARN] Invalid boolean value '" << s
-              << "'. Expected true/false (or 1/0, yes/no). Using false." << std::endl;
-    return false;
-}
-
-double parseDoubleOrDefault(const std::string& input, double fallback, const char* fieldName)
-{
-    try
-    {
-        return std::stod(input);
-    }
-    catch (...)
-    {
-        std::cout << "  [WARN] Invalid numeric value for " << fieldName << ": '" << input
-                  << "'. Using " << fallback << "." << std::endl;
-        return fallback;
-    }
-}
-} // namespace
 
 DiscoveryTest::DiscoveryTest()
     : TestModuleBase("Discovery")

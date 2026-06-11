@@ -47,6 +47,8 @@ static const char* lifecycleStateStr(LifecycleState s)
     }
 }
 
+namespace
+{
 std::string toUpperCopy(std::string s)
 {
     std::transform(s.begin(), s.end(), s.begin(),
@@ -80,6 +82,7 @@ CloseType parseCloseType(const std::string& s)
     }
     return CloseType::DEACTIVATE;
 }
+} // namespace
 
 LifecycleTest::LifecycleTest()
     : TestModuleBase("Lifecycle")

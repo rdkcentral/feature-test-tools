@@ -24,6 +24,9 @@
 #pragma once
 
 #include <firebolt/types.h>
+#include <firebolt/common_types.h>
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -105,6 +108,22 @@ int chooseFromList(const std::vector<std::string>& options,
 /// Read a parameter from the console (or return the default in auto mode).
 std::string paramFromConsole(const std::string& name,
                               const std::string& defaultValue);
+
+// ---------------------------------------------------------------------------
+// Shared console-parsing utilities
+// ---------------------------------------------------------------------------
+
+inline std::string toLowerCopy(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+const char* agePolicyToString(Firebolt::AgePolicy agePolicy);
+Firebolt::AgePolicy parseAgePolicy(const std::string& s);
+bool parseBool(const std::string& s);
+double parseDoubleOrDefault(const std::string& input, double fallback, const char* fieldName);
 
 // ---------------------------------------------------------------------------
 // Base class for every module test-wrapper

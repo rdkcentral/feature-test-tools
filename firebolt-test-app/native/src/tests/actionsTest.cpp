@@ -29,6 +29,7 @@
 #include <firebolt/firebolt.h>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <iostream>
 #include <string>
 
@@ -82,6 +83,40 @@ bool extractJsonBoolField(const std::string& json, const std::string& fieldName,
     if (json.compare(pos, 4, "true") == 0)  { outValue = true;  return true; }
     if (json.compare(pos, 5, "false") == 0) { outValue = false; return true; }
     return false;
+}
+
+// Returns the content of the named sub-object field as a JSON object string.
+// Returns "" if the key is not found or its value is not a {}-object.
+std::string extractJsonSubObject(const std::string& json, const std::string& fieldName)
+{
+    const std::string key = "\"" + fieldName + "\"";
+    const size_t keyPos = json.find(key);
+    if (keyPos == std::string::npos)
+        return "";
+
+    const size_t colonPos = json.find(':', keyPos + key.size());
+    if (colonPos == std::string::npos)
+        return "";
+
+    size_t bracePos = colonPos + 1;
+    while (bracePos < json.size() && std::isspace(static_cast<unsigned char>(json[bracePos])))
+        ++bracePos;
+    if (bracePos >= json.size() || json[bracePos] != '{')
+        return "";
+
+    int depth = 0;
+    for (size_t i = bracePos; i < json.size(); ++i)
+    {
+        if (json[i] == '{')
+            ++depth;
+        else if (json[i] == '}')
+        {
+            --depth;
+            if (depth == 0)
+                return json.substr(bracePos, i - bracePos + 1);
+        }
+    }
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -177,23 +212,25 @@ void printActionData(const std::string& json, const std::string& action)
     if (action == "tune")
     {
         // entity object fields (required)
-        const std::string entityType  = extractJsonStringField(json, "entityType");
-        const std::string channelType = extractJsonStringField(json, "channelType");
-        const std::string entityId    = extractJsonStringField(json, "entityId");
+        const std::string entityJson  = extractJsonSubObject(json, "entity");
+        const std::string entityType  = extractJsonStringField(entityJson, "entityType");
+        const std::string channelType = extractJsonStringField(entityJson, "channelType");
+        const std::string entityId    = extractJsonStringField(entityJson, "entityId");
         if (!entityType.empty())  std::cout << "    entity.entityType: "  << entityType  << std::endl;
         if (!channelType.empty()) std::cout << "    entity.channelType: " << channelType << std::endl;
         if (!entityId.empty())    std::cout << "    entity.entityId: "    << entityId    << std::endl;
 
         // options object fields (all optional; spec allows at most one)
+        const std::string optionsJson = extractJsonSubObject(json, "options");
         bool restart = false;
-        if (extractJsonBoolField(json, "restartCurrentProgram", restart))
+        if (extractJsonBoolField(optionsJson, "restartCurrentProgram", restart))
             std::cout << "    options.restartCurrentProgram: " << std::boolalpha << restart << std::endl;
 
-        const std::string assetId = extractJsonStringField(json, "assetId");
+        const std::string assetId = extractJsonStringField(optionsJson, "assetId");
         if (!assetId.empty())
             std::cout << "    options.assetId: " << assetId << std::endl;
 
-        const std::string time = extractJsonStringField(json, "time");
+        const std::string time = extractJsonStringField(optionsJson, "time");
         if (!time.empty())
             std::cout << "    options.time: " << time << std::endl;
         return;
@@ -202,13 +239,15 @@ void printActionData(const std::string& json, const std::string& action)
     if (action == "play-entity")
     {
         // entity.entityType = 'playlist' and entity.entityId required
-        const std::string entityType = extractJsonStringField(json, "entityType");
-        const std::string entityId   = extractJsonStringField(json, "entityId");
+        const std::string entityJson  = extractJsonSubObject(json, "entity");
+        const std::string entityType  = extractJsonStringField(entityJson, "entityType");
+        const std::string entityId    = extractJsonStringField(entityJson, "entityId");
         if (!entityType.empty()) std::cout << "    entity.entityType: " << entityType << std::endl;
         if (!entityId.empty())   std::cout << "    entity.entityId: "   << entityId   << std::endl;
 
         // options (optional)
-        const std::string playFirstId = extractJsonStringField(json, "playFirstId");
+        const std::string optionsJson = extractJsonSubObject(json, "options");
+        const std::string playFirstId = extractJsonStringField(optionsJson, "playFirstId");
         if (!playFirstId.empty())
             std::cout << "    options.playFirstId: " << playFirstId << std::endl;
         return;
@@ -229,15 +268,22 @@ void printActionData(const std::string& json, const std::string& action)
 // ---------------------------------------------------------------------------
 void printIntentSummary(const std::string& intentValue, const std::string& prefix)
 {
-    if (intentValue.empty() || intentValue.front() != '{')
+    // Skip leading whitespace before deciding whether this is a JSON object
+    size_t jsonStart = 0;
+    while (jsonStart < intentValue.size() &&
+           std::isspace(static_cast<unsigned char>(intentValue[jsonStart])))
+        ++jsonStart;
+
+    if (jsonStart >= intentValue.size() || intentValue[jsonStart] != '{')
     {
         std::cout << prefix << " action: " << intentValue << std::endl;
         return;
     }
 
     // action and context.source are both required by spec
-    const std::string action = extractJsonStringField(intentValue, "action");
-    const std::string source = extractJsonStringField(intentValue, "source");
+    const std::string action      = extractJsonStringField(intentValue, "action");
+    const std::string contextJson = extractJsonSubObject(intentValue, "context");
+    const std::string source      = extractJsonStringField(contextJson, "source");
 
     if (action.empty() || source.empty())
     {
@@ -254,13 +300,13 @@ void printIntentSummary(const std::string& intentValue, const std::string& prefi
 
     // Print header: action + context fields
     std::cout << prefix << " action=" << action << ", source=" << source;
-    const std::string agePolicy = extractJsonStringField(intentValue, "agePolicy");
+    const std::string agePolicy = extractJsonStringField(contextJson, "agePolicy");
     if (!agePolicy.empty())
         std::cout << ", agePolicy=" << agePolicy;
     std::cout << std::endl;
 
-    // Print action-specific data fields
-    printActionData(intentValue, action);
+    // Print action-specific data fields (scoped to the data sub-object)
+    printActionData(extractJsonSubObject(intentValue, "data"), action);
 }
 } // namespace
 
