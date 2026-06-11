@@ -41,11 +41,61 @@ namespace
 // Minimal JSON field extractors (no external JSON library required)
 // ---------------------------------------------------------------------------
 
+size_t findTopLevelKeyPosition(const std::string& json, const std::string& fieldName)
+{
+    const std::string key = "\"" + fieldName + "\"";
+    int depth = 0;
+    bool inString = false;
+
+    for (size_t i = 0; i < json.size(); ++i)
+    {
+        const char ch = json[i];
+        if (ch == '"')
+        {
+            if (!inString && depth == 1 && json.compare(i, key.size(), key) == 0)
+            {
+                size_t afterKey = i + key.size();
+                while (afterKey < json.size() && std::isspace(static_cast<unsigned char>(json[afterKey])))
+                    ++afterKey;
+                if (afterKey < json.size() && json[afterKey] == ':')
+                    return i;
+            }
+
+            size_t backslashCount = 0;
+            size_t j = i;
+            while (j > 0 && json[j - 1] == '\\')
+            {
+                ++backslashCount;
+                --j;
+            }
+            if ((backslashCount % 2) == 0)
+                inString = !inString;
+            continue;
+        }
+
+        if (inString)
+            continue;
+
+        if (ch == '{')
+        {
+            ++depth;
+            continue;
+        }
+        if (ch == '}')
+        {
+            --depth;
+            continue;
+        }
+    }
+
+    return std::string::npos;
+}
+
 // Finds the first occurrence of "fieldName": "value" and returns value.
 std::string extractJsonStringField(const std::string& json, const std::string& fieldName)
 {
     const std::string key = "\"" + fieldName + "\"";
-    const size_t keyPos = json.find(key);
+    const size_t keyPos = findTopLevelKeyPosition(json, fieldName);
     if (keyPos == std::string::npos)
         return "";
 
@@ -82,7 +132,7 @@ std::string extractJsonStringField(const std::string& json, const std::string& f
 bool extractJsonBoolField(const std::string& json, const std::string& fieldName, bool& outValue)
 {
     const std::string key = "\"" + fieldName + "\"";
-    const size_t keyPos = json.find(key);
+    const size_t keyPos = findTopLevelKeyPosition(json, fieldName);
     if (keyPos == std::string::npos)
         return false;
 
@@ -104,7 +154,7 @@ bool extractJsonBoolField(const std::string& json, const std::string& fieldName,
 std::string extractJsonSubObject(const std::string& json, const std::string& fieldName)
 {
     const std::string key = "\"" + fieldName + "\"";
-    const size_t keyPos = json.find(key);
+    const size_t keyPos = findTopLevelKeyPosition(json, fieldName);
     if (keyPos == std::string::npos)
         return "";
 

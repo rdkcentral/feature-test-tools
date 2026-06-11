@@ -56,7 +56,7 @@ void DiscoveryTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                      .DiscoveryInterface()
-                 .watched(entityId, progress, completed,
+                     .watched(entityId, progress, completed,
                               watchedOn, agePolicy);
         if (checkResult(r, method))
         {
