@@ -36,7 +36,7 @@ PkgMgrControl::~PkgMgrControl()
 bool PkgMgrControl::initialize(Core::ProxyType<RPC::CommunicatorClient> &client)
 {
 
-    pkgCtrl = client->Open<Exchange::IPackageHandler>("org.rdk.PackageManagerRDKEMS");
+    pkgCtrl = client->Open<Exchange::IPackageHandler>("org.rdk.AppPackageManager");
     if (pkgCtrl == nullptr)
     {
         std::cout << "Failed to create PackageHandler instance." << std::endl;

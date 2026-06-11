@@ -41,7 +41,7 @@ InstallMgrCtrl::~InstallMgrCtrl()
 
 bool InstallMgrCtrl::initialize(Core::ProxyType<RPC::CommunicatorClient> &client)
 {
-    instlCtl = client->Open<Exchange::IPackageInstaller>("org.rdk.PackageManagerRDKEMS");
+    instlCtl = client->Open<Exchange::IPackageInstaller>("org.rdk.AppPackageManager");
     if (instlCtl == nullptr)
     {
         std::cerr << "Failed to open IPackageInstaller interface." << std::endl;
