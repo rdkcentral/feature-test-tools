@@ -41,19 +41,26 @@ void DiscoveryTest::runMethod(const std::string& method)
 
     if (method == "Discovery.watched")
     {
-        const std::string entityId  = "exampleEntity001";
-        const double      progress  = 0.5;
-        const bool        completed = false;
-        const std::string watchedOn = "2024-01-01T00:00:00Z";
+        const std::string entityId     = paramFromConsole("entityId", "exampleEntity001");
+        const std::string progressStr  = paramFromConsole("progress (0.0-0.999 for VOD, seconds for live)", "0.5");
+        const std::string completedStr = paramFromConsole("completed (true/false)", "false");
+        const std::string watchedOn    = paramFromConsole("watchedOn (ISO 8601)", "2024-01-01T00:00:00Z");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
 
-        std::optional<Firebolt::AgePolicy> agePolicy = Firebolt::AgePolicy::ADULT;
+        const double progress = parseDoubleOrDefault(progressStr, 0.5, "progress");
+        const bool completed = parseBool(completedStr);
+        const Firebolt::AgePolicy agePolicy = parseAgePolicy(agePolicyStr);
+        std::cout << "  parsed progress: " << progress << std::endl;
+        std::cout << "  parsed completed: " << std::boolalpha << completed << std::noboolalpha << std::endl;
+        std::cout << "  parsed agePolicy: " << agePolicyToString(agePolicy) << std::endl;
 
         auto r = IFireboltAccessor::Instance()
                      .DiscoveryInterface()
-                     .watched(entityId, progress, completed, watchedOn, agePolicy);
+                     .watched(entityId, progress, completed,
+                              watchedOn, agePolicy);
         if (checkResult(r, method))
         {
-            std::cout << "  watched result: " << std::boolalpha << static_cast<bool>(r) << std::endl;
+            std::cout << "  watched reported." << std::endl;
         }
     }
     else
