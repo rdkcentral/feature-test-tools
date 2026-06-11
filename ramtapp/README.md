@@ -23,7 +23,7 @@ PV              ?= "1.0.0"
 PR              ?= "r0"
 S                = "${WORKDIR}/git/ramtapp"
 
-DEPENDS          = "wpeframework entservices-apis jsoncpp curl "
+DEPENDS          = "wpeframework entservices-apis jsoncpp curl"
 PACKAGE_ARCH = "${MIDDLEWARE_ARCH}"
 
 inherit cmake pkgconfig
