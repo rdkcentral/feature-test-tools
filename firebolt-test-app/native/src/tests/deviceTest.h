@@ -24,7 +24,6 @@
 #pragma once
 
 #include "../utils.h"
-#include <firebolt/types.h>
 
 class DeviceTest : public TestModuleBase
 {

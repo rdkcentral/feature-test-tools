@@ -107,6 +107,10 @@ static void printUsage(const char* argv0)
 // ---------------------------------------------------------------------------
 static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(bool firebolt8Only)
 {
+ #ifndef ENABLE_FIREBOLT9
+    // fix for -Wunused-parameter when ActionsTest is not compiled in.
+    (void)firebolt8Only;
+ #endif
     std::vector<std::unique_ptr<TestModuleBase>> modules;
     modules.emplace_back(std::make_unique<AccessibilityTest>());
     modules.emplace_back(std::make_unique<AdvertisingTest>());
