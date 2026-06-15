@@ -361,9 +361,11 @@ void AppMgrControl::handlePreloadApplicationRequest()
 
     std::string appId;
     appId = retrieveInputFromUser<std::string>("Enter the App ID to preload: ", false, "");
+    std::string args = ""; // Optionally, you can prompt for arguments to preload
+    args = retrieveInputFromUser<std::string>("Enter arguments for preloading (optional): ", true, "");
 
     std::string error;
-    uint32_t result = appManager->PreloadApp(appId, "", error);
+    uint32_t result = appManager->PreloadApp(appId, "", args, error);
 
     if (result != Core::ERROR_NONE)
     {
