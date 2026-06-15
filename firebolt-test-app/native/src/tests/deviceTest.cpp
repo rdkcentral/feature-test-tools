@@ -27,6 +27,7 @@
 #include <iostream>
 
 using namespace Firebolt;
+using namespace Firebolt::Device;
 
 DeviceTest::DeviceTest()
     : TestModuleBase("Device")
@@ -37,6 +38,9 @@ DeviceTest::DeviceTest()
     methods_.push_back("Device.timeInActiveState");
     methods_.push_back("Device.uid");
     methods_.push_back("Device.uptime");
+    methods_.push_back("Device.onHdrChanged.subscribe");
+    methods_.push_back("Device.onHdrChanged.unsubscribe");
+    methods_.push_back("Device.unsubscribeAll");
 }
 
 void DeviceTest::runMethod(const std::string& method)
@@ -102,6 +106,56 @@ void DeviceTest::runMethod(const std::string& method)
         {
             std::cout << "  uptime (s): " << *r << std::endl;
         }
+    }
+    else if (method == "Device.onHdrChanged.subscribe")
+    {
+        if (onHdrChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Device.onHdrChanged (ID: "
+                      << onHdrChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .DeviceInterface()
+                     .subscribeOnHdrChanged([](const HDRFormat& fmt) {
+                         std::cout << std::boolalpha
+                                   << "  [EVENT] onHdrChanged:"
+                                   << " hdr10=" << fmt.hdr10
+                                   << " hdr10Plus=" << fmt.hdr10Plus
+                                   << " dolbyVision=" << fmt.dolbyVision
+                                   << " hlg=" << fmt.hlg
+                                   << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onHdrChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onHdrChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Device.onHdrChanged.unsubscribe")
+    {
+        if (onHdrChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Device.onHdrChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onHdrChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .DeviceInterface()
+                     .unsubscribe(onHdrChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onHdrChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Device.unsubscribeAll")
+    {
+        IFireboltAccessor::Instance().DeviceInterface().unsubscribeAll();
+        onHdrChangedSubId_ = 0;
+        std::cout << "  Unsubscribed from all Device events." << std::endl;
     }
     else
     {

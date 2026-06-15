@@ -27,6 +27,7 @@
 #include <iostream>
 
 using namespace Firebolt;
+using namespace Firebolt::Localization;
 
 LocalizationTest::LocalizationTest()
     : TestModuleBase("Localization")
@@ -34,6 +35,13 @@ LocalizationTest::LocalizationTest()
     methods_.push_back("Localization.country");
     methods_.push_back("Localization.preferredAudioLanguages");
     methods_.push_back("Localization.presentationLanguage");
+    methods_.push_back("Localization.onCountryChanged.subscribe");
+    methods_.push_back("Localization.onCountryChanged.unsubscribe");
+    methods_.push_back("Localization.onPreferredAudioLanguagesChanged.subscribe");
+    methods_.push_back("Localization.onPreferredAudioLanguagesChanged.unsubscribe");
+    methods_.push_back("Localization.onPresentationLanguageChanged.subscribe");
+    methods_.push_back("Localization.onPresentationLanguageChanged.unsubscribe");
+    methods_.push_back("Localization.unsubscribeAll");
 }
 
 void LocalizationTest::runMethod(const std::string& method)
@@ -74,6 +82,134 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  presentationLanguage: " << *r << std::endl;
         }
+    }
+    else if (method == "Localization.onCountryChanged.subscribe")
+    {
+        if (onCountryChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Localization.onCountryChanged (ID: "
+                      << onCountryChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .subscribeOnCountryChanged([](const std::string& country) {
+                         std::cout << "  [EVENT] onCountryChanged: country=" << country << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onCountryChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onCountryChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Localization.onCountryChanged.unsubscribe")
+    {
+        if (onCountryChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Localization.onCountryChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onCountryChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .unsubscribe(onCountryChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onCountryChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Localization.onPreferredAudioLanguagesChanged.subscribe")
+    {
+        if (onPreferredAudioLanguagesChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Localization.onPreferredAudioLanguagesChanged (ID: "
+                      << onPreferredAudioLanguagesChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .subscribeOnPreferredAudioLanguagesChanged([](const std::vector<std::string>& langs) {
+                         std::cout << "  [EVENT] onPreferredAudioLanguagesChanged: [";
+                         for (size_t i = 0; i < langs.size(); ++i)
+                         {
+                             if (i != 0) std::cout << ", ";
+                             std::cout << langs[i];
+                         }
+                         std::cout << "]" << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onPreferredAudioLanguagesChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onPreferredAudioLanguagesChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Localization.onPreferredAudioLanguagesChanged.unsubscribe")
+    {
+        if (onPreferredAudioLanguagesChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Localization.onPreferredAudioLanguagesChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onPreferredAudioLanguagesChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .unsubscribe(onPreferredAudioLanguagesChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onPreferredAudioLanguagesChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Localization.onPresentationLanguageChanged.subscribe")
+    {
+        if (onPresentationLanguageChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Localization.onPresentationLanguageChanged (ID: "
+                      << onPresentationLanguageChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .subscribeOnPresentationLanguageChanged([](const std::string& lang) {
+                         std::cout << "  [EVENT] onPresentationLanguageChanged: " << lang << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onPresentationLanguageChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onPresentationLanguageChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Localization.onPresentationLanguageChanged.unsubscribe")
+    {
+        if (onPresentationLanguageChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Localization.onPresentationLanguageChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onPresentationLanguageChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .unsubscribe(onPresentationLanguageChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onPresentationLanguageChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Localization.unsubscribeAll")
+    {
+        IFireboltAccessor::Instance().LocalizationInterface().unsubscribeAll();
+        onCountryChangedSubId_ = 0;
+        onPreferredAudioLanguagesChangedSubId_ = 0;
+        onPresentationLanguageChangedSubId_ = 0;
+        std::cout << "  Unsubscribed from all Localization events." << std::endl;
     }
     else
     {
