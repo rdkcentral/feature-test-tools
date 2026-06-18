@@ -8,6 +8,19 @@ Lightweight shell script to sign Bolt/RALF packages on RDK embedded devices with
 
 A pure POSIX shell tool for signing Bolt packages on resource-constrained RDK set-top boxes. Implements cosign-compatible OCI signatures using only BusyBox-compatible commands. Supports batch signing from URLs and creates properly aligned ZIP packages for erofs mounting.
 
+### Environment
+
+This script is intended to run on RDK8 platforms. It was developed to enable signing Bolt packages directly from within the RDK8 reference platform.
+
+Please note: It is intended strictly for development and testing, and must never be integrated into product builds.
+
+#### Steps
+
+- Copy this script to an RDK8 box.
+- Make the script executable: `chmod +x sign_bolt_rdk.sh`.
+- Copy the unsigned Bolt package to the RDK8 box.
+- Run `sh sign_bolt_rdk.sh package.bolt` to automatically fetch the engineering certificate and sign the Bolt package.
+
 ### Features
 
 - **No Python required** - Pure POSIX shell, works with BusyBox
