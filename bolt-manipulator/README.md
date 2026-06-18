@@ -44,6 +44,19 @@ A pure POSIX shell tool for signing Bolt packages on resource-constrained RDK se
 ./sign_bolt_rdk.sh ~/private.pem /tmp/myapp.bolt --cert ~/certificate.pem
 ```
 
+#### Quick Reference
+
+```sh
+# With explicit key and cert (original behaviour)
+sh sign_bolt_rdk.sh private.key package.bolt --cert cert.pem
+
+# With explicit key, auto-fetch cert
+sh sign_bolt_rdk.sh private.key package.bolt
+
+# Fully auto — fetch both key and cert from repo
+sh sign_bolt_rdk.sh package.bolt
+```
+
 #### Default RDK Engineering Certificates (Auto Fetch)
 
 If you do not provide a private key and/or `--cert`, the script automatically downloads development certificates from:
