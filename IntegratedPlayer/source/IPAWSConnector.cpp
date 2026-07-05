@@ -123,18 +123,33 @@ namespace ipalauncher
         Json::Value requestJson;
         if (convertRawStringToJson(request, requestJson))
         {
-            // Check for instanceId and displayId   parameter
-            if (!requestJson.isMember("instanceId") || !requestJson.isMember("displayId"))
+            /* We need to check instanceId as mandatory parameter and displayId as optional.
+            displayId is used only if there is no wayland display set in the environment.
+            If there is a wayland display set in the environment, we will use that display id. */
+            if (!requestJson.isMember("instanceId") || !requestJson["instanceId"].isString())
             {
-                response = "{\"status\": false, \"message\": \"Invalid or missing parameters 'instanceId'  or 'displayId'.\"}";
+                response = "{\"status\": false, \"message\": \"Invalid or missing parameter 'instanceId'.\"}";
                 return;
+            }
+            const char *waylandDisplayEnv = std::getenv("WAYLAND_DISPLAY");
+            if (!waylandDisplayEnv && (!requestJson.isMember("displayId") || !requestJson["displayId"].isString()))
+            {
+                response = "{\"status\": false, \"message\": \"Invalid or missing parameter 'displayId'.\"}";
+                return;
+            }
+            if (nullptr == waylandDisplayEnv)
+            {
+                std::string displayId = requestJson["displayId"].asString();
+                setenv("WAYLAND_DISPLAY", displayId.c_str(), 1);
+            }
+            else
+            {
+                std::cout << "Ignoring displayId as WAYLAND_DISPLAY is already set to: " << waylandDisplayEnv << std::endl;
             }
 
             std::string instanceId = requestJson["instanceId"].asString();
             m_playerInstance->setInstanceId(instanceId);
-            // Set WAYLAND_DISPLAY environment variable
-            std::string displayId = requestJson["displayId"].asString();
-            setenv("WAYLAND_DISPLAY", displayId.c_str(), 1);
+
             // Generate a new session ID and store it as the active session
             m_activeSessionId = generateSessionId();
             response = "{\"status\": true, \"sessionId\": \"" + m_activeSessionId + "\"}";
