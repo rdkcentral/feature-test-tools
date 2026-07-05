@@ -17,8 +17,8 @@
  * limitations under the License.
  */
 
-#ifndef _IPALAUCHER_IPAWSMETHODS_H
-#define _IPALAUCHER_IPAWSMETHODS_H
+#ifndef _IPALAUNCHER_IPAWSMETHODS_H
+#define _IPALAUNCHER_IPAWSMETHODS_H
 #include <string>
 // This class is intended to hold the method names that are available for the IPAWS RPC server.
 // It is a static class, so no instances of it should be created.
@@ -36,7 +36,8 @@ public:
     static constexpr auto IPA_METHOD_OPEN_SESSION = IPA_METHOD_BASE "openSession";
     static constexpr auto IPA_METHOD_GET_SESSION_INFO = IPA_METHOD_BASE "getSessionInfo";
     static constexpr auto IPA_METHOD_SETUP_SESSION = IPA_METHOD_BASE "setupSession";
-    static constexpr auto IPA_METHOD_PLAY_CONTENT = IPA_METHOD_BASE "playContent";
+    static constexpr auto IPA_METHOD_PLAY = IPA_METHOD_BASE "play";
+    static constexpr auto IPA_METHOD_STOP = IPA_METHOD_BASE "stop";
     static constexpr auto IPA_METHOD_CLOSE_SESSION = IPA_METHOD_BASE "closeSession";
 };
-#endif // _IPALAUCHER_IPAWSMETHODS_H
+#endif // _IPALAUNCHER_IPAWSMETHODS_H

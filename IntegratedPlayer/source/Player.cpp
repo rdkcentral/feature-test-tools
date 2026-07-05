@@ -23,6 +23,7 @@
 #include <gst/gst.h>
 #include <iostream>
 #include "AampLogManager.h"
+#include "IPAUtils.h"
 
 namespace ipalauncher
 {
@@ -34,45 +35,71 @@ namespace ipalauncher
         {
             m_instance = new IPALauncherPlayer();
             std::cout << "IPALauncherPlayer instance created." << std::endl;
-            if (m_instance->initializeAAMP())
+            if (m_instance->initializePlayer())
             {
-                std::cout << "AAMP initialized successfully." << std::endl;
+                std::cout << "Player initialized successfully." << std::endl;
                 // Initialization successful
             }
             else
             {
                 // Initialization failed, handle error
-                std::cerr << "Failed to initialize AAMP." << std::endl;
+                std::cerr << "Failed to initialize Player." << std::endl;
                 delete m_instance;
                 m_instance = nullptr;
             }
         }
         return m_instance;
     }
-    gpointer IPALauncherPlayer::aampGstPlayerStreamThread(gpointer arg)
+
+    void IPALauncherPlayer::shutdownPlayer()
     {
-        GMainLoop *mainLoop = static_cast<GMainLoop *>(arg);
-        std::cout << "GStreamer main loop started." << std::endl;
-        g_main_loop_run(mainLoop);
-        std::cout << "GStreamer main loop exited." << std::endl;
+        if (m_player)
+        {
+            delete m_player;
+            m_player = nullptr;
+        }
+        if (m_eventListener)
+        {
+            delete m_eventListener;
+            m_eventListener = nullptr;
+        }
+        if (m_eventLoop)
+        {
+            g_main_loop_quit(m_eventLoop);
+            g_main_loop_unref(m_eventLoop);
+            m_eventLoop = nullptr;
+        }
+        if (m_eventThread)
+        {
+            g_thread_join(m_eventThread);
+            m_eventThread = nullptr;
+        }
+    }
+    IPALauncherPlayer::IPALauncherPlayer()
+        : m_playerReady(false),
+          m_player(nullptr),
+          m_eventListener(nullptr)
+    {
+    }
+
+    gpointer IPALauncherPlayer::IPAPlayerStreamThread(gpointer arg)
+    {
+        // Thread implementation for AAMP GStreamer player stream
+        m_eventLoop = g_main_loop_new(nullptr, FALSE);
+        g_main_loop_run(m_eventLoop); // Blocking call to run the main loop
+        std::cout << "Exiting AAMP GStreamer player stream thread." << std::endl;
+        g_main_loop_unref(m_eventLoop);
+        m_eventLoop = nullptr;
         return nullptr;
     }
 
-    IPALauncherPlayer::IPALauncherPlayer()
-        : mPlayerReady(false),
-          mPlayerInstance(nullptr),
-          mMainLoop(nullptr),
-          mMainLoopThread(nullptr),
-          mEventListener(nullptr)
+    bool IPALauncherPlayer::initializePlayer()
     {
-        // Constructor implementation
-        mVersion = "1.0.0"; // Set the version
-    }
-
-    bool IPALauncherPlayer::initializeAAMP()
-    {
-        // Initialize the gstreamer player instance
+        // Initialize the gstreamer player instancurle
         gst_init(nullptr, nullptr);
+
+        m_eventThread = g_thread_new("IPAPlayerStreamThread", [](gpointer arg) -> gpointer
+                                    { return static_cast<IPALauncherPlayer *>(arg)->IPAPlayerStreamThread(arg); }, this);
 
         // Keep full AAMP verbosity for troubleshooting.
         AampLogManager::lockLogLevel(false);
@@ -81,68 +108,53 @@ namespace ipalauncher
 
         // Start the main loop for GStreamer
 
-        mPlayerInstance = new PlayerInstanceAAMP();
+        m_player = new PlayerInstanceAAMP();
 
-        if (mPlayerInstance)
+        if (m_player)
         {
-            mPlayerInstance->SetAppName("IPAPlayer");
+
             // string config
-            mPlayerInstance->mConfig.SetConfigValue(
+            m_player->mConfig.SetConfigValue(
                 AAMP_APPLICATION_SETTING,
                 eAAMPConfig_UserAgent,
                 std::string("IPAPlayer/1.0"));
             // Register event listener
-            mEventListener = new IPAPlayerEventListener();
-            mPlayerInstance->RegisterEvents(mEventListener);
+            m_eventListener = new IPAPlayerEventListener();
+            m_player->RegisterEvents(m_eventListener);
 
-            mMainLoop = g_main_loop_new(nullptr, FALSE);
-            mMainLoopThread = g_thread_new("AampThread", aampGstPlayerStreamThread, mMainLoop);
-
-            mPlayerReady = true;
+            m_playerReady = true;
         }
         else
         {
-            mPlayerReady = false;
+            m_playerReady = false;
         }
 
-        return mPlayerReady;
+        return m_playerReady;
     }
     IPALauncherPlayer::~IPALauncherPlayer()
     {
         // Destructor implementation
-        if (mMainLoop)
+
+        if (m_player && m_eventListener)
         {
-            g_main_loop_quit(mMainLoop);
+            m_player->UnRegisterEvents(m_eventListener);
         }
-        if (mMainLoopThread)
+        if (m_eventListener)
         {
-            g_thread_join(mMainLoopThread);
-            mMainLoopThread = nullptr;
+            delete m_eventListener;
+            m_eventListener = nullptr;
         }
-        if (mMainLoop)
+        if (m_player)
         {
-            g_main_loop_unref(mMainLoop);
-            mMainLoop = nullptr;
-        }
-        if (mPlayerInstance && mEventListener)
-        {
-            mPlayerInstance->UnRegisterEvents(mEventListener);
-        }
-        if (mEventListener)
-        {
-            delete mEventListener;
-            mEventListener = nullptr;
-        }
-        if (mPlayerInstance)
-        {
-            delete mPlayerInstance;
-            mPlayerInstance = nullptr;
+            delete m_player;
+            m_player = nullptr;
         }
     }
 
     void IPALauncherPlayer::setInstanceId(const std::string &instanceId)
     {
         // Set instance ID implementation
+        m_player->SetAppName(instanceId.c_str());
     }
 
     bool IPALauncherPlayer::isPlaying() const
@@ -154,7 +166,7 @@ namespace ipalauncher
     bool IPALauncherPlayer::play(const std::string &url)
     {
         // locator,autoplay,contentType,firstAttempt,finalAttempt,traceUUID,audioDecoderStreamSync
-        if (!mPlayerReady || !mPlayerInstance)
+        if (!m_playerReady || !m_player)
         {
             std::cerr << "Player not initialized." << std::endl;
             return false;
@@ -165,38 +177,62 @@ namespace ipalauncher
             return false;
         }
         std::cout << "Starting playback for URL: " << url << std::endl;
-        mPlayerInstance->Tune(url.c_str(), true, nullptr, true, false, nullptr, true);
+        m_player->Tune(url.c_str(), true, nullptr, true, false, nullptr, true);
 
         return true;
     }
 
     bool IPALauncherPlayer::stop()
     {
-        // Stop implementation
-        return false;
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Stopping playback." << std::endl;
+        m_player->Stop();
+        return true;
     }
 
     bool IPALauncherPlayer::pause()
     {
         // Pause implementation
-        return false;
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Pausing playback." << std::endl;
+        m_player->PauseAt(0.0);
+        return true;
     }
 
     bool IPALauncherPlayer::resume()
     {
         // Resume implementation
-        return false;
-    }
-
-    const std::string &IPALauncherPlayer::getVersion() const
-    {
-        return mVersion;
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Resuming playback." << std::endl;
+        m_player->SetRate(1);
+        return true;
     }
 
     bool IPALauncherPlayer::isPaused() const
     {
         // Check if paused implementation
-        return false;
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        return m_player->GetPlaybackRate() == 0.0;
     }
 
     // Event listener overrides
@@ -207,5 +243,6 @@ namespace ipalauncher
     }
     void IPAPlayerEventListener::Event(const AAMPEventPtr &e)
     {
+        std::cout << "Received AAMP event: " << mapAAMPEventToString(e->getType()) << std::endl;
     }
 } // Namespace ipalauncher

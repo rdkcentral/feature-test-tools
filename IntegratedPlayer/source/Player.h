@@ -17,12 +17,12 @@
  * limitations under the License.
  */
 
-#ifndef __IPLAUNCHER_PLAYER_H
-#define __IPLAUNCHER_PLAYER_H
+#ifndef _IPALAUNCHER_PLAYER_H
+#define _IPALAUNCHER_PLAYER_H
 #include <string>
 #include <main_aamp.h>
 #include <AampEventListener.h>
-#include <glib.h>
+#include <glib.h> // For GMainLoop
 
 namespace ipalauncher
 {
@@ -45,21 +45,23 @@ namespace ipalauncher
         bool pause();
         bool resume();
         bool isPaused() const;
-        const std::string &getVersion() const;
 
     private:
         static IPALauncherPlayer *m_instance;
 
         IPALauncherPlayer();
         ~IPALauncherPlayer();
-        bool initializeAAMP();
-        bool mPlayerReady;
-        PlayerInstanceAAMP *mPlayerInstance;
-        GMainLoop *mMainLoop;
-        GThread *mMainLoopThread;
-        static gpointer aampGstPlayerStreamThread(gpointer arg);
-        IPAPlayerEventListener *mEventListener;
-        std::string mVersion;
+        bool initializePlayer();
+        void shutdownPlayer();
+        bool m_playerReady;
+        PlayerInstanceAAMP *m_player;
+        IPAPlayerEventListener *m_eventListener;
+
+        // Event thread and loop
+        GMainLoop *m_eventLoop;
+        GThread *m_eventThread;
+
+        gpointer IPAPlayerStreamThread(gpointer arg);
     }; // class IPALauncherPlayer
 } // namespace ipalauncher
-#endif // __IPLAUNCHER_PLAYER_H
+#endif // _IPALAUNCHER_PLAYER_H

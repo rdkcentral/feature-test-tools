@@ -21,9 +21,17 @@
 #include "IPAWSMethods.h"
 #include <json/json.h>
 
+#include <cstdlib> // For setenv
 #include <iostream>
+#include "IPAUtils.h"
 using namespace std;
 
+// The general response format for the methods is as follows:
+// {
+//      "status" : true or false,
+//      "message" : "Detailed message about the operation"
+//     If the operation is succesful, there can be additional fields in the result object, depending on the method.
+// }
 namespace ipalauncher
 {
     int IPAWSConnector::initialize()
@@ -84,9 +92,14 @@ namespace ipalauncher
                             { handleSetupSession(request, response); });
         std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SETUP_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
 
-        status = bindMethod(IPAWSMethods::IPA_METHOD_PLAY_CONTENT, [this](const std::string &request, std::string &response)
-                            { handlePlayContent(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_PLAY_CONTENT << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        status = bindMethod(IPAWSMethods::IPA_METHOD_PLAY, [this](const std::string &request, std::string &response)
+                            { handlePlay(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_PLAY << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_STOP, [this](const std::string &request, std::string &response)
+                            { handleStop(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_STOP << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
         status = bindMethod(IPAWSMethods::IPA_METHOD_CLOSE_SESSION, [this](const std::string &request, std::string &response)
                             { handleCloseSession(request, response); });
         std::cout << "Binding " << IPAWSMethods::IPA_METHOD_CLOSE_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
@@ -95,28 +108,144 @@ namespace ipalauncher
     void IPAWSConnector::handleOpenSession(const std::string &request, std::string &response)
     {
         std::cout << "Received openSession request: " << request << std::endl;
+        // Check whether the play instance is already created or not, if not create a new instance of the player
+        if (!m_playerInstance)
+        {
+            m_playerInstance = IPALauncherPlayer::getInstance();
+        }
+        // If there is an active sesion, we won't allow opening a new session until the current session is closed.
+        if (!m_activeSessionId.empty())
+        {
+            response = "{\"status\": false, \"message\": \"A session is already active. Please close the current session before opening a new one.\"}";
+            return;
+        }
+        // Let us check whether the parameters are valid or not, if valid then we can open the session and return the response
+        Json::Value requestJson;
+        if (convertRawStringToJson(request, requestJson))
+        {
+            // Check for instanceId and displayId   parameter
+            if (!requestJson.isMember("instanceId") || !requestJson.isMember("displayId"))
+            {
+                response = "{\"status\": false, \"message\": \"Invalid or missing parameters 'instanceId'  or 'displayId'.\"}";
+                return;
+            }
 
-        response = "{\"status\": \"success\", \"message\": \"Session opened successfully.\"}";
+            std::string instanceId = requestJson["instanceId"].asString();
+            m_playerInstance->setInstanceId(instanceId);
+            // Set WAYLAND_DISPLAY environment variable
+            std::string displayId = requestJson["displayId"].asString();
+            setenv("WAYLAND_DISPLAY", displayId.c_str(), 1);
+            // Generate a new session ID and store it as the active session
+            m_activeSessionId = generateSessionId();
+            response = "{\"status\": true, \"sessionId\": \"" + m_activeSessionId + "\"}";
+        }
+        else
+        {
+            response = "{\"status\": false, \"message\": \"Failed to parse request JSON.\"}";
+        }
+    }
+
+    void IPAWSConnector::handleStop(const std::string &request, std::string &response)
+    {
+        std::cout << "Received stop request: " << request << std::endl;
+        if (m_playerInstance && !m_activeSessionId.empty())
+        {
+            m_playerInstance->stop();
+            response = "{\"status\": true, \"message\": \"Playback stopped successfully.\"}";
+        }
+        else
+        {
+            response = "{\"status\": false, \"message\": \"No active session found.\"}";
+        }
     }
     void IPAWSConnector::handleGetSessionInfo(const std::string &request, std::string &response)
     {
         std::cout << "Received getSessionInfo request: " << request << std::endl;
-        response = "{\"status\": \"success\"}";
+        if (m_activeSessionId.empty())
+        {
+            response = "{\"status\": false, \"message\": \"No active session found.\"}";
+            return;
+        }
+        response = "{\"status\": true, \"message\": \"Session info retrieved successfully.\"}";
     }
     void IPAWSConnector::handleSetupSession(const std::string &request, std::string &response)
     {
         std::cout << "Received setupSession request: " << request << std::endl;
-        response = "{\"status\": \"success\"}";
+        // For the time being , we need only only parameter, the wayland display id .
+        response = "{\"status\": true, \"message\": \"Session setup successfully.\"}";
     }
-    void IPAWSConnector::handlePlayContent(const std::string &request, std::string &response)
+    void IPAWSConnector::handlePlay(const std::string &request, std::string &response)
     {
-        std::cout << "Received playContent request: " << request << std::endl;
-        response = "{\"status\": \"success\"}";
+        std::cout << "Received play request: " << request << std::endl;
+
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"status\": false, \"message\": \"Session is not initialized.\"}";
+            return;
+        }
+
+        Json::Value requestJson;
+        if (convertRawStringToJson(request, requestJson))
+        {
+            if (!isValidSession(requestJson, m_activeSessionId))
+            {
+                response = "{\"status\": false, \"message\": \"Invalid or missing 'sessionId' parameter.\"}";
+                return;
+            }
+            if (requestJson.isMember("url") && requestJson["url"].isString())
+            {
+                std::string url = requestJson["url"].asString();
+                if (m_playerInstance->play(url))
+                {
+                    response = "{\"status\": true, \"message\": \"Content playback started.\"}";
+                }
+                else
+                {
+                    response = "{\"status\": false, \"message\": \"Failed to start content playback.\"}";
+                }
+            }
+            else
+
+            {
+                response = "{\"status\": false, \"message\": \"Invalid or missing 'url' parameter.\"}";
+            }
+        }
+        else
+        {
+            response = "{\"status\": false, \"message\": \"Failed to parse request JSON.\"}";
+        }
     }
     void IPAWSConnector::handleCloseSession(const std::string &request, std::string &response)
     {
         std::cout << "Received closeSession request: " << request << std::endl;
-        response = "{\"status\": \"success\"}";
+        if (m_playerInstance && !m_activeSessionId.empty())
+        {
+            Json::Value requestJson;
+            if (convertRawStringToJson(request, requestJson))
+            {
+                if (!isValidSession(requestJson, m_activeSessionId))
+                {
+                    response = "{\"status\": false, \"message\": \"Invalid or missing 'sessionId' parameter.\"}";
+                    return;
+                }
+                m_playerInstance->stop();
+                m_playerInstance = nullptr;
+                m_activeSessionId.clear();
+                // Reset the WAYLAND_DISPLAY environment variable
+                unsetenv("WAYLAND_DISPLAY");
+            }
+            else
+            {
+                response = "{\"status\": false, \"message\": \"Failed to parse request JSON.\"}";
+                return;
+            }
+        }
+        else
+        {
+            response = "{\"status\": false, \"message\": \"No active session found.\"}";
+            return;
+        }
+        response = "{\"status\": true, \"message\": \"Session closed successfully.\"}";
     }
     void IPAWSConnector::convertAndExecute(const Json::Value &request,
                                            Json::Value &response,
@@ -144,4 +273,5 @@ namespace ipalauncher
         }
         return true;
     }
+
 } // namespace ipalauncher

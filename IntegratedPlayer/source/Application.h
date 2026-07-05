@@ -17,8 +17,8 @@
  * limitations under the License.
  */
 
-#ifndef __IPLAUNCHER_APPLICATION_H
-#define __IPLAUNCHER_APPLICATION_H
+#ifndef _IPLAUNCHER_APPLICATION_H
+#define _IPLAUNCHER_APPLICATION_H
 #include <string>
 #include <IPAWSConnector.h>
 namespace ipalauncher
@@ -38,4 +38,4 @@ namespace ipalauncher
     };
 
 } // namespace ipalauncher
-#endif // __IPLAUNCHER_APPLICATION_H
+#endif // _IPLAUNCHER_APPLICATION_H

@@ -17,14 +17,15 @@
  * limitations under the License.
  */
 
-#ifndef _IPALAUCHER_IPAWSCONNECTOR_H
-#define _IPALAUCHER_IPAWSCONNECTOR_H
+#ifndef _IPALAUNCHER_IPAWSCONNECTOR_H
+#define _IPALAUNCHER_IPAWSCONNECTOR_H
 #include <string>
 #include <functional>
 #include <memory>
 
 #include "rpcserver/IAbstractRpcServer.h"
 #include "rpcserver/WsRpcServerBuilder.h"
+#include "Player.h"
 
 using namespace rpcserver;
 
@@ -35,7 +36,7 @@ namespace ipalauncher
     {
     public:
         IPAWSConnector(uint16_t port)
-            : m_port(port)
+            : m_port(port), m_playerInstance(nullptr)
         {
         }
         // Initialize the RPC server and start listening for incoming connections
@@ -56,7 +57,8 @@ namespace ipalauncher
         void handleOpenSession(const std::string &request, std::string &response);
         void handleGetSessionInfo(const std::string &request, std::string &response);
         void handleSetupSession(const std::string &request, std::string &response);
-        void handlePlayContent(const std::string &request, std::string &response);
+        void handlePlay(const std::string &request, std::string &response);
+        void handleStop(const std::string &request, std::string &response);
         void handleCloseSession(const std::string &request, std::string &response);
 
         // bind methods to the RPC server
@@ -70,6 +72,8 @@ namespace ipalauncher
         bool convertRawStringToJson(const std::string &rawString, Json::Value &jsonValue);
 
         std::shared_ptr<IAbstractRpcServer> m_wsRpcServer;
+        IPALauncherPlayer *m_playerInstance; // Pointer to the player instance
+        std::string m_activeSessionId;       // Store the active session ID
     };
 } // namespace ipalauncher
-#endif // _IPALAUCHER_IPAWSCONNECTOR_H
+#endif // _IPALAUNCHER_IPAWSCONNECTOR_H
