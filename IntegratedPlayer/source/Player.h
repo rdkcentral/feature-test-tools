@@ -45,6 +45,16 @@ namespace ipalauncher
         bool pause();
         bool resume();
         bool isPaused() const;
+        bool seek(double position, bool keepPaused = false);
+        bool seekToLive(bool keepPaused = false);
+        bool setRate(float rate, int overshootCorrection = 0);
+        bool setPlaybackSpeed(float speed);
+        bool pauseAt(double position);
+        bool setRateAndSeek(int rate, double position);
+        std::string getState();
+        double getPlaybackPosition();
+        double getPlaybackDuration();
+        int getPlaybackRate();
 
     private:
         static IPALauncherPlayer *m_instance;

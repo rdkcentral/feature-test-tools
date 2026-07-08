@@ -235,6 +235,137 @@ namespace ipalauncher
         return m_player->GetPlaybackRate() == 0.0;
     }
 
+    bool IPALauncherPlayer::seek(double position, bool keepPaused)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Seeking to position: " << position << " keepPaused: " << keepPaused << std::endl;
+        m_player->Seek(position, keepPaused);
+        return true;
+    }
+
+    bool IPALauncherPlayer::seekToLive(bool keepPaused)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Seeking to live edge. keepPaused: " << keepPaused << std::endl;
+        m_player->SeekToLive(keepPaused);
+        return true;
+    }
+
+    bool IPALauncherPlayer::setRate(float rate, int overshootCorrection)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting playback rate: " << rate << " overshootCorrection: " << overshootCorrection << std::endl;
+        m_player->SetRate(rate, overshootCorrection);
+        return true;
+    }
+
+    bool IPALauncherPlayer::setPlaybackSpeed(float speed)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting playback speed: " << speed << std::endl;
+        m_player->SetRate(speed);
+        return true;
+    }
+
+    bool IPALauncherPlayer::pauseAt(double position)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Scheduling pause at position: " << position << std::endl;
+        m_player->PauseAt(position);
+        return true;
+    }
+
+    bool IPALauncherPlayer::setRateAndSeek(int rate, double position)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting rate: " << rate << " and seeking to: " << position << std::endl;
+        m_player->SetRateAndSeek(rate, position);
+        return true;
+    }
+
+    std::string IPALauncherPlayer::getState()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "idle";
+        }
+        AAMPPlayerState state = m_player->GetState();
+        switch (state)
+        {
+            case eSTATE_IDLE:         return "idle";
+            case eSTATE_INITIALIZING: return "initializing";
+            case eSTATE_INITIALIZED:  return "initialized";
+            case eSTATE_PREPARING:    return "preparing";
+            case eSTATE_PREPARED:     return "prepared";
+            case eSTATE_BUFFERING:    return "buffering";
+            case eSTATE_PAUSED:       return "paused";
+            case eSTATE_SEEKING:      return "seeking";
+            case eSTATE_PLAYING:      return "playing";
+            case eSTATE_STOPPING:     return "stopping";
+            case eSTATE_STOPPED:      return "stopped";
+            case eSTATE_COMPLETE:     return "complete";
+            case eSTATE_ERROR:        return "error";
+            case eSTATE_RELEASED:     return "released";
+            case eSTATE_BLOCKED:      return "blocked";
+            default:                  return "idle";
+        }
+    }
+
+    double IPALauncherPlayer::getPlaybackPosition()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0.0;
+        }
+        return m_player->GetPlaybackPosition();
+    }
+
+    double IPALauncherPlayer::getPlaybackDuration()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return -1.0;
+        }
+        return m_player->GetPlaybackDuration();
+    }
+
+    int IPALauncherPlayer::getPlaybackRate()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0;
+        }
+        return m_player->GetPlaybackRate();
+    }
+
     // Event listener overrides
 
     const char *IPAPlayerEventListener::stringifyPlayerState(AAMPPlayerState state)

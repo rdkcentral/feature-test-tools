@@ -59,6 +59,16 @@ namespace ipalauncher
         void handleSetupSession(const std::string &request, std::string &response);
         void handlePlay(const std::string &request, std::string &response);
         void handleStop(const std::string &request, std::string &response);
+        void handleSeek(const std::string &request, std::string &response);
+        void handleSeekToLive(const std::string &request, std::string &response);
+        void handleSetRate(const std::string &request, std::string &response);
+        void handleSetPlaybackSpeed(const std::string &request, std::string &response);
+        void handlePauseAt(const std::string &request, std::string &response);
+        void handleSetRateAndSeek(const std::string &request, std::string &response);
+        void handleGetState(const std::string &request, std::string &response);
+        void handleGetPlaybackPosition(const std::string &request, std::string &response);
+        void handleGetPlaybackDuration(const std::string &request, std::string &response);
+        void handleGetPlaybackRate(const std::string &request, std::string &response);
         void handleCloseSession(const std::string &request, std::string &response);
 
         // bind methods to the RPC server

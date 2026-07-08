@@ -100,6 +100,46 @@ namespace ipalauncher
                             { handleStop(request, response); });
         std::cout << "Binding " << IPAWSMethods::IPA_METHOD_STOP << " method status: " << (status ? "Success" : "Failure") << std::endl;
 
+        status = bindMethod(IPAWSMethods::IPA_METHOD_SEEK, [this](const std::string &request, std::string &response)
+                            { handleSeek(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SEEK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_SEEK_TO_LIVE, [this](const std::string &request, std::string &response)
+                            { handleSeekToLive(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SEEK_TO_LIVE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_SET_RATE, [this](const std::string &request, std::string &response)
+                            { handleSetRate(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_RATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_SET_PLAYBACK_SPEED, [this](const std::string &request, std::string &response)
+                            { handleSetPlaybackSpeed(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_PLAYBACK_SPEED << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_PAUSE_AT, [this](const std::string &request, std::string &response)
+                            { handlePauseAt(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_PAUSE_AT << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_SET_RATE_AND_SEEK, [this](const std::string &request, std::string &response)
+                            { handleSetRateAndSeek(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_RATE_AND_SEEK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_GET_STATE, [this](const std::string &request, std::string &response)
+                            { handleGetState(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_STATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PLAYBACK_POSITION, [this](const std::string &request, std::string &response)
+                            { handleGetPlaybackPosition(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PLAYBACK_POSITION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PLAYBACK_DURATION, [this](const std::string &request, std::string &response)
+                            { handleGetPlaybackDuration(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PLAYBACK_DURATION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PLAYBACK_RATE, [this](const std::string &request, std::string &response)
+                            { handleGetPlaybackRate(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PLAYBACK_RATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
         status = bindMethod(IPAWSMethods::IPA_METHOD_CLOSE_SESSION, [this](const std::string &request, std::string &response)
                             { handleCloseSession(request, response); });
         std::cout << "Binding " << IPAWSMethods::IPA_METHOD_CLOSE_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
@@ -262,6 +302,266 @@ namespace ipalauncher
         }
         response = "{\"status\": true, \"message\": \"Session closed successfully.\"}";
     }
+
+    void IPAWSConnector::handleSeek(const std::string &request, std::string &response)
+    {
+        std::cout << "Received seek request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!requestJson.isMember("position") || !requestJson["position"].isNumeric())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        double position = requestJson["position"].asDouble();
+        bool keepPaused = requestJson.isMember("keepPaused") ? requestJson["keepPaused"].asBool() : false;
+        response = m_playerInstance->seek(position, keepPaused) ? "{\"success\": true}" : "{\"success\": false}";
+    }
+
+    void IPAWSConnector::handleSeekToLive(const std::string &request, std::string &response)
+    {
+        std::cout << "Received seekToLive request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        bool keepPaused = requestJson.isMember("keepPaused") ? requestJson["keepPaused"].asBool() : false;
+        response = m_playerInstance->seekToLive(keepPaused) ? "{\"success\": true}" : "{\"success\": false}";
+    }
+
+    void IPAWSConnector::handleSetRate(const std::string &request, std::string &response)
+    {
+        std::cout << "Received setRate request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!requestJson.isMember("rate") || !requestJson["rate"].isNumeric())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        float rate = requestJson["rate"].asFloat();
+        int overshootCorrection = requestJson.isMember("overshootCorrection") ? requestJson["overshootCorrection"].asInt() : 0;
+        response = m_playerInstance->setRate(rate, overshootCorrection) ? "{\"success\": true}" : "{\"success\": false}";
+    }
+
+    void IPAWSConnector::handleSetPlaybackSpeed(const std::string &request, std::string &response)
+    {
+        std::cout << "Received setPlaybackSpeed request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!requestJson.isMember("speed") || !requestJson["speed"].isNumeric())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        float speed = requestJson["speed"].asFloat();
+        response = m_playerInstance->setPlaybackSpeed(speed) ? "{\"success\": true}" : "{\"success\": false}";
+    }
+
+    void IPAWSConnector::handlePauseAt(const std::string &request, std::string &response)
+    {
+        std::cout << "Received pauseAt request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!requestJson.isMember("position") || !requestJson["position"].isNumeric())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        double position = requestJson["position"].asDouble();
+        response = m_playerInstance->pauseAt(position) ? "{\"success\": true}" : "{\"success\": false}";
+    }
+
+    void IPAWSConnector::handleSetRateAndSeek(const std::string &request, std::string &response)
+    {
+        std::cout << "Received setRateAndSeek request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        if (!requestJson.isMember("rate") || !requestJson["rate"].isNumeric() ||
+            !requestJson.isMember("position") || !requestJson["position"].isNumeric())
+        {
+            response = "{\"success\": false}";
+            return;
+        }
+        int rate = requestJson["rate"].asInt();
+        double position = requestJson["position"].asDouble();
+        response = m_playerInstance->setRateAndSeek(rate, position) ? "{\"success\": true}" : "{\"success\": false}";
+    }
+
+    void IPAWSConnector::handleGetState(const std::string &request, std::string &response)
+    {
+        std::cout << "Received getState request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"state\": \"idle\"}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"state\": \"idle\"}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"state\": \"idle\"}";
+            return;
+        }
+        std::string state = m_playerInstance->getState();
+        response = "{\"state\": \"" + state + "\"}";
+    }
+
+    void IPAWSConnector::handleGetPlaybackPosition(const std::string &request, std::string &response)
+    {
+        std::cout << "Received getPlaybackPosition request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"position\": 0.0}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"position\": 0.0}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"position\": 0.0}";
+            return;
+        }
+        double position = m_playerInstance->getPlaybackPosition();
+        response = "{\"position\": " + std::to_string(position) + "}";
+    }
+
+    void IPAWSConnector::handleGetPlaybackDuration(const std::string &request, std::string &response)
+    {
+        std::cout << "Received getPlaybackDuration request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"duration\": -1.0}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"duration\": -1.0}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"duration\": -1.0}";
+            return;
+        }
+        double duration = m_playerInstance->getPlaybackDuration();
+        response = "{\"duration\": " + std::to_string(duration) + "}";
+    }
+
+    void IPAWSConnector::handleGetPlaybackRate(const std::string &request, std::string &response)
+    {
+        std::cout << "Received getPlaybackRate request: " << request << std::endl;
+        if (!m_playerInstance || m_activeSessionId.empty())
+        {
+            response = "{\"rate\": 0}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson))
+        {
+            response = "{\"rate\": 0}";
+            return;
+        }
+        if (!isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"rate\": 0}";
+            return;
+        }
+        int rate = m_playerInstance->getPlaybackRate();
+        response = "{\"rate\": " + std::to_string(rate) + "}";
+    }
+
     void IPAWSConnector::convertAndExecute(const Json::Value &request,
                                            Json::Value &response,
                                            std::function<void(const std::string &, std::string &)> method)

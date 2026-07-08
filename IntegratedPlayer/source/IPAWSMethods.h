@@ -38,6 +38,16 @@ public:
     static constexpr auto IPA_METHOD_SETUP_SESSION = IPA_METHOD_BASE "setupSession";
     static constexpr auto IPA_METHOD_PLAY = IPA_METHOD_BASE "play";
     static constexpr auto IPA_METHOD_STOP = IPA_METHOD_BASE "stop";
+    static constexpr auto IPA_METHOD_SEEK = IPA_METHOD_BASE "seek";
+    static constexpr auto IPA_METHOD_SEEK_TO_LIVE = IPA_METHOD_BASE "seekToLive";
+    static constexpr auto IPA_METHOD_SET_RATE = IPA_METHOD_BASE "setRate";
+    static constexpr auto IPA_METHOD_SET_PLAYBACK_SPEED = IPA_METHOD_BASE "setPlaybackSpeed";
+    static constexpr auto IPA_METHOD_PAUSE_AT = IPA_METHOD_BASE "pauseAt";
+    static constexpr auto IPA_METHOD_SET_RATE_AND_SEEK = IPA_METHOD_BASE "setRateAndSeek";
+    static constexpr auto IPA_METHOD_GET_STATE = IPA_METHOD_BASE "getState";
+    static constexpr auto IPA_METHOD_GET_PLAYBACK_POSITION = IPA_METHOD_BASE "getPlaybackPosition";
+    static constexpr auto IPA_METHOD_GET_PLAYBACK_DURATION = IPA_METHOD_BASE "getPlaybackDuration";
+    static constexpr auto IPA_METHOD_GET_PLAYBACK_RATE = IPA_METHOD_BASE "getPlaybackRate";
     static constexpr auto IPA_METHOD_CLOSE_SESSION = IPA_METHOD_BASE "closeSession";
 };
 #endif // _IPALAUNCHER_IPAWSMETHODS_H
