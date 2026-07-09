@@ -37,17 +37,14 @@ namespace ipalauncher
 {
     int IPAWSConnector::initialize()
     {
-        // Create the RPC server instance
-        std::string registerMethodName(IPAWSMethods::IPA_METHOD_REGISTER);
-        std::string unregisterMethodName(IPAWSMethods::IPA_METHOD_UNREGISTER);
-        std::string getListenersMethodName(IPAWSMethods::IPA_METHOD_GET_LISTENERS);
-
-        // Set up the RPC server with the specified port and method names
-
+        // Use internal names for the framework's notification plumbing so that
+        // our own public subscribe/unsubscribe/getSubscriptions handlers can
+        // perform session validation before tracking subscriptions.
         WsRpcServerBuilder builder(m_port, true);
-        m_wsRpcServer = std::shared_ptr<IAbstractRpcServer>(builder.enableServerEvents(registerMethodName, unregisterMethodName, getListenersMethodName)
-                                                                .numThreads(1)
-                                                                .build());
+        m_wsRpcServer = std::shared_ptr<IAbstractRpcServer>(
+            builder.enableServerEvents("__subscribe__", "__unsubscribe__", "__getListeners__")
+                   .numThreads(1)
+                   .build());
 
         registerMethods();
         return 0;
@@ -275,6 +272,19 @@ namespace ipalauncher
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PREFERRED_LANGUAGES, [this](const std::string &request, std::string &response)
                             { handleGetPreferredLanguages(request, response); });
         std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PREFERRED_LANGUAGES << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        // Event Subscription
+        status = bindMethod(IPAWSMethods::IPA_METHOD_SUBSCRIBE, [this](const std::string &request, std::string &response)
+                            { handleSubscribe(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SUBSCRIBE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_UNSUBSCRIBE, [this](const std::string &request, std::string &response)
+                            { handleUnsubscribe(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_UNSUBSCRIBE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+
+        status = bindMethod(IPAWSMethods::IPA_METHOD_GET_SUBSCRIPTIONS, [this](const std::string &request, std::string &response)
+                            { handleGetSubscriptions(request, response); });
+        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_SUBSCRIPTIONS << " method status: " << (status ? "Success" : "Failure") << std::endl;
     }
 
     void IPAWSConnector::handleOpenSession(const std::string &request, std::string &response)
@@ -321,6 +331,10 @@ namespace ipalauncher
 
             std::string instanceId = requestJson["instanceId"].asString();
             m_playerInstance->setInstanceId(instanceId);
+
+            // Wire AAMP events → WebSocket notifications
+            m_playerInstance->setEventCallback([this](const std::string &eventName, const std::string &paramsJson)
+                                               { sendEvent(eventName, paramsJson); });
 
             // Generate a new session ID and store it as the active session
             m_activeSessionId = generateSessionId();
@@ -1354,6 +1368,111 @@ namespace ipalauncher
         response = "{\"languageList\": \"" + langList + "\"}";
     }
 
+    // ---------- Event Subscriptions ----------
+
+    void IPAWSConnector::handleSubscribe(const std::string &request, std::string &response)
+    {
+        std::cout << "Received subscribe request: " << request << std::endl;
+        if (m_activeSessionId.empty())
+        {
+            response = "{\"success\": false, \"message\": \"No active session.\"}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson) || !isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false, \"message\": \"Invalid or missing sessionId.\"}";
+            return;
+        }
+        if (!requestJson.isMember("event") || !requestJson["event"].isString())
+        {
+            response = "{\"success\": false, \"message\": \"Missing event parameter.\"}";
+            return;
+        }
+        const std::string event = requestJson["event"].asString();
+        if (event == "*")
+        {
+            // Subscribe to all known events
+            static const std::vector<std::string> allEvents = {
+                IPAWSMethods::IPA_EVENT_ON_TUNED,
+                IPAWSMethods::IPA_EVENT_ON_TUNE_FAILED,
+                IPAWSMethods::IPA_EVENT_ON_STATE_CHANGED,
+                IPAWSMethods::IPA_EVENT_ON_PROGRESS,
+                IPAWSMethods::IPA_EVENT_ON_EOS,
+                IPAWSMethods::IPA_EVENT_ON_SPEED_CHANGED,
+                IPAWSMethods::IPA_EVENT_ON_BUFFERING_CHANGED,
+                IPAWSMethods::IPA_EVENT_ON_SEEKED,
+                IPAWSMethods::IPA_EVENT_ON_BITRATE_CHANGED
+            };
+            for (const auto &e : allEvents)
+                m_subscribedEvents.insert(e);
+        }
+        else
+        {
+            m_subscribedEvents.insert(event);
+        }
+        std::cout << "Subscribed to event: " << event << std::endl;
+        response = "{\"success\": true}";
+    }
+
+    void IPAWSConnector::handleUnsubscribe(const std::string &request, std::string &response)
+    {
+        std::cout << "Received unsubscribe request: " << request << std::endl;
+        if (m_activeSessionId.empty())
+        {
+            response = "{\"success\": false, \"message\": \"No active session.\"}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson) || !isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"success\": false, \"message\": \"Invalid or missing sessionId.\"}";
+            return;
+        }
+        if (!requestJson.isMember("event") || !requestJson["event"].isString())
+        {
+            response = "{\"success\": false, \"message\": \"Missing event parameter.\"}";
+            return;
+        }
+        const std::string event = requestJson["event"].asString();
+        if (event == "*")
+        {
+            m_subscribedEvents.clear();
+        }
+        else
+        {
+            m_subscribedEvents.erase(event);
+        }
+        std::cout << "Unsubscribed from event: " << event << std::endl;
+        response = "{\"success\": true}";
+    }
+
+    void IPAWSConnector::handleGetSubscriptions(const std::string &request, std::string &response)
+    {
+        std::cout << "Received getSubscriptions request: " << request << std::endl;
+        if (m_activeSessionId.empty())
+        {
+            response = "{\"events\": []}";
+            return;
+        }
+        Json::Value requestJson;
+        if (!convertRawStringToJson(request, requestJson) || !isValidSession(requestJson, m_activeSessionId))
+        {
+            response = "{\"events\": []}";
+            return;
+        }
+        std::string arr = "[";
+        bool first = true;
+        for (const auto &e : m_subscribedEvents)
+        {
+            if (!first) arr += ",";
+            arr += "\"" + e + "\"";
+            first = false;
+        }
+        arr += "]";
+        response = "{\"events\": " + arr + "}";
+    }
+
     void IPAWSConnector::convertAndExecute(const Json::Value &request,
                                            Json::Value &response,
                                            std::function<void(const std::string &, std::string &)> method)
@@ -1381,4 +1500,35 @@ namespace ipalauncher
         return true;
     }
 
+    /*void IPAWSConnector::sendEvent(const std::string &eventName, const std::string &paramsJson)
+    {
+        if (!m_wsRpcServer || m_activeSessionId.empty())
+            return;
+
+        // Only push if the client has subscribed to this specific event
+        if (m_subscribedEvents.count(eventName) == 0)
+            return;
+
+        // Build params object, injecting the active session ID
+        Json::Value params;
+        if (convertRawStringToJson(paramsJson, params))
+            params["sessionId"] = m_activeSessionId;
+        else
+            params["sessionId"] = m_activeSessionId;
+
+        std::cout << "Sending event: " << eventName << " params: " << params.toStyledString() << std::endl;
+        // Pass params by writing into the Json::Value the framework provides
+        m_wsRpcServer->bindNotification(eventName,
+            [params](const Json::Value &out) {
+                const_cast<Json::Value &>(out) = params;
+            });
+    }*/
+    void IPAWSConnector::sendEvent(const std::string &eventName, const std::string &paramsJson)
+    {
+        if (!m_wsRpcServer || m_activeSessionId.empty()) return;
+        Json::Value params;
+        convertRawStringToJson(paramsJson, params);
+        params["sessionId"] = m_activeSessionId;
+        m_wsRpcServer->onEvent(eventName, params);  // built-in delivery to registered clients
+    }
 } // namespace ipalauncher

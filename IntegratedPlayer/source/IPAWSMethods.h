@@ -28,9 +28,9 @@ class IPAWSMethods
 {
 
 public:
-    static constexpr auto IPA_METHOD_REGISTER = IPA_METHOD_BASE "register";
-    static constexpr auto IPA_METHOD_UNREGISTER = IPA_METHOD_BASE "unregister";
-    static constexpr auto IPA_METHOD_GET_LISTENERS = IPA_METHOD_BASE "getListeners";
+    static constexpr auto IPA_METHOD_SUBSCRIBE        = IPA_METHOD_BASE "subscribe";
+    static constexpr auto IPA_METHOD_UNSUBSCRIBE      = IPA_METHOD_BASE "unsubscribe";
+    static constexpr auto IPA_METHOD_GET_SUBSCRIPTIONS = IPA_METHOD_BASE "getSubscriptions";
 
     // Player related methods
     static constexpr auto IPA_METHOD_OPEN_SESSION = IPA_METHOD_BASE "openSession";
@@ -94,5 +94,16 @@ public:
     static constexpr auto IPA_METHOD_SET_APP_NAME = IPA_METHOD_BASE "setAppName";
     static constexpr auto IPA_METHOD_SET_PREFERRED_LANGUAGES = IPA_METHOD_BASE "setPreferredLanguages";
     static constexpr auto IPA_METHOD_GET_PREFERRED_LANGUAGES = IPA_METHOD_BASE "getPreferredLanguages";
+
+    // Server-pushed notifications
+    static constexpr auto IPA_EVENT_ON_TUNED              = IPA_METHOD_BASE "onTuned";
+    static constexpr auto IPA_EVENT_ON_TUNE_FAILED        = IPA_METHOD_BASE "onTuneFailed";
+    static constexpr auto IPA_EVENT_ON_STATE_CHANGED      = IPA_METHOD_BASE "onStateChanged";
+    static constexpr auto IPA_EVENT_ON_PROGRESS           = IPA_METHOD_BASE "onProgress";
+    static constexpr auto IPA_EVENT_ON_EOS                = IPA_METHOD_BASE "onEOS";
+    static constexpr auto IPA_EVENT_ON_SPEED_CHANGED      = IPA_METHOD_BASE "onSpeedChanged";
+    static constexpr auto IPA_EVENT_ON_BUFFERING_CHANGED  = IPA_METHOD_BASE "onBufferingChanged";
+    static constexpr auto IPA_EVENT_ON_SEEKED             = IPA_METHOD_BASE "onSeeked";
+    static constexpr auto IPA_EVENT_ON_BITRATE_CHANGED    = IPA_METHOD_BASE "onBitrateChanged";
 };
 #endif // _IPALAUNCHER_IPAWSMETHODS_H

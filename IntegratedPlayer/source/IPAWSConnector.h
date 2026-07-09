@@ -22,6 +22,7 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include <unordered_set>
 
 #include "rpcserver/IAbstractRpcServer.h"
 #include "rpcserver/WsRpcServerBuilder.h"
@@ -109,6 +110,11 @@ namespace ipalauncher
         void handleGetDRM(const std::string &request, std::string &response);
         void handleSetPreferredDRM(const std::string &request, std::string &response);
 
+        // Event Subscriptions
+        void handleSubscribe(const std::string &request, std::string &response);
+        void handleUnsubscribe(const std::string &request, std::string &response);
+        void handleGetSubscriptions(const std::string &request, std::string &response);
+
         // Configuration
         void handleConfigureSession(const std::string &request, std::string &response);
         void handleGetAAMPConfig(const std::string &request, std::string &response);
@@ -126,9 +132,13 @@ namespace ipalauncher
 
         bool convertRawStringToJson(const std::string &rawString, Json::Value &jsonValue);
 
+        // Send a server-pushed notification to subscribed clients
+        void sendEvent(const std::string &eventName, const std::string &paramsJson);
+
         std::shared_ptr<IAbstractRpcServer> m_wsRpcServer;
-        IPALauncherPlayer *m_playerInstance; // Pointer to the player instance
-        std::string m_activeSessionId;       // Store the active session ID
+        IPALauncherPlayer *m_playerInstance;               // Pointer to the player instance
+        std::string m_activeSessionId;                     // Store the active session ID
+        std::unordered_set<std::string> m_subscribedEvents; // Events subscribed by the client
     };
 } // namespace ipalauncher
 #endif // _IPALAUNCHER_IPAWSCONNECTOR_H
