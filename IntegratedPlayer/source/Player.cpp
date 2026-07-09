@@ -22,6 +22,7 @@
 // Header for gst_init
 #include <gst/gst.h>
 #include <iostream>
+#include <vector>
 #include "AampLogManager.h"
 #include "IPAUtils.h"
 
@@ -364,6 +365,366 @@ namespace ipalauncher
             return 0;
         }
         return m_player->GetPlaybackRate();
+    }
+
+    bool IPALauncherPlayer::isLive()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        return m_player->IsLive();
+    }
+
+    bool IPALauncherPlayer::setVideoMute(bool muted)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting video mute: " << muted << std::endl;
+        m_player->SetVideoMute(muted);
+        return true;
+    }
+
+    bool IPALauncherPlayer::getVideoMute()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        return m_player->GetVideoMute();
+    }
+
+    bool IPALauncherPlayer::setAudioVolume(int volume)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting audio volume: " << volume << std::endl;
+        m_player->SetAudioVolume(volume);
+        return true;
+    }
+
+    int IPALauncherPlayer::getAudioVolume()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0;
+        }
+        return m_player->GetAudioVolume();
+    }
+
+    std::string IPALauncherPlayer::getAudioLanguage()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "";
+        }
+        return m_player->GetAudioLanguage();
+    }
+
+    std::string IPALauncherPlayer::getAvailableAudioTracks(bool allTracks)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "[]";
+        }
+        return m_player->GetAvailableAudioTracks(allTracks);
+    }
+
+    bool IPALauncherPlayer::setAudioTrack(int trackId)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting audio track: " << trackId << std::endl;
+        m_player->SetAudioTrack(trackId);
+        return true;
+    }
+
+    int IPALauncherPlayer::getAudioTrack()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return -1;
+        }
+        return m_player->GetAudioTrack();
+    }
+
+    std::string IPALauncherPlayer::getAudioTrackInfo()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "{}";
+        }
+        return m_player->GetAudioTrackInfo();
+    }
+
+    bool IPALauncherPlayer::setSubtitleMute(bool muted)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting subtitle mute: " << muted << std::endl;
+        m_player->SetSubtitleMute(muted);
+        return true;
+    }
+
+    std::string IPALauncherPlayer::getAvailableTextTracks(bool allTracks)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "[]";
+        }
+        return m_player->GetAvailableTextTracks(allTracks);
+    }
+
+    bool IPALauncherPlayer::setTextTrack(int trackId)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting text track: " << trackId << std::endl;
+        m_player->SetTextTrack(trackId);
+        return true;
+    }
+
+    int IPALauncherPlayer::getTextTrack()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return -1;
+        }
+        return m_player->GetTextTrack();
+    }
+
+    long IPALauncherPlayer::getVideoBitrate()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0;
+        }
+        return static_cast<long>(m_player->GetVideoBitrate());
+    }
+
+    bool IPALauncherPlayer::setVideoBitrate(long bitrate)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting video bitrate: " << bitrate << std::endl;
+        m_player->SetVideoBitrate(static_cast<BitsPerSecond>(bitrate));
+        return true;
+    }
+
+    std::vector<long> IPALauncherPlayer::getVideoBitrates()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return {};
+        }
+        std::vector<BitsPerSecond> aampBitrates = m_player->GetVideoBitrates();
+        std::vector<long> bitrates(aampBitrates.begin(), aampBitrates.end());
+        return bitrates;
+    }
+
+    bool IPALauncherPlayer::setInitialBitrate(long bitrate)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting initial bitrate: " << bitrate << std::endl;
+        m_player->SetInitialBitrate(static_cast<BitsPerSecond>(bitrate));
+        return true;
+    }
+
+    long IPALauncherPlayer::getInitialBitrate()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0;
+        }
+        return static_cast<long>(m_player->GetInitialBitrate());
+    }
+
+    bool IPALauncherPlayer::setMinimumBitrate(long bitrate)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting minimum bitrate: " << bitrate << std::endl;
+        m_player->SetMinimumBitrate(static_cast<BitsPerSecond>(bitrate));
+        return true;
+    }
+
+    long IPALauncherPlayer::getMinimumBitrate()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0;
+        }
+        return static_cast<long>(m_player->GetMinimumBitrate());
+    }
+
+    bool IPALauncherPlayer::setMaximumBitrate(long bitrate)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting maximum bitrate: " << bitrate << std::endl;
+        m_player->SetMaximumBitrate(static_cast<BitsPerSecond>(bitrate));
+        return true;
+    }
+
+    long IPALauncherPlayer::getMaximumBitrate()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return 0;
+        }
+        return static_cast<long>(m_player->GetMaximumBitrate());
+    }
+
+    bool IPALauncherPlayer::setLicenseServerURL(const std::string &url)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting license server URL: " << url << std::endl;
+        m_player->SetLicenseServerURL(url.c_str());
+        return true;
+    }
+
+    std::string IPALauncherPlayer::getDRM()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "none";
+        }
+        return m_player->GetDRM();
+    }
+
+    bool IPALauncherPlayer::setPreferredDRM(const std::string &drmType)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        DRMSystems drm = eDRM_MAX_DRMSystems;
+        if (drmType == "widevine")
+            drm = eDRM_WideVine;
+        else if (drmType == "playready")
+            drm = eDRM_PlayReady;
+        else if (drmType == "clearkey")
+            drm = eDRM_ClearKey;
+        else
+        {
+            std::cerr << "Unknown DRM type: " << drmType << std::endl;
+            return false;
+        }
+        std::cout << "Setting preferred DRM: " << drmType << std::endl;
+        m_player->SetPreferredDRM(drm);
+        return true;
+    }
+
+    bool IPALauncherPlayer::configureSession(const std::string &configJson)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Applying AAMP config: " << configJson << std::endl;
+        return m_player->InitAAMPConfig(configJson.c_str());
+    }
+
+    std::string IPALauncherPlayer::getAAMPConfig()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "{}";
+        }
+        return m_player->GetAAMPConfig();
+    }
+
+    bool IPALauncherPlayer::setAppName(const std::string &name)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting app name: " << name << std::endl;
+        m_player->SetAppName(name);
+        return true;
+    }
+
+    bool IPALauncherPlayer::setPreferredLanguages(const std::string &languageList,
+                                                   const std::string &rendition,
+                                                   const std::string &type,
+                                                   const std::string &codecList,
+                                                   const std::string &labelList)
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return false;
+        }
+        std::cout << "Setting preferred languages: " << languageList << std::endl;
+        m_player->SetPreferredLanguages(
+            languageList.empty() ? nullptr : languageList.c_str(),
+            rendition.empty()    ? nullptr : rendition.c_str(),
+            type.empty()         ? nullptr : type.c_str(),
+            codecList.empty()    ? nullptr : codecList.c_str(),
+            labelList.empty()    ? nullptr : labelList.c_str());
+        return true;
+    }
+
+    std::string IPALauncherPlayer::getPreferredLanguages()
+    {
+        if (!m_playerReady || !m_player)
+        {
+            std::cerr << "Player not initialized." << std::endl;
+            return "";
+        }
+        return m_player->GetPreferredLanguages();
     }
 
     // Event listener overrides
