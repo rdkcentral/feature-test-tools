@@ -23,7 +23,7 @@
 #include <string>
 #include <json/json.h>
 #include <ctime>
-
+#include <uuid/uuid.h>
 namespace ipalauncher
 {
 
@@ -41,9 +41,11 @@ namespace ipalauncher
     }
     inline std::string generateSessionId()
     {
-        // Let us generate a UUID based on the current timestamp. This is a simple approach and can be improved for better uniqueness.
-        std::time_t now = std::time(nullptr);
-        return "session_" + std::to_string(now);
+       uuid_t uuid;
+        uuid_generate(uuid);
+        char uuidStr[37]; // UUID string representation is 36 characters + null terminator
+        uuid_unparse(uuid, uuidStr);
+        return std::string(uuidStr);
     }
 
     inline const char *mapAAMPEventToString(AAMPEventType event)

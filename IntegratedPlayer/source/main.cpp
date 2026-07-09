@@ -56,6 +56,8 @@ int main(int argc, char *argv[])
 {
     signal(SIGTERM, [](int x)
            { handleTermSignal(x); });
+    signal(SIGINT, [](int x)
+           { handleTermSignal(x); });
 
     ipalauncher::Application application;
     application.run();

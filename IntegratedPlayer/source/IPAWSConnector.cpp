@@ -131,21 +131,15 @@ namespace ipalauncher
                 response = "{\"status\": false, \"message\": \"Invalid or missing parameter 'instanceId'.\"}";
                 return;
             }
-            const char *waylandDisplayEnv = std::getenv("WAYLAND_DISPLAY");
-            if (!waylandDisplayEnv && (!requestJson.isMember("displayId") || !requestJson["displayId"].isString()))
+
+            if (!requestJson.isMember("displayId") || !requestJson["displayId"].isString())
             {
                 response = "{\"status\": false, \"message\": \"Invalid or missing parameter 'displayId'.\"}";
                 return;
             }
-            if (nullptr == waylandDisplayEnv)
-            {
-                std::string displayId = requestJson["displayId"].asString();
-                setenv("WAYLAND_DISPLAY", displayId.c_str(), 1);
-            }
-            else
-            {
-                std::cout << "Ignoring displayId as WAYLAND_DISPLAY is already set to: " << waylandDisplayEnv << std::endl;
-            }
+
+            std::string displayId = requestJson["displayId"].asString();
+            setenv("WAYLAND_DISPLAY", displayId.c_str(), 1);
 
             std::string instanceId = requestJson["instanceId"].asString();
             m_playerInstance->setInstanceId(instanceId);

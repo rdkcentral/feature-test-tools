@@ -98,8 +98,17 @@ namespace ipalauncher
         // Initialize the gstreamer player instancurle
         gst_init(nullptr, nullptr);
 
+        if (gst_debug_is_active())
+        {
+            g_print("GStreamer Debug Engine is: ENABLED\n");
+        }
+        else
+        {
+            g_print("GStreamer Debug Engine is: DISABLED (Stripped at compilation)\n");
+        }
+
         m_eventThread = g_thread_new("IPAPlayerStreamThread", [](gpointer arg) -> gpointer
-                                    { return static_cast<IPALauncherPlayer *>(arg)->IPAPlayerStreamThread(arg); }, this);
+                                     { return static_cast<IPALauncherPlayer *>(arg)->IPAPlayerStreamThread(arg); }, this);
 
         // Keep full AAMP verbosity for troubleshooting.
         AampLogManager::lockLogLevel(false);

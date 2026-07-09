@@ -47,7 +47,6 @@ target_include_directories(IPALauncher
 
 target_link_libraries(IPALauncher
     PRIVATE
-        aamp
         ${GLIB2_LIBRARIES}
         ${GSTREAMER_LIBRARIES}
         ${GSTREAMER_BASE_LIBRARIES}
@@ -56,6 +55,7 @@ target_link_libraries(IPALauncher
         AAMP::AAMP
         WSRPCSERVER::WSRPCSERVER
         JsonCpp::JsonCpp
+        uuid
 )
 install(TARGETS IPALauncher
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
