@@ -70,13 +70,14 @@ void RDKWindowMgrCtrl::displayMenu()
         std::cout << "RDK Window Manager Menu" << std::endl;
         std::cout << "------------------------------------------------------------" << std::endl;
         std::cout << "Enter your choice: \n";
-        std::cout << "1. Get Clients\n";
-        std::cout << "2. SetVisibility\n";
-        std::cout << "3. SetFocus \n";
-        std::cout << "4. GetVisibility\n";
-        std::cout << "5. GetScreenshot\n";
-        std::cout << "6. Send Key to Client\n";
-        std::cout << "7. Send Key Event\n";
+        std::cout << "1. Create new display \n";
+        std::cout << "2. Get Clients\n";
+        std::cout << "3. SetVisibility\n";
+        std::cout << "4. SetFocus \n";
+        std::cout << "5. GetVisibility\n";
+        std::cout << "6. GetScreenshot\n";
+        std::cout << "7. Send Key to Client\n";
+        std::cout << "8. Send Key Event\n";
         std::cout << "0. Exit RDK Window Manager Menu\n";
         int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
         std::cout << "------------------------------------------------------------" << std::endl;
@@ -84,24 +85,27 @@ void RDKWindowMgrCtrl::displayMenu()
         switch (choice)
         {
         case 1:
-            handleGetClientsRequest();
+            handleCreateDisplayRequest();
             break;
         case 2:
-            handleSetVisibilityRequest();
+            handleGetClientsRequest();
             break;
         case 3:
-            handleSetFocusRequest();
+            handleSetVisibilityRequest();
             break;
         case 4:
-            handleGetVisibilityRequest();
+            handleSetFocusRequest();
             break;
         case 5:
-            handleGetScreenshotRequest();
+            handleGetVisibilityRequest();
             break;
         case 6:
-            handleKeyInjectionRequest();
+            handleGetScreenshotRequest();
             break;
         case 7:
+            handleKeyInjectionRequest();
+            break;
+        case 8:
             handleKeyRequest();
             break;
         case 0:
@@ -109,6 +113,51 @@ void RDKWindowMgrCtrl::displayMenu()
         default:
             std::cout << "Invalid choice. Please try again." << std::endl;
         }
+    }
+}
+void RDKWindowMgrCtrl::handleCreateDisplayRequest()
+{
+    assert(windowMgrCtrl != nullptr && "IRDKWindowManager interface is not initialized.");
+    std::string instanceId = retrieveInputFromUser<std::string>("Enter Client id : ", true, "mywindow");
+    std::string displayName = retrieveInputFromUser<std::string>("Enter display name to create: ", true, "wst-mywindow");
+    int extra = retrieveInputFromUser<int>("Do you want to provide additional arguments? (0 for No, 1 for Yes): ", true, 0);
+    uint32_t displayWidth = 1920;
+    uint32_t displayHeight = 1080;
+    bool virtualDisplay = false;
+    uint32_t virtualWidth = 1920;
+    uint32_t virtualHeight = 1080;
+    uint32_t ownerId = 0;
+    uint32_t groupId = 0;
+    bool topmost = false;
+    bool focus = true;
+
+    if (extra == 1)
+    {
+        displayWidth = retrieveInputFromUser<uint32_t>("Enter display width: ", true, 1920);
+        displayHeight = retrieveInputFromUser<uint32_t>("Enter display height: ", true, 1080);
+        virtualDisplay = retrieveInputFromUser<bool>("Is it a virtual display? (0 for No, 1 for Yes): ", true, false);
+        if (virtualDisplay)
+        {
+            virtualWidth = retrieveInputFromUser<uint32_t>("Enter virtual display width: ", true, 1920);
+            virtualHeight = retrieveInputFromUser<uint32_t>("Enter virtual display height: ", true, 1080);
+        }
+        ownerId = retrieveInputFromUser<uint32_t>("Enter owner ID: ", true, 0);
+        groupId = retrieveInputFromUser<uint32_t>("Enter group ID: ", true, 0);
+        topmost = retrieveInputFromUser<bool>("Should the display be topmost? (0 for No, 1 for Yes): ", true, false);
+        focus = retrieveInputFromUser<bool>("Should the display have focus? (0 for No, 1 for Yes): ", true, true);
+    }
+
+    Core::hresult result = windowMgrCtrl->CreateDisplay(instanceId, displayName,
+                                                        displayWidth, displayHeight,
+                                                        virtualDisplay, virtualWidth, virtualHeight,
+                                                        ownerId, groupId, topmost, focus);
+    if (result == Core::ERROR_NONE)
+    {
+        std::cout << "Display created successfully: " << displayName << std::endl;
+    }
+    else
+    {
+        std::cout << "Failed to create display. Error code: " << result << std::endl;
     }
 }
 // Handle each menu option with corresponding methods
