@@ -20,6 +20,7 @@
 #ifndef _IPALAUNCHER_PLAYER_H
 #define _IPALAUNCHER_PLAYER_H
 #include <string>
+#include <vector>
 #include <main_aamp.h>
 #include <AampEventListener.h>
 #include <glib.h> // For GMainLoop
@@ -45,6 +46,65 @@ namespace ipalauncher
         bool pause();
         bool resume();
         bool isPaused() const;
+        bool seek(double position, bool keepPaused = false);
+        bool seekToLive(bool keepPaused = false);
+        bool setRate(float rate, int overshootCorrection = 0);
+        bool setPlaybackSpeed(float speed);
+        bool pauseAt(double position);
+        bool setRateAndSeek(int rate, double position);
+        std::string getState();
+        double getPlaybackPosition();
+        double getPlaybackDuration();
+        int getPlaybackRate();
+
+        // Playback State
+        bool isLive();
+
+        // Video
+        bool setVideoMute(bool muted);
+        bool getVideoMute();
+
+        // Audio
+        bool setAudioVolume(int volume);
+        int getAudioVolume();
+        std::string getAudioLanguage();
+        std::string getAvailableAudioTracks(bool allTracks = false);
+        bool setAudioTrack(int trackId);
+        int getAudioTrack();
+        std::string getAudioTrackInfo();
+
+        // Subtitles
+        bool setSubtitleMute(bool muted);
+        std::string getAvailableTextTracks(bool allTracks = false);
+        bool setTextTrack(int trackId);
+        int getTextTrack();
+
+        // Bitrate / ABR
+        long getVideoBitrate();
+        bool setVideoBitrate(long bitrate);
+        std::vector<long> getVideoBitrates();
+        bool setInitialBitrate(long bitrate);
+        long getInitialBitrate();
+        bool setMinimumBitrate(long bitrate);
+        long getMinimumBitrate();
+        bool setMaximumBitrate(long bitrate);
+        long getMaximumBitrate();
+
+        // DRM
+        bool setLicenseServerURL(const std::string &url);
+        std::string getDRM();
+        bool setPreferredDRM(const std::string &drmType);
+
+        // Configuration
+        bool configureSession(const std::string &configJson);
+        std::string getAAMPConfig();
+        bool setAppName(const std::string &name);
+        bool setPreferredLanguages(const std::string &languageList,
+                                   const std::string &rendition = "",
+                                   const std::string &type = "",
+                                   const std::string &codecList = "",
+                                   const std::string &labelList = "");
+        std::string getPreferredLanguages();
 
     private:
         static IPALauncherPlayer *m_instance;
