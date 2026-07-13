@@ -1320,11 +1320,11 @@ namespace ipalauncher
             response = "{\"success\": false}";
             return;
         }
-        std::string languageList = requestJson.isMember("languageList") ? requestJson["languageList"].asString() : "";
-        std::string rendition    = requestJson.isMember("rendition")    ? requestJson["rendition"].asString()    : "";
-        std::string type         = requestJson.isMember("type")         ? requestJson["type"].asString()         : "";
-        std::string codecList    = requestJson.isMember("codecList")    ? requestJson["codecList"].asString()    : "";
-        std::string labelList    = requestJson.isMember("labelList")    ? requestJson["labelList"].asString()    : "";
+        std::string languageList = (requestJson.isMember("languageList") && requestJson["languageList"].isString()) ? requestJson["languageList"].asString() : "";
+        std::string rendition    = (requestJson.isMember("rendition")    && requestJson["rendition"].isString())    ? requestJson["rendition"].asString()    : "";
+        std::string type         = (requestJson.isMember("type")         && requestJson["type"].isString())         ? requestJson["type"].asString()         : "";
+        std::string codecList    = (requestJson.isMember("codecList")    && requestJson["codecList"].isString())    ? requestJson["codecList"].asString()    : "";
+        std::string labelList    = (requestJson.isMember("labelList")    && requestJson["labelList"].isString())    ? requestJson["labelList"].asString()    : "";
         bool ok = m_playerInstance->setPreferredLanguages(languageList, rendition, type, codecList, labelList);
         response = ok ? "{\"success\": true}" : "{\"success\": false}";
     }
