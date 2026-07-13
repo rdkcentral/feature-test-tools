@@ -505,7 +505,7 @@ namespace ipalauncher
             return;
         }
         float rate = requestJson["rate"].asFloat();
-        int overshootCorrection = requestJson.isMember("overshootCorrection") ? requestJson["overshootCorrection"].asInt() : 0;
+        int overshootCorrection = (requestJson.isMember("overshootCorrection") && requestJson["overshootCorrection"].isNumeric()) ? requestJson["overshootCorrection"].asInt() : 0;
         response = m_playerInstance->setRate(rate, overshootCorrection) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
