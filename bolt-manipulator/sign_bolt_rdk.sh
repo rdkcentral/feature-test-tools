@@ -217,6 +217,7 @@ parse_args() {
                 shift 2
                 ;;
             --chain)
+                [ -n "$2" ] && [ "$(echo "$2" | cut -c1)" != "-" ] || log_error "--chain requires a FILE argument"
                 CERT_CHAIN="$2"
                 shift 2
                 ;;
