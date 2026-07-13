@@ -91,7 +91,7 @@ json_file_get_value() {
 
 # Check dependencies
 check_dependencies() {
-    for cmd in openssl tar sha256sum base64 sed grep awk gzip od find; do
+    for cmd in openssl tar sha256sum base64 sed grep awk gzip od find dd wc cut tr tail head; do
         if ! command -v $cmd >/dev/null 2>&1; then
             log_error "Required command '$cmd' not found."
         fi
