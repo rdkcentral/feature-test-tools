@@ -27,6 +27,37 @@
 #include <iostream>
 
 using namespace Firebolt;
+using namespace Firebolt::Accessibility;
+
+namespace
+{
+
+void printClosedCaptionsSettings(const ClosedCaptionsSettings& settings)
+{
+    std::cout << "enabled=" << std::boolalpha << settings.enabled
+              << " preferredLanguages=[";
+
+    for (size_t index = 0; index < settings.preferredLanguages.size(); ++index)
+    {
+        if (index != 0)
+        {
+            std::cout << ", ";
+        }
+        std::cout << settings.preferredLanguages[index];
+    }
+
+    std::cout << "]" << std::endl;
+}
+
+void printVoiceGuidanceSettings(const VoiceGuidanceSettings& settings)
+{
+    std::cout << "enabled=" << std::boolalpha << settings.enabled
+              << " rate=" << settings.rate
+              << " navigationHints=" << settings.navigationHints
+              << std::endl;
+}
+
+} // namespace
 
 AccessibilityTest::AccessibilityTest()
     : TestModuleBase("Accessibility")
@@ -35,6 +66,16 @@ AccessibilityTest::AccessibilityTest()
     methods_.push_back("Accessibility.closedCaptionsSettings");
     methods_.push_back("Accessibility.highContrastUI");
     methods_.push_back("Accessibility.voiceGuidanceSettings");
+    methods_.push_back("Accessibility.onAudioDescriptionChanged.subscribe");
+    methods_.push_back("Accessibility.onAudioDescriptionChanged.unsubscribe");
+    methods_.push_back("Accessibility.onClosedCaptionsSettingsChanged.subscribe");
+    methods_.push_back("Accessibility.onClosedCaptionsSettingsChanged.unsubscribe");
+    methods_.push_back("Accessibility.onHighContrastUIChanged.subscribe");
+    methods_.push_back("Accessibility.onHighContrastUIChanged.unsubscribe");
+    methods_.push_back("Accessibility.onVoiceGuidanceSettingsChanged.subscribe");
+    methods_.push_back("Accessibility.onVoiceGuidanceSettingsChanged.unsubscribe");
+    methods_.push_back("Accessibility.unsubscribeAll");
+
 }
 
 void AccessibilityTest::runMethod(const std::string& method)
@@ -59,8 +100,8 @@ void AccessibilityTest::runMethod(const std::string& method)
                      .closedCaptionsSettings();
         if (checkResult(r, method))
         {
-            std::cout << "  closedCaptions enabled: "
-                      << std::boolalpha << r->enabled << std::endl;
+            std::cout << "  closedCaptions settings: ";
+            printClosedCaptionsSettings(*r);
         }
     }
     else if (method == "Accessibility.highContrastUI")
@@ -81,10 +122,174 @@ void AccessibilityTest::runMethod(const std::string& method)
                      .voiceGuidanceSettings();
         if (checkResult(r, method))
         {
-            std::cout << "  voiceGuidance enabled: "
-                      << std::boolalpha << r->enabled
-                      << "  rate: " << r->rate << std::endl;
+            std::cout << "  voiceGuidance settings: ";
+            printVoiceGuidanceSettings(*r);
         }
+    }
+    else if (method == "Accessibility.onAudioDescriptionChanged.subscribe")
+    {
+        if (onAudioDescriptionChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Accessibility.onAudioDescriptionChanged (ID: "
+                      << onAudioDescriptionChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .subscribeOnAudioDescriptionChanged([](bool enabled) {
+                         std::cout << "  [EVENT] onAudioDescriptionChanged: enabled="
+                                   << std::boolalpha << enabled << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onAudioDescriptionChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onAudioDescriptionChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Accessibility.onAudioDescriptionChanged.unsubscribe")
+    {
+        if (onAudioDescriptionChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Accessibility.onAudioDescriptionChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onAudioDescriptionChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .unsubscribe(onAudioDescriptionChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onAudioDescriptionChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Accessibility.onClosedCaptionsSettingsChanged.subscribe")
+    {
+        if (onClosedCaptionsSettingsChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Accessibility.onClosedCaptionsSettingsChanged (ID: "
+                      << onClosedCaptionsSettingsChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .subscribeOnClosedCaptionsSettingsChanged([](const ClosedCaptionsSettings& settings) {
+                         std::cout << "  [EVENT] onClosedCaptionsSettingsChanged: ";
+                         printClosedCaptionsSettings(settings);
+                     });
+        if (checkResult(r, method))
+        {
+            onClosedCaptionsSettingsChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onClosedCaptionsSettingsChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Accessibility.onClosedCaptionsSettingsChanged.unsubscribe")
+    {
+        if (onClosedCaptionsSettingsChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Accessibility.onClosedCaptionsSettingsChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onClosedCaptionsSettingsChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .unsubscribe(onClosedCaptionsSettingsChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onClosedCaptionsSettingsChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Accessibility.onHighContrastUIChanged.subscribe")
+    {
+        if (onHighContrastUIChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Accessibility.onHighContrastUIChanged (ID: "
+                      << onHighContrastUIChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .subscribeOnHighContrastUIChanged([](bool enabled) {
+                         std::cout << "  [EVENT] onHighContrastUIChanged: enabled="
+                                   << std::boolalpha << enabled << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onHighContrastUIChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onHighContrastUIChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Accessibility.onHighContrastUIChanged.unsubscribe")
+    {
+        if (onHighContrastUIChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Accessibility.onHighContrastUIChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onHighContrastUIChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .unsubscribe(onHighContrastUIChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onHighContrastUIChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Accessibility.onVoiceGuidanceSettingsChanged.subscribe")
+    {
+        if (onVoiceGuidanceSettingsChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Accessibility.onVoiceGuidanceSettingsChanged (ID: "
+                      << onVoiceGuidanceSettingsChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .subscribeOnVoiceGuidanceSettingsChanged([](const VoiceGuidanceSettings& settings) {
+                         std::cout << "  [EVENT] onVoiceGuidanceSettingsChanged: ";
+                         printVoiceGuidanceSettings(settings);
+                     });
+        if (checkResult(r, method))
+        {
+            onVoiceGuidanceSettingsChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onVoiceGuidanceSettingsChangedSubId_ << std::endl;
+        }
+    }
+    else if (method == "Accessibility.onVoiceGuidanceSettingsChanged.unsubscribe")
+    {
+        if (onVoiceGuidanceSettingsChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Accessibility.onVoiceGuidanceSettingsChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onVoiceGuidanceSettingsChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .AccessibilityInterface()
+                     .unsubscribe(onVoiceGuidanceSettingsChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onVoiceGuidanceSettingsChangedSubId_ = 0;
+        }
+    }
+    else if (method == "Accessibility.unsubscribeAll")
+    {
+        IFireboltAccessor::Instance().AccessibilityInterface().unsubscribeAll();
+        onAudioDescriptionChangedSubId_ = 0;
+        onClosedCaptionsSettingsChangedSubId_ = 0;
+        onHighContrastUIChangedSubId_ = 0;
+        onVoiceGuidanceSettingsChangedSubId_ = 0;
+        std::cout << "  Unsubscribed from all Accessibility events." << std::endl;
     }
     else
     {

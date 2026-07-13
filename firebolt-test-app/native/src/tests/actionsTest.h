@@ -19,28 +19,22 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * @author Arun Madhavan
+ *
+ * NOTE: Actions is a Firebolt 9 API. This module is excluded when the
+ *       application is started with --firebolt8.
  */
 
 #pragma once
 
 #include "../utils.h"
-#include <firebolt/texttospeech.h>
 
-class TextToSpeechTest : public TestModuleBase
+class ActionsTest : public TestModuleBase
 {
 public:
-    TextToSpeechTest();
-    ~TextToSpeechTest() override = default;
+    ActionsTest();
+    ~ActionsTest() override = default;
     void runMethod(const std::string& method) override;
 
 private:
-    Firebolt::TextToSpeech::SpeechId lastSpeechId_{ 0 };
-    Firebolt::SubscriptionId onSpeechStartSubId_{ 0 };
-    Firebolt::SubscriptionId onSpeechPauseSubId_{ 0 };
-    Firebolt::SubscriptionId onSpeechResumeSubId_{ 0 };
-    Firebolt::SubscriptionId onWillSpeakSubId_{ 0 };
-    Firebolt::SubscriptionId onSpeechCompleteSubId_{ 0 };
-    Firebolt::SubscriptionId onSpeechInterruptedSubId_{ 0 };
-    Firebolt::SubscriptionId onNetworkErrorSubId_{ 0 };
-    Firebolt::SubscriptionId onPlaybackErrorSubId_{ 0 };
+    Firebolt::SubscriptionId onIntentSubId_{ 0 };
 };

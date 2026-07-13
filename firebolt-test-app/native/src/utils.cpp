@@ -120,3 +120,67 @@ int chooseFromList(const std::vector<std::string>& options,
     int choice = getNumericOption(static_cast<int>(options.size()), quitLabel);
     return (choice == -1) ? -1 : choice - 1;
 }
+
+// ---------------------------------------------------------------------------
+// Shared console-parsing utilities
+// ---------------------------------------------------------------------------
+
+const char* agePolicyToString(Firebolt::AgePolicy agePolicy)
+{
+    switch (agePolicy)
+    {
+        case Firebolt::AgePolicy::CHILD: return "CHILD";
+        case Firebolt::AgePolicy::TEEN:  return "TEEN";
+        case Firebolt::AgePolicy::ADULT: return "ADULT";
+        default:                         return "ADULT";
+    }
+}
+
+Firebolt::AgePolicy parseAgePolicy(const std::string& s)
+{
+    const std::string normalized = toLowerCopy(s);
+    if (normalized == "child") return Firebolt::AgePolicy::CHILD;
+    if (normalized == "teen")  return Firebolt::AgePolicy::TEEN;
+    if (normalized != "adult")
+    {
+        std::cout << "  [WARN] Invalid agePolicy '" << s
+                  << "'. Expected adult/teen/child. Using "
+                  << agePolicyToString(Firebolt::AgePolicy::ADULT) << "." << std::endl;
+    }
+    return Firebolt::AgePolicy::ADULT;
+}
+
+bool parseBool(const std::string& s)
+{
+    const std::string normalized = toLowerCopy(s);
+    if (normalized == "true" || normalized == "1" || normalized == "yes") return true;
+    if (normalized == "false" || normalized == "0" || normalized == "no") return false;
+
+    std::cout << "  [WARN] Invalid boolean value '" << s
+              << "'. Expected true/false (or 1/0, yes/no). Using false." << std::endl;
+    return false;
+}
+
+double parseDoubleOrDefault(const std::string& input, double fallback, const char* fieldName)
+{
+    try
+    {
+        size_t idx = 0;
+        const double value = std::stod(input, &idx);
+        while (idx < input.size() && std::isspace(static_cast<unsigned char>(input[idx])))
+            ++idx;
+        if (idx != input.size())
+        {
+            std::cout << "  [WARN] Invalid numeric value for " << fieldName << ": '" << input
+                      << "'. Using " << fallback << "." << std::endl;
+            return fallback;
+        }
+        return value;
+    }
+    catch (...)
+    {
+        std::cout << "  [WARN] Invalid numeric value for " << fieldName << ": '" << input
+                  << "'. Using " << fallback << "." << std::endl;
+        return fallback;
+    }
+}

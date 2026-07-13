@@ -31,4 +31,9 @@ public:
     LocalizationTest();
     ~LocalizationTest() override = default;
     void runMethod(const std::string& method) override;
+
+private:
+    Firebolt::SubscriptionId onCountryChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onPreferredAudioLanguagesChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onPresentationLanguageChangedSubId_{ 0 };
 };

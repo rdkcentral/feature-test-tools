@@ -68,8 +68,7 @@ void DownloadMgrControl::displayMenu()
         std::cout << "4. Cancel Download" << std::endl;
         std::cout << "5. Check Download progress" << std::endl;
         std::cout << "6. Delete Installer file" << std::endl;
-        std::cout << "7. Get Storage Details" << std::endl;
-        std::cout << "8. Set RateLimit" << std::endl;
+        std::cout << "7. Set RateLimit" << std::endl;
         std::cout << "0. Return to Main Menu" << std::endl;
         std::cout<<"------------------------------------------------------------"<< std::endl;
 
@@ -96,9 +95,6 @@ void DownloadMgrControl::displayMenu()
             handleDeleteInstallerFileRequest();
             break;
         case 7:
-            handleGetStorageDetailsRequest();
-            break;
-        case 8:
             handleSetRateLimitRequest();
             break;
         case 0:
@@ -203,21 +199,7 @@ void DownloadMgrControl::handleDeleteInstallerFileRequest()
     }
     std::cout << "Installer file deleted successfully : " << downloadId << std::endl;
 }
-void DownloadMgrControl::handleGetStorageDetailsRequest()
-{
-    assert(dwldCtl != nullptr && "IDownloadManager interface is not initialized.");
 
-    uint32_t  quotaKb, usedKb;
-    uint32_t result = dwldCtl->GetStorageDetails(quotaKb, usedKb);
-    if (result != Core::ERROR_NONE)
-    {
-        std::cerr << "Failed to get storage details." << std::endl;
-        return;
-    }
-    std::cout << "Storage Details: Total - " << quotaKb
-              << " KB, Used - " << usedKb
-              << " KB, Free - " << (quotaKb - usedKb) << " KB." << std::endl;
-}
 void DownloadMgrControl::handleSetRateLimitRequest()
 {
     assert(dwldCtl != nullptr && "IDownloadManager interface is not initialized.");
