@@ -117,9 +117,8 @@ Notes:
 #### Output
 
 Signed packages are written to:
-```
-/tmp/signing_temp/signed_packages/<package_name>.bolt
-```
+
+    /tmp/signing_temp_<pid>/signed_packages/<package_name>.bolt
 
 ### How It Works
 
