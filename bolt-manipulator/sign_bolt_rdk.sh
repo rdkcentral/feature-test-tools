@@ -534,12 +534,14 @@ update_index() {
     CONTENT_MANIFEST_FILE="${EXTRACT_DIR}/blobs/sha256/${CONTENT_MANIFEST_HASH}"
     CONTENT_SIZE=$(wc -c < "$CONTENT_MANIFEST_FILE" | tr -d ' ')
     
-    # Build the content manifest entry - use empty annotations like ralfpack does
+    # Build the content manifest entry - preserve ref.name annotation if present
     CONTENT_MANIFEST_ENTRY="{
       \"mediaType\": \"application/vnd.oci.image.manifest.v1+json\",
       \"digest\": \"sha256:${CONTENT_MANIFEST_HASH}\",
       \"size\": ${CONTENT_SIZE},
-      \"annotations\": {}
+      \"annotations\": {
+        \"org.opencontainers.image.ref.name\": \"${CONTENT_REF_NAME}\"
+      }
     }"
     
     # Build the signature manifest entry
