@@ -212,6 +212,7 @@ parse_args() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --cert)
+                [ -n "$2" ] && [ "$(echo "$2" | cut -c1)" != "-" ] || log_error "--cert requires a FILE argument"
                 CERTIFICATE="$2"
                 shift 2
                 ;;
