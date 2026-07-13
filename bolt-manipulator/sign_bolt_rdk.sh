@@ -16,7 +16,7 @@
 # Related project: https://github.com/rdkcentral/ralfpack
 #                  https://github.com/rdkcentral/bolt-tools
 #
-# Usage: sh sign_bolt_rdk.sh <private_key.pem> <package.bolt> [--cert certificate.pem] [--chain chain.pem]
+# Usage: sh sign_bolt_rdk.sh [private_key.pem] [package.bolt] [--cert certificate.pem] [--chain chain.pem] [--batch]
 #
 
 set -e
