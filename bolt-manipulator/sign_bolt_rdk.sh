@@ -236,6 +236,7 @@ parse_args() {
                 shift 1
                 ;;
             --install-path)
+                [ -n "$2" ] && [ "$(echo "$2" | cut -c1)" != "-" ] || log_error "--install-path requires a DIR argument"
                 INSTALL_PATH="$2"
                 shift 2
                 ;;
