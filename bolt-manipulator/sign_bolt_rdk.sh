@@ -30,8 +30,8 @@ BOLT_CERTS_DEFAULT_CERT="com.rdkcentral.ralf-public.crt"
 # Example: export BOLT_PACKAGE_URLS="https://example.com/base.bolt;https://example.com/wpe.bolt"
 
 # Configuration
-TEMP_DIR="/tmp/signing_temp"
-OUTPUT_DIR="/tmp/signing_temp/signed_packages"
+TEMP_DIR="${TEMP_DIR:-/tmp/signing_temp_$$}"
+OUTPUT_DIR="${TEMP_DIR}/signed_packages"
 EXTRACT_DIR="${TEMP_DIR}/extracted"
 
 # Print usage
