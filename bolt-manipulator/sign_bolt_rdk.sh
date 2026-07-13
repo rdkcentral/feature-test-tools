@@ -797,8 +797,7 @@ repackage() {
     if [ -n "$INSTALL_PATH" ]; then
         log_info "Installing to: ${INSTALL_PATH}"
         mkdir -p "$INSTALL_PATH"
-        cp "$output_path" "${INSTALL_PATH}/"
-        if [ $? -eq 0 ]; then
+        if cp "$output_path" "${INSTALL_PATH}/"; then
             log_info "Installed: ${INSTALL_PATH}/${output_name}"
         else
             log_error "Failed to copy to install path: ${INSTALL_PATH}"
