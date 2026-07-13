@@ -284,6 +284,11 @@ namespace ipalauncher
         if (!m_playerInstance)
         {
             m_playerInstance = IPALauncherPlayer::getInstance();
+            if (m_playerInstance)
+            {
+                m_playerInstance->setEventCallback([this](const std::string &name, const std::string &params)
+                                                   { emitIPAEvent(name, params); });
+            }
         }
         // If there is an active sesion, we won't allow opening a new session until the current session is closed.
         if (!m_activeSessionId.empty())
@@ -1372,6 +1377,15 @@ namespace ipalauncher
             return false;
         }
         return true;
+    }
+
+    void IPAWSConnector::emitIPAEvent(const std::string &eventName, const std::string &paramsJson)
+    {
+    if (!m_wsRpcServer || m_activeSessionId.empty()) return;
+        Json::Value params;
+        convertRawStringToJson(paramsJson, params);
+        params["sessionId"] = m_activeSessionId;
+        m_wsRpcServer->onEvent(eventName, params);  // built-in delivery to registered clients
     }
 
 } // namespace ipalauncher

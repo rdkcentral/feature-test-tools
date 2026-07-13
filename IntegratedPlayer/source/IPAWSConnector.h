@@ -54,6 +54,7 @@ namespace ipalauncher
     private:
         uint16_t m_port;
         void registerMethods();
+        void emitIPAEvent(const std::string &eventName, const std::string &paramsJson);
         void handleOpenSession(const std::string &request, std::string &response);
         void handleGetSessionInfo(const std::string &request, std::string &response);
         void handleSetupSession(const std::string &request, std::string &response);

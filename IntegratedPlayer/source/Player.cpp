@@ -741,5 +741,17 @@ namespace ipalauncher
     void IPAPlayerEventListener::Event(const AAMPEventPtr &e)
     {
         std::cout << "Received AAMP event: " << mapAAMPEventToString(e->getType()) << std::endl;
+        if (m_eventCallback)
+        {
+            m_eventCallback(mapAAMPEventToString(e->getType()), "{}");
+        }
+    }
+
+    void IPALauncherPlayer::setEventCallback(std::function<void(const std::string &, const std::string &)> cb)
+    {
+        if (m_eventListener)
+        {
+            m_eventListener->setEventCallback(std::move(cb));
+        }
     }
 } // Namespace ipalauncher

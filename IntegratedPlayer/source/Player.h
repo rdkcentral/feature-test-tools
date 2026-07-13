@@ -20,6 +20,7 @@
 #ifndef _IPALAUNCHER_PLAYER_H
 #define _IPALAUNCHER_PLAYER_H
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 #include <main_aamp.h>
@@ -34,6 +35,9 @@ namespace ipalauncher
     public:
         const char *stringifyPlayerState(AAMPPlayerState state);
         void Event(const AAMPEventPtr &e) override;
+        void setEventCallback(std::function<void(const std::string &, const std::string &)> cb) { m_eventCallback = std::move(cb); }
+    private:
+        std::function<void(const std::string &, const std::string &)> m_eventCallback;
     };
 
     class IPALauncherPlayer
@@ -95,6 +99,9 @@ namespace ipalauncher
         bool setLicenseServerURL(const std::string &url);
         std::string getDRM();
         bool setPreferredDRM(const std::string &drmType);
+
+        // Event forwarding
+        void setEventCallback(std::function<void(const std::string &, const std::string &)> cb);
 
         // Configuration
         bool configureSession(const std::string &configJson);
