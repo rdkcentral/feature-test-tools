@@ -77,17 +77,6 @@ log_error() {
     exit 1
 }
 
-# Simple JSON value extractor using sed/grep (handles simple cases)
-# Usage: json_get_value "json_string" "key"
-json_get_value() {
-    echo "$1" | sed 's/,/\n/g' | sed 's/[{}]//g' | grep "\"$2\"" | sed 's/.*"'$2'"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",}]*\)"\{0,1\}.*/\1/' | head -n 1
-}
-
-# Extract a field from a JSON file
-# Usage: json_file_get_value "file" "key"
-json_file_get_value() {
-    cat "$1" | tr -d '\n' | sed 's/,/\n/g' | sed 's/[{}]//g' | grep "\"$2\"" | sed 's/.*"'$2'"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",}]*\)"\{0,1\}.*/\1/' | head -n 1
-}
 
 # Check dependencies
 check_dependencies() {
