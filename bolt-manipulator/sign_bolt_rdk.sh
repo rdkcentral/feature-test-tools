@@ -225,6 +225,7 @@ parse_args() {
                 shift 2
                 ;;
             --identity)
+                [ -n "$2" ] || log_error "--identity requires an ID argument"
                 IDENTITY="$2"
                 shift 2
                 ;;
