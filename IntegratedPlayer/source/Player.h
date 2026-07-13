@@ -19,6 +19,7 @@
 
 #ifndef _IPALAUNCHER_PLAYER_H
 #define _IPALAUNCHER_PLAYER_H
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <main_aamp.h>
@@ -80,15 +81,15 @@ namespace ipalauncher
         int getTextTrack();
 
         // Bitrate / ABR
-        long getVideoBitrate();
-        bool setVideoBitrate(long bitrate);
-        std::vector<long> getVideoBitrates();
-        bool setInitialBitrate(long bitrate);
-        long getInitialBitrate();
-        bool setMinimumBitrate(long bitrate);
-        long getMinimumBitrate();
-        bool setMaximumBitrate(long bitrate);
-        long getMaximumBitrate();
+        int64_t getVideoBitrate();
+        bool setVideoBitrate(int64_t bitrate);
+        std::vector<int64_t> getVideoBitrates();
+        bool setInitialBitrate(int64_t bitrate);
+        int64_t getInitialBitrate();
+        bool setMinimumBitrate(int64_t bitrate);
+        int64_t getMinimumBitrate();
+        bool setMaximumBitrate(int64_t bitrate);
+        int64_t getMaximumBitrate();
 
         // DRM
         bool setLicenseServerURL(const std::string &url);

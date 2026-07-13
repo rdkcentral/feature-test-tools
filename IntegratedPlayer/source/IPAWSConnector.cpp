@@ -453,7 +453,7 @@ namespace ipalauncher
             return;
         }
         double position = requestJson["position"].asDouble();
-        bool keepPaused = requestJson.isMember("keepPaused") ? requestJson["keepPaused"].asBool() : false;
+        bool keepPaused = (requestJson.isMember("keepPaused") && requestJson["keepPaused"].isBool()) ? requestJson["keepPaused"].asBool() : false;
         response = m_playerInstance->seek(position, keepPaused) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
@@ -806,7 +806,7 @@ namespace ipalauncher
             return;
         }
         std::string lang = m_playerInstance->getAudioLanguage();
-        response = "{\"language\": \"" + lang + "\"}";
+        response = std::string("{\"language\": ") + Json::valueToQuotedString(lang.c_str()) + "}";
     }
 
     void IPAWSConnector::handleGetAvailableAudioTracks(const std::string &request, std::string &response)
@@ -988,7 +988,7 @@ namespace ipalauncher
             response = "{\"bitrate\": 0}";
             return;
         }
-        long bitrate = m_playerInstance->getVideoBitrate();
+        int64_t bitrate = m_playerInstance->getVideoBitrate();
         response = "{\"bitrate\": " + std::to_string(bitrate) + "}";
     }
 
@@ -1011,7 +1011,7 @@ namespace ipalauncher
             response = "{\"success\": false}";
             return;
         }
-        long bitrate = static_cast<long>(requestJson["bitrate"].asInt64());
+        int64_t bitrate = requestJson["bitrate"].asInt64();
         response = m_playerInstance->setVideoBitrate(bitrate) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
@@ -1029,7 +1029,7 @@ namespace ipalauncher
             response = "{\"bitrates\": []}";
             return;
         }
-        std::vector<long> bitrates = m_playerInstance->getVideoBitrates();
+        std::vector<int64_t> bitrates = m_playerInstance->getVideoBitrates();
         std::string arr = "[";
         for (size_t i = 0; i < bitrates.size(); i++)
         {
@@ -1059,7 +1059,7 @@ namespace ipalauncher
             response = "{\"success\": false}";
             return;
         }
-        long bitrate = static_cast<long>(requestJson["bitrate"].asInt64());
+        int64_t bitrate = requestJson["bitrate"].asInt64();
         response = m_playerInstance->setInitialBitrate(bitrate) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
@@ -1077,7 +1077,7 @@ namespace ipalauncher
             response = "{\"bitrate\": 0}";
             return;
         }
-        long bitrate = m_playerInstance->getInitialBitrate();
+        int64_t bitrate = m_playerInstance->getInitialBitrate();
         response = "{\"bitrate\": " + std::to_string(bitrate) + "}";
     }
 
@@ -1100,7 +1100,7 @@ namespace ipalauncher
             response = "{\"success\": false}";
             return;
         }
-        long bitrate = static_cast<long>(requestJson["bitrate"].asInt64());
+        int64_t bitrate = requestJson["bitrate"].asInt64();
         response = m_playerInstance->setMinimumBitrate(bitrate) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
@@ -1118,7 +1118,7 @@ namespace ipalauncher
             response = "{\"bitrate\": 0}";
             return;
         }
-        long bitrate = m_playerInstance->getMinimumBitrate();
+        int64_t bitrate = m_playerInstance->getMinimumBitrate();
         response = "{\"bitrate\": " + std::to_string(bitrate) + "}";
     }
 
@@ -1141,7 +1141,7 @@ namespace ipalauncher
             response = "{\"success\": false}";
             return;
         }
-        long bitrate = static_cast<long>(requestJson["bitrate"].asInt64());
+        int64_t bitrate = requestJson["bitrate"].asInt64();
         response = m_playerInstance->setMaximumBitrate(bitrate) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
@@ -1159,7 +1159,7 @@ namespace ipalauncher
             response = "{\"bitrate\": 0}";
             return;
         }
-        long bitrate = m_playerInstance->getMaximumBitrate();
+        int64_t bitrate = m_playerInstance->getMaximumBitrate();
         response = "{\"bitrate\": " + std::to_string(bitrate) + "}";
     }
 
@@ -1167,7 +1167,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetLicenseServerURL(const std::string &request, std::string &response)
     {
-        std::cout << "Received setLicenseServerURL request: " << request << std::endl;
+        std::cout << "Received setLicenseServerURL request" << std::endl;
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1203,7 +1203,7 @@ namespace ipalauncher
             return;
         }
         std::string drm = m_playerInstance->getDRM();
-        response = "{\"drm\": \"" + drm + "\"}";
+        response = std::string("{\"drm\": ") + Json::valueToQuotedString(drm.c_str()) + "}";
     }
 
     void IPAWSConnector::handleSetPreferredDRM(const std::string &request, std::string &response)
@@ -1344,7 +1344,7 @@ namespace ipalauncher
             return;
         }
         std::string langList = m_playerInstance->getPreferredLanguages();
-        response = "{\"languageList\": \"" + langList + "\"}";
+        response = std::string("{\"languageList\": ") + Json::valueToQuotedString(langList.c_str()) + "}";
     }
 
     void IPAWSConnector::convertAndExecute(const Json::Value &request,

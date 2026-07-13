@@ -238,10 +238,6 @@ namespace ipalauncher
             std::cerr << "Player not initialized." << std::endl;
             return false;
         }
-        {
-            std::cerr << "Player not initialized." << std::endl;
-            return false;
-        }
         return m_player->GetPlaybackRate() == 0.0;
     }
 
@@ -526,17 +522,17 @@ namespace ipalauncher
         return m_player->GetTextTrack();
     }
 
-    long IPALauncherPlayer::getVideoBitrate()
+    int64_t IPALauncherPlayer::getVideoBitrate()
     {
         if (!m_playerReady || !m_player)
         {
             std::cerr << "Player not initialized." << std::endl;
             return 0;
         }
-        return static_cast<long>(m_player->GetVideoBitrate());
+        return static_cast<int64_t>(m_player->GetVideoBitrate());
     }
 
-    bool IPALauncherPlayer::setVideoBitrate(long bitrate)
+    bool IPALauncherPlayer::setVideoBitrate(int64_t bitrate)
     {
         if (!m_playerReady || !m_player)
         {
@@ -548,7 +544,7 @@ namespace ipalauncher
         return true;
     }
 
-    std::vector<long> IPALauncherPlayer::getVideoBitrates()
+    std::vector<int64_t> IPALauncherPlayer::getVideoBitrates()
     {
         if (!m_playerReady || !m_player)
         {
@@ -556,11 +552,11 @@ namespace ipalauncher
             return {};
         }
         std::vector<BitsPerSecond> aampBitrates = m_player->GetVideoBitrates();
-        std::vector<long> bitrates(aampBitrates.begin(), aampBitrates.end());
+        std::vector<int64_t> bitrates(aampBitrates.begin(), aampBitrates.end());
         return bitrates;
     }
 
-    bool IPALauncherPlayer::setInitialBitrate(long bitrate)
+    bool IPALauncherPlayer::setInitialBitrate(int64_t bitrate)
     {
         if (!m_playerReady || !m_player)
         {
@@ -572,17 +568,17 @@ namespace ipalauncher
         return true;
     }
 
-    long IPALauncherPlayer::getInitialBitrate()
+    int64_t IPALauncherPlayer::getInitialBitrate()
     {
         if (!m_playerReady || !m_player)
         {
             std::cerr << "Player not initialized." << std::endl;
             return 0;
         }
-        return static_cast<long>(m_player->GetInitialBitrate());
+        return static_cast<int64_t>(m_player->GetInitialBitrate());
     }
 
-    bool IPALauncherPlayer::setMinimumBitrate(long bitrate)
+    bool IPALauncherPlayer::setMinimumBitrate(int64_t bitrate)
     {
         if (!m_playerReady || !m_player)
         {
@@ -594,17 +590,17 @@ namespace ipalauncher
         return true;
     }
 
-    long IPALauncherPlayer::getMinimumBitrate()
+    int64_t IPALauncherPlayer::getMinimumBitrate()
     {
         if (!m_playerReady || !m_player)
         {
             std::cerr << "Player not initialized." << std::endl;
             return 0;
         }
-        return static_cast<long>(m_player->GetMinimumBitrate());
+        return static_cast<int64_t>(m_player->GetMinimumBitrate());
     }
 
-    bool IPALauncherPlayer::setMaximumBitrate(long bitrate)
+    bool IPALauncherPlayer::setMaximumBitrate(int64_t bitrate)
     {
         if (!m_playerReady || !m_player)
         {
@@ -616,14 +612,14 @@ namespace ipalauncher
         return true;
     }
 
-    long IPALauncherPlayer::getMaximumBitrate()
+    int64_t IPALauncherPlayer::getMaximumBitrate()
     {
         if (!m_playerReady || !m_player)
         {
             std::cerr << "Player not initialized." << std::endl;
             return 0;
         }
-        return static_cast<long>(m_player->GetMaximumBitrate());
+        return static_cast<int64_t>(m_player->GetMaximumBitrate());
     }
 
     bool IPALauncherPlayer::setLicenseServerURL(const std::string &url)
@@ -633,7 +629,7 @@ namespace ipalauncher
             std::cerr << "Player not initialized." << std::endl;
             return false;
         }
-        std::cout << "Setting license server URL: " << url << std::endl;
+        std::cout << "Setting license server URL" << std::endl;
         m_player->SetLicenseServerURL(url.c_str());
         return true;
     }
@@ -679,7 +675,7 @@ namespace ipalauncher
             std::cerr << "Player not initialized." << std::endl;
             return false;
         }
-        std::cout << "Applying AAMP config: " << configJson << std::endl;
+        std::cout << "Applying AAMP config." << std::endl;
         return m_player->InitAAMPConfig(configJson.c_str());
     }
 
