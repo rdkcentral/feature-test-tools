@@ -824,9 +824,8 @@ sign_package() {
     
     log_info "Processing package: $BOLT_PACKAGE"
     
-    # Reset identity for each package
-    IDENTITY=""
-    
+    # Reset computed identity for each package (do not clear --identity override)
+    PACKAGE_IDENTITY=""
     setup_directories
     extract_package
     get_content_manifest_digest
