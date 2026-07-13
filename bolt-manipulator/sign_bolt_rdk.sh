@@ -222,6 +222,7 @@ parse_args() {
                 shift 2
                 ;;
             --passphrase)
+                [ -n "$2" ] || log_error "--passphrase requires a PASS argument"
                 PASSPHRASE="$2"
                 shift 2
                 ;;
