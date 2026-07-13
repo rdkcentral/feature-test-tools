@@ -1,6 +1,6 @@
 # Bolt Manipulator
 
-Bolt Manipulator is a collection of tools designed to manipulate Bolt packages without requiring RALF-pack or bolt-tools.
+Bolt Manipulator is a collection of tools designed to manipulate Bolt packages without requiring ralfpack or bolt-tools.
 
 ## sign_bolt_rdk
 
