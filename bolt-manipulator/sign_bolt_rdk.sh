@@ -2,7 +2,7 @@
 #
 # sign_bolt_rdk.sh - Sign a Bolt/RALF package using OpenSSL (RDK embedded version)
 # No jq dependency - uses only basic shell tools
-# Outputs .bolt file (ZIP format if 'zip' available, otherwise tar)
+# Outputs .bolt file (aligned ZIP built in-shell; does not require the 'zip' tool)
 #
 # This shell script was created to evaluate and enable signing Bolt packages
 # directly on an RDK reference device.
