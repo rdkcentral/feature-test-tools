@@ -663,7 +663,7 @@ repackage() {
     
     # Collect files and sort by size (small first, large last for alignment)
     _files_list="${TEMP_DIR}/zip_files.txt"
-    find . -type f | while read _f; do
+    find . -type f | while IFS= read -r _f; do
         _sz=$(wc -c < "$_f" | tr -d ' ')
         echo "${_sz} ${_f}"
     done | sort -n | cut -d' ' -f2- > "$_files_list"
