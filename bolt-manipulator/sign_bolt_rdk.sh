@@ -22,9 +22,9 @@
 set -e
 
 # Default certificate repository (RDK engineering self-signed certs — development use only)
-BOLT_CERTS_REPO_BASE_URL="https://raw.githubusercontent.com/rdkcentral/bolt-engineering-certificates/develop/certs"
-BOLT_CERTS_DEFAULT_KEY="com.rdkcentral.ralf-private.key"
-BOLT_CERTS_DEFAULT_CERT="com.rdkcentral.ralf-public.crt"
+: "${BOLT_CERTS_REPO_BASE_URL:=https://raw.githubusercontent.com/rdkcentral/bolt-engineering-certificates/develop/certs}"
+: "${BOLT_CERTS_DEFAULT_KEY:=com.rdkcentral.ralf-private.key}"
+: "${BOLT_CERTS_DEFAULT_CERT:=com.rdkcentral.ralf-public.crt}"
 
 # BOLT_PACKAGE_URLS - semicolon-separated list of package URLs (set via environment)
 # Example: export BOLT_PACKAGE_URLS="https://example.com/base.bolt;https://example.com/wpe.bolt"
