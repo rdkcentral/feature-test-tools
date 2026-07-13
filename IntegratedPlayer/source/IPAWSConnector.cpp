@@ -476,7 +476,7 @@ namespace ipalauncher
             response = "{\"success\": false}";
             return;
         }
-        bool keepPaused = requestJson.isMember("keepPaused") ? requestJson["keepPaused"].asBool() : false;
+        bool keepPaused = (requestJson.isMember("keepPaused") && requestJson["keepPaused"].isBool()) ? requestJson["keepPaused"].asBool() : false;
         response = m_playerInstance->seekToLive(keepPaused) ? "{\"success\": true}" : "{\"success\": false}";
     }
 
