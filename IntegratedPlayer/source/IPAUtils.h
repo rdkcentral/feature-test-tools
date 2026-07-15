@@ -24,6 +24,7 @@
 #include <json/json.h>
 #include <ctime>
 #include <uuid/uuid.h>
+#include "Logger.h"
 namespace ipalauncher
 {
 
@@ -32,11 +33,11 @@ namespace ipalauncher
         if (request.isMember("sessionId") && request["sessionId"].isString())
         {
             std::string sessionId = request["sessionId"].asString();
-            std::cout << "Validating session. Active session ID: " << activeSessionId << ", Request session ID: " << sessionId << std::endl;
+            LOG(LogLevel::INFO, "Validating session. Active session ID: ", activeSessionId, ", Request session ID: ", sessionId);
             return !activeSessionId.empty() && activeSessionId == sessionId;
         }
         else
-            std::cerr << "Request has no 'sessionId' parameter or not a string. Active session ID: " << activeSessionId << std::endl;
+            LOG(LogLevel::ERROR, "Request has no 'sessionId' parameter or not a string. Active session ID: ", activeSessionId);
         return false;
     }
     inline std::string generateSessionId()

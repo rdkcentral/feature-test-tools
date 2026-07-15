@@ -21,6 +21,7 @@
 #include "IPAWSMethods.h"
 #include <json/json.h>
 #include <vector>
+#include "Logger.h"
 
 #include <cstdlib> // For setenv
 #include <iostream>
@@ -83,203 +84,203 @@ namespace ipalauncher
     {
         bool status = bindMethod(IPAWSMethods::IPA_METHOD_OPEN_SESSION, [this](const std::string &request, std::string &response)
                                  { handleOpenSession(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_OPEN_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_OPEN_SESSION, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_SESSION_INFO, [this](const std::string &request, std::string &response)
                             { handleGetSessionInfo(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_SESSION_INFO << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_SESSION_INFO, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SETUP_SESSION, [this](const std::string &request, std::string &response)
                             { handleSetupSession(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SETUP_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SETUP_SESSION, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_PLAY, [this](const std::string &request, std::string &response)
                             { handlePlay(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_PLAY << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_PLAY, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_STOP, [this](const std::string &request, std::string &response)
                             { handleStop(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_STOP << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_STOP, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SEEK, [this](const std::string &request, std::string &response)
                             { handleSeek(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SEEK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SEEK, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SEEK_TO_LIVE, [this](const std::string &request, std::string &response)
                             { handleSeekToLive(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SEEK_TO_LIVE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SEEK_TO_LIVE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_RATE, [this](const std::string &request, std::string &response)
                             { handleSetRate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_RATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_RATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_PLAYBACK_SPEED, [this](const std::string &request, std::string &response)
                             { handleSetPlaybackSpeed(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_PLAYBACK_SPEED << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_PLAYBACK_SPEED, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_PAUSE_AT, [this](const std::string &request, std::string &response)
                             { handlePauseAt(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_PAUSE_AT << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_PAUSE_AT, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_RATE_AND_SEEK, [this](const std::string &request, std::string &response)
                             { handleSetRateAndSeek(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_RATE_AND_SEEK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_RATE_AND_SEEK, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_STATE, [this](const std::string &request, std::string &response)
                             { handleGetState(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_STATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_STATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PLAYBACK_POSITION, [this](const std::string &request, std::string &response)
                             { handleGetPlaybackPosition(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PLAYBACK_POSITION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_PLAYBACK_POSITION, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PLAYBACK_DURATION, [this](const std::string &request, std::string &response)
                             { handleGetPlaybackDuration(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PLAYBACK_DURATION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_PLAYBACK_DURATION, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PLAYBACK_RATE, [this](const std::string &request, std::string &response)
                             { handleGetPlaybackRate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PLAYBACK_RATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_PLAYBACK_RATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_CLOSE_SESSION, [this](const std::string &request, std::string &response)
                             { handleCloseSession(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_CLOSE_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_CLOSE_SESSION, " method status: ", (status ? "Success" : "Failure"));
 
         // Playback State
         status = bindMethod(IPAWSMethods::IPA_METHOD_IS_LIVE, [this](const std::string &request, std::string &response)
                             { handleIsLive(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_IS_LIVE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_IS_LIVE, " method status: ", (status ? "Success" : "Failure"));
 
         // Video
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_VIDEO_MUTE, [this](const std::string &request, std::string &response)
                             { handleSetVideoMute(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_VIDEO_MUTE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_VIDEO_MUTE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_VIDEO_MUTE, [this](const std::string &request, std::string &response)
                             { handleGetVideoMute(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_VIDEO_MUTE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_VIDEO_MUTE, " method status: ", (status ? "Success" : "Failure"));
 
         // Audio
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_AUDIO_VOLUME, [this](const std::string &request, std::string &response)
                             { handleSetAudioVolume(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_AUDIO_VOLUME << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_AUDIO_VOLUME, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AUDIO_VOLUME, [this](const std::string &request, std::string &response)
                             { handleGetAudioVolume(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AUDIO_VOLUME << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AUDIO_VOLUME, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AUDIO_LANGUAGE, [this](const std::string &request, std::string &response)
                             { handleGetAudioLanguage(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AUDIO_LANGUAGE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AUDIO_LANGUAGE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AVAILABLE_AUDIO_TRACKS, [this](const std::string &request, std::string &response)
                             { handleGetAvailableAudioTracks(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AVAILABLE_AUDIO_TRACKS << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AVAILABLE_AUDIO_TRACKS, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_AUDIO_TRACK, [this](const std::string &request, std::string &response)
                             { handleSetAudioTrack(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_AUDIO_TRACK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_AUDIO_TRACK, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AUDIO_TRACK, [this](const std::string &request, std::string &response)
                             { handleGetAudioTrack(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AUDIO_TRACK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AUDIO_TRACK, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AUDIO_TRACK_INFO, [this](const std::string &request, std::string &response)
                             { handleGetAudioTrackInfo(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AUDIO_TRACK_INFO << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AUDIO_TRACK_INFO, " method status: ", (status ? "Success" : "Failure"));
 
         // Subtitles
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_SUBTITLE_MUTE, [this](const std::string &request, std::string &response)
                             { handleSetSubtitleMute(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_SUBTITLE_MUTE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_SUBTITLE_MUTE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AVAILABLE_TEXT_TRACKS, [this](const std::string &request, std::string &response)
                             { handleGetAvailableTextTracks(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AVAILABLE_TEXT_TRACKS << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AVAILABLE_TEXT_TRACKS, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_TEXT_TRACK, [this](const std::string &request, std::string &response)
                             { handleSetTextTrack(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_TEXT_TRACK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_TEXT_TRACK, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_TEXT_TRACK, [this](const std::string &request, std::string &response)
                             { handleGetTextTrack(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_TEXT_TRACK << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_TEXT_TRACK, " method status: ", (status ? "Success" : "Failure"));
 
         // Bitrate / ABR
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_VIDEO_BITRATE, [this](const std::string &request, std::string &response)
                             { handleGetVideoBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_VIDEO_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_VIDEO_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_VIDEO_BITRATE, [this](const std::string &request, std::string &response)
                             { handleSetVideoBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_VIDEO_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_VIDEO_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_VIDEO_BITRATES, [this](const std::string &request, std::string &response)
                             { handleGetVideoBitrates(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_VIDEO_BITRATES << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_VIDEO_BITRATES, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_INITIAL_BITRATE, [this](const std::string &request, std::string &response)
                             { handleSetInitialBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_INITIAL_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_INITIAL_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_INITIAL_BITRATE, [this](const std::string &request, std::string &response)
                             { handleGetInitialBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_INITIAL_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_INITIAL_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_MINIMUM_BITRATE, [this](const std::string &request, std::string &response)
                             { handleSetMinimumBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_MINIMUM_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_MINIMUM_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_MINIMUM_BITRATE, [this](const std::string &request, std::string &response)
                             { handleGetMinimumBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_MINIMUM_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_MINIMUM_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_MAXIMUM_BITRATE, [this](const std::string &request, std::string &response)
                             { handleSetMaximumBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_MAXIMUM_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_MAXIMUM_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_MAXIMUM_BITRATE, [this](const std::string &request, std::string &response)
                             { handleGetMaximumBitrate(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_MAXIMUM_BITRATE << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_MAXIMUM_BITRATE, " method status: ", (status ? "Success" : "Failure"));
 
         // DRM
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_LICENSE_SERVER_URL, [this](const std::string &request, std::string &response)
                             { handleSetLicenseServerURL(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_LICENSE_SERVER_URL << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_LICENSE_SERVER_URL, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_DRM, [this](const std::string &request, std::string &response)
                             { handleGetDRM(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_DRM << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_DRM, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_PREFERRED_DRM, [this](const std::string &request, std::string &response)
                             { handleSetPreferredDRM(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_PREFERRED_DRM << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_PREFERRED_DRM, " method status: ", (status ? "Success" : "Failure"));
 
         // Configuration
         status = bindMethod(IPAWSMethods::IPA_METHOD_CONFIGURE_SESSION, [this](const std::string &request, std::string &response)
                             { handleConfigureSession(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_CONFIGURE_SESSION << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_CONFIGURE_SESSION, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_AAMP_CONFIG, [this](const std::string &request, std::string &response)
                             { handleGetAAMPConfig(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_AAMP_CONFIG << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_AAMP_CONFIG, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_APP_NAME, [this](const std::string &request, std::string &response)
                             { handleSetAppName(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_APP_NAME << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_APP_NAME, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_SET_PREFERRED_LANGUAGES, [this](const std::string &request, std::string &response)
                             { handleSetPreferredLanguages(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_SET_PREFERRED_LANGUAGES << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_SET_PREFERRED_LANGUAGES, " method status: ", (status ? "Success" : "Failure"));
 
         status = bindMethod(IPAWSMethods::IPA_METHOD_GET_PREFERRED_LANGUAGES, [this](const std::string &request, std::string &response)
                             { handleGetPreferredLanguages(request, response); });
-        std::cout << "Binding " << IPAWSMethods::IPA_METHOD_GET_PREFERRED_LANGUAGES << " method status: " << (status ? "Success" : "Failure") << std::endl;
+        LOG(LogLevel::TRACE, "Binding ", IPAWSMethods::IPA_METHOD_GET_PREFERRED_LANGUAGES, " method status: ", (status ? "Success" : "Failure"));
     }
 
     void IPAWSConnector::handleOpenSession(const std::string &request, std::string &response)
     {
-        std::cout << "Received openSession request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received openSession request: ", request);
         // Check whether the play instance is already created or not, if not create a new instance of the player
         if (!m_playerInstance)
         {
@@ -303,7 +304,7 @@ namespace ipalauncher
                 response = "{\"status\": false, \"message\": \"Invalid or missing parameter 'instanceId'.\"}";
                 return;
             }
-            
+
             if (!requestJson.isMember("displayId") || !requestJson["displayId"].isString())
             {
                 response = "{\"status\": false, \"message\": \"Invalid or missing parameter 'displayId'.\"}";
@@ -327,7 +328,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleStop(const std::string &request, std::string &response)
     {
-        std::cout << "Received stop request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received stop request: ", request);
         if (m_playerInstance && !m_activeSessionId.empty())
         {
             m_playerInstance->stop();
@@ -340,7 +341,7 @@ namespace ipalauncher
     }
     void IPAWSConnector::handleGetSessionInfo(const std::string &request, std::string &response)
     {
-        std::cout << "Received getSessionInfo request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getSessionInfo request: ", request);
         if (m_activeSessionId.empty())
         {
             response = "{\"status\": false, \"message\": \"No active session found.\"}";
@@ -350,13 +351,13 @@ namespace ipalauncher
     }
     void IPAWSConnector::handleSetupSession(const std::string &request, std::string &response)
     {
-        std::cout << "Received setupSession request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setupSession request: ", request);
         // For the time being , we need only only parameter, the wayland display id .
         response = "{\"status\": true, \"message\": \"Session setup successfully.\"}";
     }
     void IPAWSConnector::handlePlay(const std::string &request, std::string &response)
     {
-        std::cout << "Received play request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received play request: ", request);
 
         if (!m_playerInstance || m_activeSessionId.empty())
         {
@@ -397,7 +398,7 @@ namespace ipalauncher
     }
     void IPAWSConnector::handleCloseSession(const std::string &request, std::string &response)
     {
-        std::cout << "Received closeSession request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received closeSession request: ", request);
         if (m_playerInstance && !m_activeSessionId.empty())
         {
             Json::Value requestJson;
@@ -430,7 +431,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSeek(const std::string &request, std::string &response)
     {
-        std::cout << "Received seek request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received seek request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -459,7 +460,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSeekToLive(const std::string &request, std::string &response)
     {
-        std::cout << "Received seekToLive request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received seekToLive request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -482,7 +483,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetRate(const std::string &request, std::string &response)
     {
-        std::cout << "Received setRate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setRate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -511,7 +512,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetPlaybackSpeed(const std::string &request, std::string &response)
     {
-        std::cout << "Received setPlaybackSpeed request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setPlaybackSpeed request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -539,7 +540,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handlePauseAt(const std::string &request, std::string &response)
     {
-        std::cout << "Received pauseAt request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received pauseAt request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -567,7 +568,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetRateAndSeek(const std::string &request, std::string &response)
     {
-        std::cout << "Received setRateAndSeek request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setRateAndSeek request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -597,7 +598,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetState(const std::string &request, std::string &response)
     {
-        std::cout << "Received getState request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getState request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"state\": \"idle\"}";
@@ -620,7 +621,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetPlaybackPosition(const std::string &request, std::string &response)
     {
-        std::cout << "Received getPlaybackPosition request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getPlaybackPosition request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"position\": 0.0}";
@@ -643,7 +644,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetPlaybackDuration(const std::string &request, std::string &response)
     {
-        std::cout << "Received getPlaybackDuration request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getPlaybackDuration request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"duration\": -1.0}";
@@ -666,7 +667,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetPlaybackRate(const std::string &request, std::string &response)
     {
-        std::cout << "Received getPlaybackRate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getPlaybackRate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"rate\": 0}";
@@ -691,7 +692,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleIsLive(const std::string &request, std::string &response)
     {
-        std::cout << "Received isLive request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received isLive request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"isLive\": false}";
@@ -710,7 +711,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetVideoMute(const std::string &request, std::string &response)
     {
-        std::cout << "Received setVideoMute request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setVideoMute request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -733,7 +734,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetVideoMute(const std::string &request, std::string &response)
     {
-        std::cout << "Received getVideoMute request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getVideoMute request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"muted\": false}";
@@ -752,7 +753,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetAudioVolume(const std::string &request, std::string &response)
     {
-        std::cout << "Received setAudioVolume request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setAudioVolume request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -775,7 +776,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAudioVolume(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAudioVolume request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAudioVolume request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"volume\": 0}";
@@ -793,7 +794,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAudioLanguage(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAudioLanguage request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAudioLanguage request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"language\": \"\"}";
@@ -811,7 +812,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAvailableAudioTracks(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAvailableAudioTracks request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAvailableAudioTracks request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"tracks\": []}";
@@ -830,7 +831,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetAudioTrack(const std::string &request, std::string &response)
     {
-        std::cout << "Received setAudioTrack request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setAudioTrack request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -853,7 +854,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAudioTrack(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAudioTrack request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAudioTrack request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"trackId\": -1}";
@@ -871,7 +872,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAudioTrackInfo(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAudioTrackInfo request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAudioTrackInfo request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"trackInfo\": {}}";
@@ -891,7 +892,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetSubtitleMute(const std::string &request, std::string &response)
     {
-        std::cout << "Received setSubtitleMute request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setSubtitleMute request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -914,7 +915,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAvailableTextTracks(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAvailableTextTracks request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAvailableTextTracks request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"tracks\": []}";
@@ -933,7 +934,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetTextTrack(const std::string &request, std::string &response)
     {
-        std::cout << "Received setTextTrack request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setTextTrack request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -956,7 +957,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetTextTrack(const std::string &request, std::string &response)
     {
-        std::cout << "Received getTextTrack request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getTextTrack request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"trackId\": -1}";
@@ -976,7 +977,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetVideoBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received getVideoBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getVideoBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"bitrate\": 0}";
@@ -994,7 +995,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetVideoBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received setVideoBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setVideoBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1017,7 +1018,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetVideoBitrates(const std::string &request, std::string &response)
     {
-        std::cout << "Received getVideoBitrates request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getVideoBitrates request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"bitrates\": []}";
@@ -1033,7 +1034,8 @@ namespace ipalauncher
         std::string arr = "[";
         for (size_t i = 0; i < bitrates.size(); i++)
         {
-            if (i > 0) arr += ",";
+            if (i > 0)
+                arr += ",";
             arr += std::to_string(bitrates[i]);
         }
         arr += "]";
@@ -1042,7 +1044,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetInitialBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received setInitialBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setInitialBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1065,7 +1067,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetInitialBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received getInitialBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getInitialBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"bitrate\": 0}";
@@ -1083,7 +1085,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetMinimumBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received setMinimumBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setMinimumBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1106,7 +1108,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetMinimumBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received getMinimumBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getMinimumBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"bitrate\": 0}";
@@ -1124,7 +1126,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetMaximumBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received setMaximumBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setMaximumBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1147,7 +1149,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetMaximumBitrate(const std::string &request, std::string &response)
     {
-        std::cout << "Received getMaximumBitrate request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getMaximumBitrate request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"bitrate\": 0}";
@@ -1167,7 +1169,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetLicenseServerURL(const std::string &request, std::string &response)
     {
-        std::cout << "Received setLicenseServerURL request" << std::endl;
+        LOG(LogLevel::INFO, "Received setLicenseServerURL request");
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1190,7 +1192,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetDRM(const std::string &request, std::string &response)
     {
-        std::cout << "Received getDRM request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getDRM request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"drm\": \"none\"}";
@@ -1208,7 +1210,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetPreferredDRM(const std::string &request, std::string &response)
     {
-        std::cout << "Received setPreferredDRM request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setPreferredDRM request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1233,7 +1235,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleConfigureSession(const std::string &request, std::string &response)
     {
-        std::cout << "Received configureSession request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received configureSession request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"sessionId\": \"\", \"success\": false}";
@@ -1267,7 +1269,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleGetAAMPConfig(const std::string &request, std::string &response)
     {
-        std::cout << "Received getAAMPConfig request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getAAMPConfig request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"config\": {}}";
@@ -1285,7 +1287,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetAppName(const std::string &request, std::string &response)
     {
-        std::cout << "Received setAppName request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setAppName request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1308,7 +1310,7 @@ namespace ipalauncher
 
     void IPAWSConnector::handleSetPreferredLanguages(const std::string &request, std::string &response)
     {
-        std::cout << "Received setPreferredLanguages request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received setPreferredLanguages request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"success\": false}";
@@ -1321,17 +1323,17 @@ namespace ipalauncher
             return;
         }
         std::string languageList = (requestJson.isMember("languageList") && requestJson["languageList"].isString()) ? requestJson["languageList"].asString() : "";
-        std::string rendition    = (requestJson.isMember("rendition")    && requestJson["rendition"].isString())    ? requestJson["rendition"].asString()    : "";
-        std::string type         = (requestJson.isMember("type")         && requestJson["type"].isString())         ? requestJson["type"].asString()         : "";
-        std::string codecList    = (requestJson.isMember("codecList")    && requestJson["codecList"].isString())    ? requestJson["codecList"].asString()    : "";
-        std::string labelList    = (requestJson.isMember("labelList")    && requestJson["labelList"].isString())    ? requestJson["labelList"].asString()    : "";
+        std::string rendition = (requestJson.isMember("rendition") && requestJson["rendition"].isString()) ? requestJson["rendition"].asString() : "";
+        std::string type = (requestJson.isMember("type") && requestJson["type"].isString()) ? requestJson["type"].asString() : "";
+        std::string codecList = (requestJson.isMember("codecList") && requestJson["codecList"].isString()) ? requestJson["codecList"].asString() : "";
+        std::string labelList = (requestJson.isMember("labelList") && requestJson["labelList"].isString()) ? requestJson["labelList"].asString() : "";
         bool ok = m_playerInstance->setPreferredLanguages(languageList, rendition, type, codecList, labelList);
         response = ok ? "{\"success\": true}" : "{\"success\": false}";
     }
 
     void IPAWSConnector::handleGetPreferredLanguages(const std::string &request, std::string &response)
     {
-        std::cout << "Received getPreferredLanguages request: " << request << std::endl;
+        LOG(LogLevel::INFO, "Received getPreferredLanguages request: ", request);
         if (!m_playerInstance || m_activeSessionId.empty())
         {
             response = "{\"languageList\": \"\"}";
@@ -1351,11 +1353,11 @@ namespace ipalauncher
                                            Json::Value &response,
                                            std::function<void(const std::string &, std::string &)> method)
     {
-        std::cout << "Received request: " << request.toStyledString() << std::endl;
+        LOG(LogLevel::INFO, "Received request: ", request.toStyledString());
         std::string responseStr;
         method(request.toStyledString(), responseStr);
 
-        std::cout << "Sending response: " << responseStr << std::endl;
+        LOG(LogLevel::INFO, "Sending response: ", responseStr);
         convertRawStringToJson(responseStr, response);
     }
 
@@ -1368,7 +1370,7 @@ namespace ipalauncher
         bool parsingSuccessful = reader->parse(rawString.c_str(), rawString.c_str() + rawString.size(), &jsonValue, &errors);
         if (!parsingSuccessful)
         {
-            std::cerr << "Failed to parse JSON: " << errors << std::endl;
+            LOG(LogLevel::ERROR, "Failed to parse JSON: ", errors);
             return false;
         }
         return true;
