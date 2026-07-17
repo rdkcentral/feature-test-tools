@@ -40,11 +40,15 @@ namespace ipalauncher
 
         const char *stringifyPlayerState(AAMPPlayerState state);
         void Event(const AAMPEventPtr &e) override;
-        void setEventCallback(EventCallback cb) { m_eventCallback = std::move(cb); }
+        void setEventCallback(EventCallback cb)
+        {
+            std::lock_guard<std::mutex> lock(m_eventCallbackMutex);
+            m_eventCallback = std::move(cb);
+        }
 
     private:
+        std::mutex m_eventCallbackMutex;
         EventCallback m_eventCallback;
-    };
 
     class IPALauncherPlayer
     {
