@@ -20,16 +20,17 @@
 #include "Application.h"
 #include <cstdlib> //For getEnv
 #include <iostream>
+#include "Logger.h"
 
 namespace ipalauncher
 {
 
     int Application::run()
     {
-        std::cout << "Starting " << title() << std::endl;
+        LOG(LogLevel::INFO, "Starting ", title());
         if (m_ipawsConnector->initialize() != 0)
         {
-            std::cerr << "Failed to initialize IPAWSConnector" << std::endl;
+            LOG(LogLevel::ERROR, "Failed to initialize IPAWSConnector");
             return -1;
         }
         m_ipawsConnector->start();

@@ -25,7 +25,7 @@
 #include <vector>
 #include "AampLogManager.h"
 #include "IPAUtils.h"
-
+#include "Logger.h"
 namespace ipalauncher
 {
     IPALauncherPlayer *IPALauncherPlayer::m_instance = nullptr;
@@ -35,16 +35,16 @@ namespace ipalauncher
         if (!m_instance)
         {
             m_instance = new IPALauncherPlayer();
-            std::cout << "IPALauncherPlayer instance created." << std::endl;
+            LOG(LogLevel::INFO, "IPALauncherPlayer instance created.");
             if (m_instance->initializePlayer())
             {
-                std::cout << "Player initialized successfully." << std::endl;
+                LOG(LogLevel::INFO, "Player initialized successfully.");
                 // Initialization successful
             }
             else
             {
                 // Initialization failed, handle error
-                std::cerr << "Failed to initialize Player." << std::endl;
+                LOG(LogLevel::ERROR, "Failed to initialize Player.");
                 delete m_instance;
                 m_instance = nullptr;
             }
@@ -88,7 +88,7 @@ namespace ipalauncher
         // Thread implementation for AAMP GStreamer player stream
         m_eventLoop = g_main_loop_new(nullptr, FALSE);
         g_main_loop_run(m_eventLoop); // Blocking call to run the main loop
-        std::cout << "Exiting AAMP GStreamer player stream thread." << std::endl;
+        LOG(LogLevel::INFO, "Exiting AAMP GStreamer player stream thread.");
         g_main_loop_unref(m_eventLoop);
         m_eventLoop = nullptr;
         return nullptr;
@@ -178,15 +178,15 @@ namespace ipalauncher
         // locator,autoplay,contentType,firstAttempt,finalAttempt,traceUUID,audioDecoderStreamSync
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
         if (url.empty())
         {
-            std::cerr << "Invalid URL." << std::endl;
+            LOG(LogLevel::ERROR, "Invalid URL.");
             return false;
         }
-        std::cout << "Starting playback for URL: " << url << std::endl;
+        LOG(LogLevel::INFO, "Starting playback for URL: ", url);
         m_player->Tune(url.c_str(), true, nullptr, true, false, nullptr, true);
 
         return true;
@@ -196,10 +196,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Stopping playback." << std::endl;
+        LOG(LogLevel::INFO, "Stopping playback.");
         m_player->Stop();
         return true;
     }
@@ -209,10 +209,10 @@ namespace ipalauncher
         // Pause implementation
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Pausing playback." << std::endl;
+        LOG(LogLevel::INFO, "Pausing playback.");
         m_player->PauseAt(0.0);
         return true;
     }
@@ -222,10 +222,10 @@ namespace ipalauncher
         // Resume implementation
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Resuming playback." << std::endl;
+        LOG(LogLevel::INFO, "Resuming playback.");
         m_player->SetRate(1);
         return true;
     }
@@ -235,7 +235,7 @@ namespace ipalauncher
         // Check if paused implementation
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
         return m_player->GetPlaybackRate() == 0.0;
@@ -245,10 +245,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Seeking to position: " << position << " keepPaused: " << keepPaused << std::endl;
+        LOG(LogLevel::INFO, "Seeking to position: ", position, " keepPaused: ", keepPaused);
         m_player->Seek(position, keepPaused);
         return true;
     }
@@ -257,10 +257,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Seeking to live edge. keepPaused: " << keepPaused << std::endl;
+        LOG(LogLevel::INFO, "Seeking to live edge. keepPaused: ", keepPaused);
         m_player->SeekToLive(keepPaused);
         return true;
     }
@@ -269,10 +269,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting playback rate: " << rate << " overshootCorrection: " << overshootCorrection << std::endl;
+        LOG(LogLevel::INFO, "Setting playback rate: ", rate, " overshootCorrection: ", overshootCorrection);
         m_player->SetRate(rate, overshootCorrection);
         return true;
     }
@@ -281,10 +281,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting playback speed: " << speed << std::endl;
+        LOG(LogLevel::INFO, "Setting playback speed: ", speed);
         m_player->SetRate(speed);
         return true;
     }
@@ -293,10 +293,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Scheduling pause at position: " << position << std::endl;
+        LOG(LogLevel::INFO, "Scheduling pause at position: ", position);
         m_player->PauseAt(position);
         return true;
     }
@@ -305,10 +305,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting rate: " << rate << " and seeking to: " << position << std::endl;
+        LOG(LogLevel::INFO, "Setting rate: ", rate, " and seeking to: ", position);
         m_player->SetRateAndSeek(rate, position);
         return true;
     }
@@ -317,7 +317,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "idle";
         }
         AAMPPlayerState state = m_player->GetState();
@@ -346,7 +346,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0.0;
         }
         return m_player->GetPlaybackPosition();
@@ -356,7 +356,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return -1.0;
         }
         return m_player->GetPlaybackDuration();
@@ -366,7 +366,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0;
         }
         return m_player->GetPlaybackRate();
@@ -376,7 +376,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
         return m_player->IsLive();
@@ -386,10 +386,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting video mute: " << muted << std::endl;
+        LOG(LogLevel::INFO, "Setting video mute: ", muted);
         m_player->SetVideoMute(muted);
         return true;
     }
@@ -398,7 +398,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
         return m_player->GetVideoMute();
@@ -408,10 +408,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting audio volume: " << volume << std::endl;
+        LOG(LogLevel::INFO, "Setting audio volume: ", volume);
         m_player->SetAudioVolume(volume);
         return true;
     }
@@ -420,7 +420,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0;
         }
         return m_player->GetAudioVolume();
@@ -430,7 +430,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "";
         }
         return m_player->GetAudioLanguage();
@@ -440,7 +440,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "[]";
         }
         return m_player->GetAvailableAudioTracks(allTracks);
@@ -450,10 +450,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting audio track: " << trackId << std::endl;
+        LOG(LogLevel::INFO, "Setting audio track: ", trackId);
         m_player->SetAudioTrack(trackId);
         return true;
     }
@@ -462,7 +462,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return -1;
         }
         return m_player->GetAudioTrack();
@@ -472,7 +472,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "{}";
         }
         return m_player->GetAudioTrackInfo();
@@ -482,10 +482,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting subtitle mute: " << muted << std::endl;
+        LOG(LogLevel::INFO, "Setting subtitle mute: ", muted);
         m_player->SetSubtitleMute(muted);
         return true;
     }
@@ -494,7 +494,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "[]";
         }
         return m_player->GetAvailableTextTracks(allTracks);
@@ -504,10 +504,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting text track: " << trackId << std::endl;
+        LOG(LogLevel::INFO, "Setting text track: ", trackId);
         m_player->SetTextTrack(trackId);
         return true;
     }
@@ -516,7 +516,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return -1;
         }
         return m_player->GetTextTrack();
@@ -526,7 +526,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0;
         }
         return static_cast<int64_t>(m_player->GetVideoBitrate());
@@ -536,10 +536,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting video bitrate: " << bitrate << std::endl;
+        LOG(LogLevel::INFO, "Setting video bitrate: ", bitrate);
         m_player->SetVideoBitrate(static_cast<BitsPerSecond>(bitrate));
         return true;
     }
@@ -548,7 +548,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return {};
         }
         std::vector<BitsPerSecond> aampBitrates = m_player->GetVideoBitrates();
@@ -560,10 +560,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting initial bitrate: " << bitrate << std::endl;
+        LOG(LogLevel::INFO, "Setting initial bitrate: ", bitrate);
         m_player->SetInitialBitrate(static_cast<BitsPerSecond>(bitrate));
         return true;
     }
@@ -572,7 +572,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0;
         }
         return static_cast<int64_t>(m_player->GetInitialBitrate());
@@ -582,10 +582,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting minimum bitrate: " << bitrate << std::endl;
+        LOG(LogLevel::INFO, "Setting minimum bitrate: ", bitrate);
         m_player->SetMinimumBitrate(static_cast<BitsPerSecond>(bitrate));
         return true;
     }
@@ -594,7 +594,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0;
         }
         return static_cast<int64_t>(m_player->GetMinimumBitrate());
@@ -604,10 +604,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting maximum bitrate: " << bitrate << std::endl;
+        LOG(LogLevel::INFO, "Setting maximum bitrate: ", bitrate);
         m_player->SetMaximumBitrate(static_cast<BitsPerSecond>(bitrate));
         return true;
     }
@@ -616,7 +616,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return 0;
         }
         return static_cast<int64_t>(m_player->GetMaximumBitrate());
@@ -626,10 +626,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting license server URL" << std::endl;
+        LOG(LogLevel::INFO, "Setting license server URL");
         m_player->SetLicenseServerURL(url.c_str());
         return true;
     }
@@ -638,7 +638,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "none";
         }
         return m_player->GetDRM();
@@ -648,7 +648,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
         DRMSystems drm = eDRM_MAX_DRMSystems;
@@ -660,10 +660,10 @@ namespace ipalauncher
             drm = eDRM_ClearKey;
         else
         {
-            std::cerr << "Unknown DRM type: " << drmType << std::endl;
+            LOG(LogLevel::ERROR, "Unknown DRM type: ", drmType);
             return false;
         }
-        std::cout << "Setting preferred DRM: " << drmType << std::endl;
+        LOG(LogLevel::INFO, "Setting preferred DRM: ", drmType);
         m_player->SetPreferredDRM(drm);
         return true;
     }
@@ -672,10 +672,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Applying AAMP config." << std::endl;
+        LOG(LogLevel::INFO, "Applying AAMP config.");
         return m_player->InitAAMPConfig(configJson.c_str());
     }
 
@@ -683,7 +683,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "{}";
         }
         return m_player->GetAAMPConfig();
@@ -693,10 +693,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting app name: " << name << std::endl;
+        LOG(LogLevel::INFO, "Setting app name: ", name);
         m_player->SetAppName(name);
         return true;
     }
@@ -709,10 +709,10 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return false;
         }
-        std::cout << "Setting preferred languages: " << languageList << std::endl;
+        LOG(LogLevel::INFO, "Setting preferred languages: ", languageList);
         m_player->SetPreferredLanguages(
             languageList.empty() ? nullptr : languageList.c_str(),
             rendition.empty()    ? nullptr : rendition.c_str(),
@@ -726,7 +726,7 @@ namespace ipalauncher
     {
         if (!m_playerReady || !m_player)
         {
-            std::cerr << "Player not initialized." << std::endl;
+            LOG(LogLevel::ERROR, "Player not initialized.");
             return "";
         }
         return m_player->GetPreferredLanguages();
@@ -740,6 +740,6 @@ namespace ipalauncher
     }
     void IPAPlayerEventListener::Event(const AAMPEventPtr &e)
     {
-        std::cout << "Received AAMP event: " << mapAAMPEventToString(e->getType()) << std::endl;
+        LOG(LogLevel::INFO, "Received AAMP event: ", mapAAMPEventToString(e->getType()));
     }
 } // Namespace ipalauncher

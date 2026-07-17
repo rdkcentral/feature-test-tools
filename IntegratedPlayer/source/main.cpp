@@ -23,6 +23,7 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#include "Logger.h"
 
 std::mutex m_lock;
 std::condition_variable m_act_cv;
@@ -30,7 +31,7 @@ bool m_isActive = true;
 
 void waitForTermSignal()
 {
-    std::cout << "Waiting for term signal.. " << std::endl;
+    ipalauncher::LOG(ipalauncher::LogLevel::INFO, "Waiting for term signal.. ");
     std::thread termThread([&]()
                            {
     while (m_isActive)
@@ -39,13 +40,13 @@ void waitForTermSignal()
         m_act_cv.wait(ulock);
     }
     
-    std::cout<<"[SmartMonitor::waitForTermSignal] Received term signal." << std::endl; });
+    ipalauncher::LOG(ipalauncher::LogLevel::INFO, "[waitForTermSignal] Received term signal."); });
     termThread.join();
 }
 
 void handleTermSignal(int _signal)
 {
-    std::cout << "Exiting from app.." << std::endl;
+    ipalauncher::LOG(ipalauncher::LogLevel::INFO, "Exiting from app..");
 
     std::unique_lock<std::mutex> ulock(m_lock);
     m_isActive = false;
@@ -64,6 +65,6 @@ int main(int argc, char *argv[])
 
     waitForTermSignal();
 
-    std::cout << "Exiting application." << std::endl;
+    ipalauncher::LOG(ipalauncher::LogLevel::INFO, "Exiting application.");
     return 0;
 }
