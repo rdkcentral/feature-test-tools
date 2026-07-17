@@ -41,9 +41,7 @@ namespace ipalauncher
 
     Application::Application()
     {
-        char *portEnv = std::getenv("IPAWS_PORT");                 // Get the port from environment variable if needed
-        int port = portEnv ? std::atoi(portEnv) : 10101;           // Use the environment variable if available, otherwise default to 10101
-        m_ipawsConnector = std::make_unique<IPAWSConnector>(port); // Initialize the IPAWSConnector with the desired port
+        m_ipawsConnector = std::make_unique<IPAWSConnector>(); // Initialize the IPAWSConnector with the default constructor
         // Constructor implementation
     }
     Application::~Application()
