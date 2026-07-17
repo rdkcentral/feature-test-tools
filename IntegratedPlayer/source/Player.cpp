@@ -907,6 +907,6 @@ namespace ipalauncher
         }
 
         LOG(LogLevel::DEBUG, "Dispatching RPC event: ", eventName);
-        m_eventCallback(eventName, params);
+        cb(eventName, params);
     }
 } // Namespace ipalauncher
