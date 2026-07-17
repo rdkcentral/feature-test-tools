@@ -22,10 +22,13 @@
 // Header for gst_init
 #include <gst/gst.h>
 #include <iostream>
+#include <sstream>
 #include <vector>
 #include "AampLogManager.h"
 #include "IPAUtils.h"
 #include "Logger.h"
+// AAMP event types
+#include <AampEvent.h>
 namespace ipalauncher
 {
     IPALauncherPlayer *IPALauncherPlayer::m_instance = nullptr;
@@ -732,6 +735,19 @@ namespace ipalauncher
         return m_player->GetPreferredLanguages();
     }
 
+    void IPALauncherPlayer::setEventCallback(IPAPlayerEventListener::EventCallback cb)
+    {
+        if (m_eventListener)
+        {
+            LOG(LogLevel::INFO, "Registering AAMP event callback on IPAPlayerEventListener.");
+            m_eventListener->setEventCallback(std::move(cb));
+        }
+        else
+        {
+            LOG(LogLevel::ERROR, "Cannot set event callback: IPAPlayerEventListener is null.");
+        }
+    }
+
     // Event listener overrides
 
     const char *IPAPlayerEventListener::stringifyPlayerState(AAMPPlayerState state)
@@ -740,6 +756,152 @@ namespace ipalauncher
     }
     void IPAPlayerEventListener::Event(const AAMPEventPtr &e)
     {
-        LOG(LogLevel::INFO, "Received AAMP event: ", mapAAMPEventToString(e->getType()));
+        AAMPEventType type = e->getType();
+        LOG(LogLevel::INFO, "Received AAMP event: ", mapAAMPEventToString(type));
+
+        if (!m_eventCallback)
+        {
+            LOG(LogLevel::ERROR, "No event callback registered, dropping AAMP event: ", mapAAMPEventToString(type));
+            return;
+        }
+
+        std::string eventName;
+        Json::Value params;
+
+        switch (type)
+        {
+        case AAMP_EVENT_TUNED:
+        {
+            eventName = "org.rdk.player.onTuned";
+            LOG(LogLevel::INFO, "AAMP_EVENT_TUNED ");
+            break;
+        }
+        case AAMP_EVENT_TUNE_FAILED:
+        {
+            auto ev = std::dynamic_pointer_cast<MediaErrorEvent>(e);
+            eventName = "org.rdk.player.onTuneFailed";
+            if (ev)
+            {
+                params["description"] = ev->getDescription();
+                params["code"]        = ev->getCode();
+                params["shouldRetry"] = ev->shouldRetry();
+                LOG(LogLevel::ERROR, "AAMP_EVENT_TUNE_FAILED: code=", ev->getCode(), " description=", ev->getDescription());
+            }
+            break;
+        }
+        case AAMP_EVENT_STATE_CHANGED:
+        {
+            auto ev = std::dynamic_pointer_cast<StateChangedEvent>(e);
+            eventName = "org.rdk.player.onStateChanged";
+            if (ev)
+            {
+                const char *stateStr = "idle";
+                switch (ev->getState())
+                {
+                    case eSTATE_IDLE:         stateStr = "idle";         break;
+                    case eSTATE_INITIALIZING: stateStr = "initializing"; break;
+                    case eSTATE_INITIALIZED:  stateStr = "initialized";  break;
+                    case eSTATE_PREPARING:    stateStr = "preparing";    break;
+                    case eSTATE_PREPARED:     stateStr = "prepared";     break;
+                    case eSTATE_BUFFERING:    stateStr = "buffering";    break;
+                    case eSTATE_PAUSED:       stateStr = "paused";       break;
+                    case eSTATE_SEEKING:      stateStr = "seeking";      break;
+                    case eSTATE_PLAYING:      stateStr = "playing";      break;
+                    case eSTATE_STOPPING:     stateStr = "stopping";     break;
+                    case eSTATE_STOPPED:      stateStr = "stopped";      break;
+                    case eSTATE_COMPLETE:     stateStr = "complete";     break;
+                    case eSTATE_ERROR:        stateStr = "error";        break;
+                    case eSTATE_RELEASED:     stateStr = "released";     break;
+                    case eSTATE_BLOCKED:      stateStr = "blocked";      break;
+                    default:                  stateStr = "idle";         break;
+                }
+                params["state"] = stateStr;
+                LOG(LogLevel::INFO, "AAMP_EVENT_STATE_CHANGED: state=", stateStr);
+            }
+            break;
+        }
+        case AAMP_EVENT_PROGRESS:
+        {
+            auto ev = std::dynamic_pointer_cast<ProgressEvent>(e);
+            eventName = "org.rdk.player.onProgress";
+            if (ev)
+            {
+                params["positionMs"]       = ev->getPosition();
+                params["durationMs"]       = ev->getDuration();
+                params["speed"]            = ev->getSpeed();
+                params["startMs"]          = ev->getStart();
+                params["endMs"]            = ev->getEnd();
+                params["videoBufferedMs"]  = ev->getVideoBufferedDuration();
+                params["audioBufferedMs"]  = ev->getAudioBufferedDuration();
+                params["liveLatencyMs"]    = ev->getLiveLatency();
+                params["profileBitrate"]   = static_cast<Json::Int64>(ev->getProfileBandwidth());
+                params["networkBitrate"]   = static_cast<Json::Int64>(ev->getNetworkBandwidth());
+                LOG(LogLevel::TRACE, "AAMP_EVENT_PROGRESS: position=", ev->getPosition(), " duration=", ev->getDuration());
+            }
+            break;
+        }
+        case AAMP_EVENT_EOS:
+        {
+            eventName = "org.rdk.player.onEOS";
+            LOG(LogLevel::INFO, "AAMP_EVENT_EOS: end of stream reached.");
+            break;
+        }
+        case AAMP_EVENT_SPEED_CHANGED:
+        {
+            auto ev = std::dynamic_pointer_cast<SpeedChangedEvent>(e);
+            eventName = "org.rdk.player.onSpeedChanged";
+            if (ev)
+            {
+                params["speed"] = ev->getRate();
+                LOG(LogLevel::INFO, "AAMP_EVENT_SPEED_CHANGED: speed=", ev->getRate());
+            }
+            break;
+        }
+        case AAMP_EVENT_BUFFERING_CHANGED:
+        {
+            auto ev = std::dynamic_pointer_cast<BufferingChangedEvent>(e);
+            eventName = "org.rdk.player.onBufferingChanged";
+            if (ev)
+            {
+                params["buffering"] = ev->buffering();
+                LOG(LogLevel::INFO, "AAMP_EVENT_BUFFERING_CHANGED: buffering=", ev->buffering());
+            }
+            break;
+        }
+        case AAMP_EVENT_SEEKED:
+        {
+            auto ev = std::dynamic_pointer_cast<SeekedEvent>(e);
+            eventName = "org.rdk.player.onSeeked";
+            if (ev)
+            {
+                params["positionMs"] = ev->getPosition();
+                LOG(LogLevel::INFO, "AAMP_EVENT_SEEKED: position=", ev->getPosition());
+            }
+            break;
+        }
+        case AAMP_EVENT_BITRATE_CHANGED:
+        {
+            auto ev = std::dynamic_pointer_cast<BitrateChangeEvent>(e);
+            eventName = "org.rdk.player.onBitrateChanged";
+            if (ev)
+            {
+                params["bitrate"]     = static_cast<Json::Int64>(ev->getBitrate());
+                params["description"] = ev->getDescription();
+                params["width"]       = ev->getWidth();
+                params["height"]      = ev->getHeight();
+                params["frameRate"]   = ev->getFrameRate();
+                params["position"]    = ev->getPosition();
+                LOG(LogLevel::INFO, "AAMP_EVENT_BITRATE_CHANGED: bitrate=", ev->getBitrate(), " ", ev->getWidth(), "x", ev->getHeight());
+            }
+            break;
+        }
+        default:
+            // Unhandled event — no notification sent
+            LOG(LogLevel::TRACE, "Unhandled AAMP event (not forwarded): ", mapAAMPEventToString(type));
+            return;
+        }
+
+        LOG(LogLevel::DEBUG, "Dispatching RPC event: ", eventName);
+        m_eventCallback(eventName, params);
     }
 } // Namespace ipalauncher

@@ -285,6 +285,25 @@ namespace ipalauncher
         if (!m_playerInstance)
         {
             m_playerInstance = IPALauncherPlayer::getInstance();
+            if (m_playerInstance)
+            {
+                LOG(LogLevel::INFO, "Attaching AAMP event callback to RPC server.");
+                m_playerInstance->setEventCallback(
+                    [this](const std::string &eventName, const Json::Value &params)
+                    {
+                        if (m_wsRpcServer)
+                        {
+                            Json::Value eventParams = params;
+                            eventParams["sessionId"] = m_activeSessionId;
+                            LOG(LogLevel::INFO, "Emitting RPC event: ", eventName);
+                            m_wsRpcServer->onEvent(eventName, eventParams);
+                        }
+                        else
+                        {
+                            LOG(LogLevel::ERROR, "RPC server not available, dropping event: ", eventName);
+                        }
+                    });
+            }
         }
         // If there is an active sesion, we won't allow opening a new session until the current session is closed.
         if (!m_activeSessionId.empty())
