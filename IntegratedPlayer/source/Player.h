@@ -21,6 +21,8 @@
 #define _IPALAUNCHER_PLAYER_H
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <utility>
 #include <string>
 #include <vector>
 #include <json/json.h>
