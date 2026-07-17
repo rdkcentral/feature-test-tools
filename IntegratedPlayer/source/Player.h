@@ -20,8 +20,12 @@
 #ifndef _IPALAUNCHER_PLAYER_H
 #define _IPALAUNCHER_PLAYER_H
 #include <cstdint>
+#include <functional>
+#include <mutex>
+#include <utility>
 #include <string>
 #include <vector>
+#include <json/json.h>
 #include <main_aamp.h>
 #include <AampEventListener.h>
 #include <glib.h> // For GMainLoop
@@ -32,8 +36,19 @@ namespace ipalauncher
     class IPAPlayerEventListener : public AAMPEventObjectListener
     {
     public:
+        using EventCallback = std::function<void(const std::string &, const Json::Value &)>;
+
         const char *stringifyPlayerState(AAMPPlayerState state);
         void Event(const AAMPEventPtr &e) override;
+        void setEventCallback(EventCallback cb)
+        {
+            std::lock_guard<std::mutex> lock(m_eventCallbackMutex);
+            m_eventCallback = std::move(cb);
+        }
+
+    private:
+        std::mutex m_eventCallbackMutex;
+        EventCallback m_eventCallback;
     };
 
     class IPALauncherPlayer
@@ -106,6 +121,7 @@ namespace ipalauncher
                                    const std::string &codecList = "",
                                    const std::string &labelList = "");
         std::string getPreferredLanguages();
+        void setEventCallback(IPAPlayerEventListener::EventCallback cb);
 
     private:
         static IPALauncherPlayer *m_instance;
