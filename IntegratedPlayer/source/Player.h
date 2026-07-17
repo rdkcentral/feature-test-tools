@@ -49,6 +49,7 @@ namespace ipalauncher
     private:
         std::mutex m_eventCallbackMutex;
         EventCallback m_eventCallback;
+    };
 
     class IPALauncherPlayer
     {
