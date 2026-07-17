@@ -759,9 +759,14 @@ namespace ipalauncher
         AAMPEventType type = e->getType();
         LOG(LogLevel::INFO, "Received AAMP event: ", mapAAMPEventToString(type));
 
-        if (!m_eventCallback)
+        IPAPlayerEventListener::EventCallback cb;
         {
-            LOG(LogLevel::ERROR, "No event callback registered, dropping AAMP event: ", mapAAMPEventToString(type));
+            std::lock_guard<std::mutex> lock(m_eventCallbackMutex);
+            cb = m_eventCallback;
+        }
+        if (!cb)
+        {
+            LOG(LogLevel::TRACE, "No event callback registered, dropping AAMP event: ", mapAAMPEventToString(type));
             return;
         }
 
