@@ -777,14 +777,14 @@ namespace ipalauncher
         {
         case AAMP_EVENT_TUNED:
         {
-            eventName = "org.rdk.player.onTuned";
+            eventName = "onTuned";
             LOG(LogLevel::INFO, "AAMP_EVENT_TUNED ");
             break;
         }
         case AAMP_EVENT_TUNE_FAILED:
         {
             auto ev = std::dynamic_pointer_cast<MediaErrorEvent>(e);
-            eventName = "org.rdk.player.onTuneFailed";
+            eventName = "onTuneFailed";
             if (ev)
             {
                 params["description"] = ev->getDescription();
@@ -797,7 +797,7 @@ namespace ipalauncher
         case AAMP_EVENT_STATE_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<StateChangedEvent>(e);
-            eventName = "org.rdk.player.onStateChanged";
+            eventName = "onStateChanged";
             if (ev)
             {
                 const char *stateStr = "idle";
@@ -828,7 +828,7 @@ namespace ipalauncher
         case AAMP_EVENT_PROGRESS:
         {
             auto ev = std::dynamic_pointer_cast<ProgressEvent>(e);
-            eventName = "org.rdk.player.onProgress";
+            eventName = "onProgress";
             if (ev)
             {
                 params["positionMs"]       = ev->getPosition();
@@ -847,14 +847,14 @@ namespace ipalauncher
         }
         case AAMP_EVENT_EOS:
         {
-            eventName = "org.rdk.player.onEOS";
+            eventName = "onEOS";
             LOG(LogLevel::INFO, "AAMP_EVENT_EOS: end of stream reached.");
             break;
         }
         case AAMP_EVENT_SPEED_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<SpeedChangedEvent>(e);
-            eventName = "org.rdk.player.onSpeedChanged";
+            eventName = "onSpeedChanged";
             if (ev)
             {
                 params["speed"] = ev->getRate();
@@ -865,7 +865,7 @@ namespace ipalauncher
         case AAMP_EVENT_BUFFERING_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<BufferingChangedEvent>(e);
-            eventName = "org.rdk.player.onBufferingChanged";
+            eventName = "onBufferingChanged";
             if (ev)
             {
                 params["buffering"] = ev->buffering();
@@ -876,7 +876,7 @@ namespace ipalauncher
         case AAMP_EVENT_SEEKED:
         {
             auto ev = std::dynamic_pointer_cast<SeekedEvent>(e);
-            eventName = "org.rdk.player.onSeeked";
+            eventName = "onSeeked";
             if (ev)
             {
                 params["positionMs"] = ev->getPosition();
@@ -887,7 +887,7 @@ namespace ipalauncher
         case AAMP_EVENT_BITRATE_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<BitrateChangeEvent>(e);
-            eventName = "org.rdk.player.onBitrateChanged";
+            eventName = "onBitrateChanged";
             if (ev)
             {
                 params["bitrate"]     = static_cast<Json::Int64>(ev->getBitrate());
