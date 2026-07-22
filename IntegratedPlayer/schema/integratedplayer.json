@@ -2969,12 +2969,23 @@
             "listeners"
           ],
           "properties": {
-            "event": {
+            "listeners": {
               "type": "array",
+              "description": "Active event listener registrations for this session",
               "items": {
-                "type": "string"
-              },
-              "description": "Event names currently active for this client"
+                "type": "object",
+                "required": ["event", "id"],
+                "properties": {
+                  "event": {
+                    "type": "string",
+                    "description": "Registered event name (e.g. onProgress)"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Client registration identifier (e.g. events.1)"
+                  }
+                }
+              }
             }
           }
         }
@@ -2991,12 +3002,11 @@
           "result": {
             "name": "getListenersResult",
             "value": {
-              "listeners": [ {
-                "event":
-                "onStateChanged",
-                "id":
-                "1"
-              }]
+              "listeners": [
+                { "event": "onAnomalyReport", "id": "events.1" },
+                { "event": "onBitrateChanged", "id": "events.1" },
+                { "event": "onStateChanged",   "id": "events.1" }
+              ]
             }
           }
         }
@@ -3439,6 +3449,62 @@
             "type": "string",
             "description": "Reason for the bitrate change (e.g. NetworkCongestion)"
           }
+        },
+        {
+          "name": "frameRate",
+          "schema": {
+            "type": "number",
+            "description": "Frame rate of the new video profile"
+          }
+        },
+        {
+          "name": "position",
+          "schema": {
+            "type": "number",
+            "description": "Playback position in milliseconds when the switch occurred"
+          }
+        },
+        {
+          "name": "cappedProfile",
+          "schema": {
+            "type": "boolean",
+            "description": "true if the selected profile was capped (e.g. by network or display constraints)"
+          }
+        },
+        {
+          "name": "displayWidth",
+          "schema": {
+            "type": "integer",
+            "description": "Display/output width in pixels"
+          }
+        },
+        {
+          "name": "displayHeight",
+          "schema": {
+            "type": "integer",
+            "description": "Display/output height in pixels"
+          }
+        },
+        {
+          "name": "videoScanType",
+          "schema": {
+            "type": "integer",
+            "description": "Video scan type (0=progressive, 1=interlaced)"
+          }
+        },
+        {
+          "name": "aspectRatioWidth",
+          "schema": {
+            "type": "integer",
+            "description": "Aspect ratio width component (e.g. 16 for 16:9)"
+          }
+        },
+        {
+          "name": "aspectRatioHeight",
+          "schema": {
+            "type": "integer",
+            "description": "Aspect ratio height component (e.g. 9 for 16:9)"
+          }
         }
       ],
       "result": {
@@ -3446,18 +3512,18 @@
         "schema": {
           "type": "object",
           "properties": {
-            "bitrate": {
-              "type": "integer"
-            },
-            "width": {
-              "type": "integer"
-            },
-            "height": {
-              "type": "integer"
-            },
-            "description": {
-              "type": "string"
-            }
+            "bitrate": { "type": "integer" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "description": { "type": "string" },
+            "frameRate": { "type": "number" },
+            "position": { "type": "number" },
+            "cappedProfile": { "type": "boolean" },
+            "displayWidth": { "type": "integer" },
+            "displayHeight": { "type": "integer" },
+            "videoScanType": { "type": "integer" },
+            "aspectRatioWidth": { "type": "integer" },
+            "aspectRatioHeight": { "type": "integer" }
           }
         }
       }
@@ -3509,17 +3575,17 @@
           }
         },
         {
-          "name": "isLive",
+          "name": "programStartTime",
           "schema": {
-            "type": "boolean",
-            "description": "true if the stream is a live broadcast"
+            "type": "number",
+            "description": "Unix timestamp of the program start time (0 for VOD)"
           }
         },
         {
-          "name": "drmType",
+          "name": "tsbDepthMs",
           "schema": {
-            "type": "string",
-            "description": "Active DRM system name, or empty string for clear"
+            "type": "number",
+            "description": "Time-shift buffer depth in milliseconds"
           }
         },
         {
@@ -3543,7 +3609,7 @@
           }
         },
         {
-          "name": "speeds",
+          "name": "supportedSpeeds",
           "schema": {
             "type": "array",
             "items": {
@@ -3558,42 +3624,15 @@
         "schema": {
           "type": "object",
           "properties": {
-            "durationMs": {
-              "type": "integer"
-            },
-            "width": {
-              "type": "integer"
-            },
-            "height": {
-              "type": "integer"
-            },
-            "hasDrm": {
-              "type": "boolean"
-            },
-            "isLive": {
-              "type": "boolean"
-            },
-            "drmType": {
-              "type": "string"
-            },
-            "languages": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "bitrates": {
-              "type": "array",
-              "items": {
-                "type": "integer"
-              }
-            },
-            "speeds": {
-              "type": "array",
-              "items": {
-                "type": "number"
-              }
-            }
+            "durationMs": { "type": "integer" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "hasDrm": { "type": "boolean" },
+            "programStartTime": { "type": "number" },
+            "tsbDepthMs": { "type": "number" },
+            "languages": { "type": "array", "items": { "type": "string" } },
+            "bitrates": { "type": "array", "items": { "type": "integer" } },
+            "supportedSpeeds": { "type": "array", "items": { "type": "number" } }
           }
         }
       }
@@ -3671,10 +3710,38 @@
           }
         },
         {
+          "name": "failure",
+          "schema": {
+            "type": "integer",
+            "description": "DRM failure code"
+          }
+        },
+        {
           "name": "accessStatus",
           "schema": {
             "type": "string",
             "description": "DRM access status string reported by the DRM system"
+          }
+        },
+        {
+          "name": "accessStatusValue",
+          "schema": {
+            "type": "integer",
+            "description": "Numeric value corresponding to accessStatus"
+          }
+        },
+        {
+          "name": "responseCode",
+          "schema": {
+            "type": "integer",
+            "description": "HTTP or DRM response code"
+          }
+        },
+        {
+          "name": "isSecClientError",
+          "schema": {
+            "type": "boolean",
+            "description": "true if the failure originated in the security client"
           }
         }
       ],
@@ -3683,9 +3750,11 @@
         "schema": {
           "type": "object",
           "properties": {
-            "accessStatus": {
-              "type": "string"
-            }
+            "failure": { "type": "integer" },
+            "accessStatus": { "type": "string" },
+            "accessStatusValue": { "type": "integer" },
+            "responseCode": { "type": "integer" },
+            "isSecClientError": { "type": "boolean" }
           }
         }
       }
@@ -3693,59 +3762,69 @@
     {
       "name": "onAdReservationStart",
       "summary": "SCTE-35 ad reservation window opened",
-      "tags": [
-        {
-          "name": "Notifications"
-        }
-      ],
+      "tags": [{ "name": "Notifications" }],
       "x-server-notification": true,
       "params": [
         {
           "name": "sessionId",
           "required": true,
           "description": "Session identifier returned by openSession.",
-          "schema": {
-            "type": "string"
-          }
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "adBreakId",
+          "schema": { "type": "string", "description": "Identifier of the ad break" }
+        },
+        {
+          "name": "position",
+          "schema": { "type": "number", "description": "Stream position in milliseconds where the ad break starts" }
         }
       ],
       "result": {
         "name": "onAdReservationStartParams",
         "schema": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "adBreakId": { "type": "string" },
+            "position": { "type": "number" }
+          }
         }
-      },
-      "paramStructure": "by-name"
+      }
     },
     {
       "name": "onAdReservationEnd",
       "summary": "SCTE-35 ad reservation window closed",
-      "tags": [
-        {
-          "name": "Notifications"
-        }
-      ],
+      "tags": [{ "name": "Notifications" }],
       "x-server-notification": true,
       "params": [
         {
           "name": "sessionId",
           "required": true,
           "description": "Session identifier returned by openSession.",
-          "schema": {
-            "type": "string"
-          }
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "adBreakId",
+          "schema": { "type": "string", "description": "Identifier of the ad break" }
+        },
+        {
+          "name": "position",
+          "schema": { "type": "number", "description": "Stream position in milliseconds where the ad break ends" }
         }
       ],
       "result": {
         "name": "onAdReservationEndParams",
         "schema": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "adBreakId": { "type": "string" },
+            "position": { "type": "number" }
+          }
         }
-      },
-      "paramStructure": "by-name"
+      }
     },
     {
-      "name": "onAnomaly",
+      "name": "onAnomalyReport",
       "summary": "Internal diagnostic / anomaly report",
       "tags": [
         {
@@ -3780,16 +3859,540 @@
         }
       ],
       "result": {
-        "name": "onAnomalyParams",
+        "name": "onAnomalyReportParams",
         "schema": {
           "type": "object",
           "properties": {
-            "severity": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
+            "severity": { "type": "integer" },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onCCHandleReceived",
+      "summary": "Closed-caption decoder handle available",
+      "description": "Fired when AAMP provides a handle to the CC decoder after the first decoded video frame.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "handle",
+          "schema": { "type": "integer", "description": "Opaque CC decoder handle" }
+        }
+      ],
+      "result": {
+        "name": "onCCHandleReceivedParams",
+        "schema": {
+          "type": "object",
+          "properties": { "handle": { "type": "integer" } }
+        }
+      }
+    },
+    {
+      "name": "onTimedMetadata",
+      "summary": "Timed metadata cue encountered in the stream",
+      "description": "Emitted for each HLS #EXT-X-DATERANGE, ID3 frame, or DASH Event block encountered during playback.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "name",
+          "schema": { "type": "string", "description": "Metadata tag name" }
+        },
+        {
+          "name": "id",
+          "schema": { "type": "string", "description": "Unique cue identifier" }
+        },
+        {
+          "name": "timeMs",
+          "schema": { "type": "number", "description": "Stream position at which the cue fires (ms)" }
+        },
+        {
+          "name": "durationMs",
+          "schema": { "type": "number", "description": "Duration of the cue in milliseconds (-1 if unknown)" }
+        },
+        {
+          "name": "content",
+          "schema": { "type": "string", "description": "Raw cue payload (e.g. JSON-encoded SCTE data)" }
+        }
+      ],
+      "result": {
+        "name": "onTimedMetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "id": { "type": "string" },
+            "timeMs": { "type": "number" },
+            "durationMs": { "type": "number" },
+            "content": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onBulkTimedMetadata",
+      "summary": "Bulk timed-metadata payload",
+      "description": "Delivers a batch of timed-metadata cues as a single JSON-encoded string.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "content",
+          "schema": { "type": "string", "description": "JSON-encoded array of timed-metadata cues" }
+        }
+      ],
+      "result": {
+        "name": "onBulkTimedMetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": { "content": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onSpeedsChanged",
+      "summary": "Supported trick-play speed list updated",
+      "description": "Emitted when the set of trick-play speeds supported by the current stream changes.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "supportedSpeeds",
+          "schema": {
+            "type": "array",
+            "items": { "type": "number" },
+            "description": "Updated list of supported playback speed multipliers"
+          }
+        }
+      ],
+      "result": {
+        "name": "onSpeedsChangedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "supportedSpeeds": { "type": "array", "items": { "type": "number" } }
+          }
+        }
+      }
+    },
+    {
+      "name": "onTuneProfiling",
+      "summary": "Tune micro-profiling data available",
+      "description": "Delivers a compact encoded string containing per-stage tune timing data for diagnostics.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "profilingData",
+          "schema": { "type": "string", "description": "Encoded tune-profile data string" }
+        }
+      ],
+      "result": {
+        "name": "onTuneProfilingParams",
+        "schema": {
+          "type": "object",
+          "properties": { "profilingData": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onWebVttCueData",
+      "summary": "WebVTT subtitle cue received",
+      "description": "Emitted when a WebVTT cue is parsed and ready for rendering.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        }
+      ],
+      "result": {
+        "name": "onWebVttCueDataParams",
+        "schema": { "type": "object" }
+      },
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onAdResolved",
+      "summary": "Ad creative resolved (or failed to resolve)",
+      "description": "Reports whether a dynamic ad insertion creative was successfully resolved by the ad server.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "resolveStatus",
+          "schema": { "type": "boolean", "description": "true if the ad was resolved successfully" }
+        },
+        {
+          "name": "adId",
+          "schema": { "type": "string", "description": "Ad creative identifier" }
+        },
+        {
+          "name": "startMs",
+          "schema": { "type": "number", "description": "Ad start position in milliseconds" }
+        },
+        {
+          "name": "durationMs",
+          "schema": { "type": "number", "description": "Ad duration in milliseconds" }
+        },
+        {
+          "name": "errorCode",
+          "schema": { "type": "string", "description": "Error code string if resolution failed, empty otherwise" }
+        },
+        {
+          "name": "errorDescription",
+          "schema": { "type": "string", "description": "Human-readable error description if resolution failed" }
+        }
+      ],
+      "result": {
+        "name": "onAdResolvedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "resolveStatus": { "type": "boolean" },
+            "adId": { "type": "string" },
+            "startMs": { "type": "number" },
+            "durationMs": { "type": "number" },
+            "errorCode": { "type": "string" },
+            "errorDescription": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementStart",
+      "summary": "Ad placement playback started",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Error code (0 = no error)" } }
+      ],
+      "result": {
+        "name": "onAdPlacementStartParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementEnd",
+      "summary": "Ad placement playback ended",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Error code (0 = no error)" } }
+      ],
+      "result": {
+        "name": "onAdPlacementEndParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementError",
+      "summary": "Ad placement failed",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Non-zero error code indicating the failure reason" } }
+      ],
+      "result": {
+        "name": "onAdPlacementErrorParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementProgress",
+      "summary": "Ad placement playback progress",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Error code (0 = no error)" } }
+      ],
+      "result": {
+        "name": "onAdPlacementProgressParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onMetricsData",
+      "summary": "Player metrics data report",
+      "description": "Periodic metrics snapshot from AAMP containing tuning and performance data.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "type",       "schema": { "type": "integer", "description": "Metrics data type identifier" } },
+        { "name": "metricUUID", "schema": { "type": "string",  "description": "Unique identifier for this metrics record" } },
+        { "name": "data",       "schema": { "type": "string",  "description": "Encoded metrics payload" } }
+      ],
+      "result": {
+        "name": "onMetricsDataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "integer" },
+            "metricUUID": { "type": "string" },
+            "data": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onID3Metadata",
+      "summary": "ID3 metadata frame received",
+      "description": "Emitted when an in-band ID3 metadata frame is encountered in the media stream.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",         "required": true, "schema": { "type": "string" } },
+        { "name": "length",            "schema": { "type": "integer", "description": "Size of the raw ID3 payload in bytes" } },
+        { "name": "schemeIdUri",       "schema": { "type": "string",  "description": "Scheme ID URI identifying the metadata type" } },
+        { "name": "id3Value",          "schema": { "type": "string",  "description": "String value associated with the ID3 frame" } },
+        { "name": "presentationTime",  "schema": { "type": "integer", "description": "Presentation timestamp of the frame" } },
+        { "name": "timeScale",         "schema": { "type": "integer", "description": "Time scale for the presentation timestamp" } }
+      ],
+      "result": {
+        "name": "onID3MetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "length": { "type": "integer" },
+            "schemeIdUri": { "type": "string" },
+            "id3Value": { "type": "string" },
+            "presentationTime": { "type": "integer" },
+            "timeScale": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onDrmMessage",
+      "summary": "DRM system message",
+      "description": "Informational or diagnostic message emitted by the DRM subsystem.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "message",   "schema": { "type": "string", "description": "DRM system message string" } }
+      ],
+      "result": {
+        "name": "onDrmMessageParams",
+        "schema": {
+          "type": "object",
+          "properties": { "message": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onContentGap",
+      "summary": "Content gap detected in the stream",
+      "description": "Fired when AAMP detects a discontinuity or missing segment in the timeline.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",  "required": true, "schema": { "type": "string" } },
+        { "name": "timeMs",     "schema": { "type": "number",  "description": "Stream position in ms where the gap was detected" } },
+        { "name": "durationMs", "schema": { "type": "number",  "description": "Duration of the gap in milliseconds (-1 if unknown)" } }
+      ],
+      "result": {
+        "name": "onContentGapParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "timeMs": { "type": "number" },
+            "durationMs": { "type": "number" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onHttpResponseHeader",
+      "summary": "HTTP response header received",
+      "description": "Exposes selected HTTP response headers from AAMP network requests.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "header",    "schema": { "type": "string", "description": "HTTP header name" } },
+        { "name": "response",  "schema": { "type": "string", "description": "HTTP header value" } }
+      ],
+      "result": {
+        "name": "onHttpResponseHeaderParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "header": { "type": "string" },
+            "response": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onContentProtectionDataUpdate",
+      "summary": "Content protection key ID updated",
+      "description": "Emitted when the content protection key ID changes (e.g. key rotation in DASH).",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",  "required": true, "schema": { "type": "string" } },
+        { "name": "streamType", "schema": { "type": "string", "description": "Stream type associated with the key update (e.g. video, audio)" } }
+      ],
+      "result": {
+        "name": "onContentProtectionDataUpdateParams",
+        "schema": {
+          "type": "object",
+          "properties": { "streamType": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onManifestRefresh",
+      "summary": "Manifest refreshed (live streams)",
+      "description": "Emitted each time AAMP successfully refreshes a live manifest.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",             "required": true, "schema": { "type": "string" } },
+        { "name": "manifestDuration",      "schema": { "type": "number",  "description": "Total manifest duration in seconds" } },
+        { "name": "noOfPeriods",           "schema": { "type": "integer", "description": "Number of DASH periods in the manifest" } },
+        { "name": "manifestPublishedTime", "schema": { "type": "number",  "description": "UTC publish time from the manifest" } },
+        { "name": "manifestType",          "schema": { "type": "string",  "description": "Manifest type string (e.g. DYNAMIC, STATIC)" } }
+      ],
+      "result": {
+        "name": "onManifestRefreshParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "manifestDuration": { "type": "number" },
+            "noOfPeriods": { "type": "integer" },
+            "manifestPublishedTime": { "type": "number" },
+            "manifestType": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onTuneTimeMetrics",
+      "summary": "Tune time metrics report",
+      "description": "Provides a detailed breakdown of time spent in each phase of the tune sequence.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",       "required": true, "schema": { "type": "string" } },
+        { "name": "tuneMetricsData", "schema": { "type": "string", "description": "Encoded tune-time metrics string" } }
+      ],
+      "result": {
+        "name": "onTuneTimeMetricsParams",
+        "schema": {
+          "type": "object",
+          "properties": { "tuneMetricsData": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onMonitorAVStatus",
+      "summary": "AV sync / health monitor status",
+      "description": "Periodic report from the A/V health monitor with current video and audio positions and performance counters.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",       "required": true, "schema": { "type": "string" } },
+        { "name": "monitorAVStatus", "schema": { "type": "string",  "description": "Status string from the AV monitor" } },
+        { "name": "videoPositionMs", "schema": { "type": "number",  "description": "Current video decoder position in ms" } },
+        { "name": "audioPositionMs", "schema": { "type": "number",  "description": "Current audio decoder position in ms" } },
+        { "name": "timeInStateMs",   "schema": { "type": "number",  "description": "Time spent in the current AV state in ms" } },
+        { "name": "droppedFrames",   "schema": { "type": "integer", "description": "Cumulative dropped video frames" } }
+      ],
+      "result": {
+        "name": "onMonitorAVStatusParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "monitorAVStatus": { "type": "string" },
+            "videoPositionMs": { "type": "number" },
+            "audioPositionMs": { "type": "number" },
+            "timeInStateMs": { "type": "number" },
+            "droppedFrames": { "type": "integer" }
           }
         }
       }
