@@ -27,6 +27,8 @@
 #include "DownloadMgrCtrl.hpp"
 #include "InstallMgrCtrl.hpp"
 #include "RDKWindowMgrCtrl.hpp"
+#include "AppActionsControl.hpp"
+
 
 class AppManagerFactory : public ManagerFactory
 {
@@ -90,6 +92,19 @@ public:
     std::unique_ptr<MgrCtrl> createManager(ThunderBridge &thunderBridge) override
     {
         auto manager = std::make_unique<RDKWindowMgrCtrl>();
+        if (thunderBridge.initializeManager(*manager))
+        {
+            return manager;
+        }
+        return nullptr;
+    }
+};
+class AppActionsControlFactory : public ManagerFactory
+{
+public:
+    std::unique_ptr<MgrCtrl> createManager(ThunderBridge &thunderBridge) override
+    {
+        auto manager = std::make_unique<AppActionsControl>();
         if (thunderBridge.initializeManager(*manager))
         {
             return manager;
