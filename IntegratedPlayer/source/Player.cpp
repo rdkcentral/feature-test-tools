@@ -777,14 +777,14 @@ namespace ipalauncher
         {
         case AAMP_EVENT_TUNED:
         {
-            eventName = "org.rdk.player.onTuned";
+            eventName = "onTuned";
             LOG(LogLevel::INFO, "AAMP_EVENT_TUNED ");
             break;
         }
         case AAMP_EVENT_TUNE_FAILED:
         {
             auto ev = std::dynamic_pointer_cast<MediaErrorEvent>(e);
-            eventName = "org.rdk.player.onTuneFailed";
+            eventName = "onTuneFailed";
             if (ev)
             {
                 params["description"] = ev->getDescription();
@@ -797,7 +797,7 @@ namespace ipalauncher
         case AAMP_EVENT_STATE_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<StateChangedEvent>(e);
-            eventName = "org.rdk.player.onStateChanged";
+            eventName = "onStateChanged";
             if (ev)
             {
                 const char *stateStr = "idle";
@@ -828,7 +828,7 @@ namespace ipalauncher
         case AAMP_EVENT_PROGRESS:
         {
             auto ev = std::dynamic_pointer_cast<ProgressEvent>(e);
-            eventName = "org.rdk.player.onProgress";
+            eventName = "onProgress";
             if (ev)
             {
                 params["positionMs"]       = ev->getPosition();
@@ -847,14 +847,14 @@ namespace ipalauncher
         }
         case AAMP_EVENT_EOS:
         {
-            eventName = "org.rdk.player.onEOS";
+            eventName = "onEOS";
             LOG(LogLevel::INFO, "AAMP_EVENT_EOS: end of stream reached.");
             break;
         }
         case AAMP_EVENT_SPEED_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<SpeedChangedEvent>(e);
-            eventName = "org.rdk.player.onSpeedChanged";
+            eventName = "onSpeedChanged";
             if (ev)
             {
                 params["speed"] = ev->getRate();
@@ -865,7 +865,7 @@ namespace ipalauncher
         case AAMP_EVENT_BUFFERING_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<BufferingChangedEvent>(e);
-            eventName = "org.rdk.player.onBufferingChanged";
+            eventName = "onBufferingChanged";
             if (ev)
             {
                 params["buffering"] = ev->buffering();
@@ -876,7 +876,7 @@ namespace ipalauncher
         case AAMP_EVENT_SEEKED:
         {
             auto ev = std::dynamic_pointer_cast<SeekedEvent>(e);
-            eventName = "org.rdk.player.onSeeked";
+            eventName = "onSeeked";
             if (ev)
             {
                 params["positionMs"] = ev->getPosition();
@@ -887,16 +887,309 @@ namespace ipalauncher
         case AAMP_EVENT_BITRATE_CHANGED:
         {
             auto ev = std::dynamic_pointer_cast<BitrateChangeEvent>(e);
-            eventName = "org.rdk.player.onBitrateChanged";
+            eventName = "onBitrateChanged";
             if (ev)
             {
-                params["bitrate"]     = static_cast<Json::Int64>(ev->getBitrate());
-                params["description"] = ev->getDescription();
-                params["width"]       = ev->getWidth();
-                params["height"]      = ev->getHeight();
-                params["frameRate"]   = ev->getFrameRate();
-                params["position"]    = ev->getPosition();
+                params["bitrate"]        = static_cast<Json::Int64>(ev->getBitrate());
+                params["description"]    = ev->getDescription();
+                params["width"]          = ev->getWidth();
+                params["height"]         = ev->getHeight();
+                params["frameRate"]      = ev->getFrameRate();
+                params["position"]       = ev->getPosition();
+                params["cappedProfile"]  = ev->getCappedProfileStatus();
+                params["displayWidth"]   = ev->getDisplayWidth();
+                params["displayHeight"]  = ev->getDisplayHeight();
+                params["videoScanType"]  = ev->getScanType();
+                params["aspectRatioWidth"]  = ev->getAspectRatioWidth();
+                params["aspectRatioHeight"] = ev->getAspectRatioHeight();
                 LOG(LogLevel::INFO, "AAMP_EVENT_BITRATE_CHANGED: bitrate=", ev->getBitrate(), " ", ev->getWidth(), "x", ev->getHeight());
+            }
+            break;
+        }
+        case AAMP_EVENT_CC_HANDLE_RECEIVED:
+        {
+            auto ev = std::dynamic_pointer_cast<CCHandleEvent>(e);
+            eventName = "onCCHandleReceived";
+            if (ev)
+            {
+                params["handle"] = static_cast<Json::UInt64>(ev->getCCHandle());
+                LOG(LogLevel::INFO, "AAMP_EVENT_CC_HANDLE_RECEIVED");
+            }
+            break;
+        }
+        case AAMP_EVENT_MEDIA_METADATA:
+        {
+            auto ev = std::dynamic_pointer_cast<MediaMetadataEvent>(e);
+            eventName = "onMediaMetadata";
+            if (ev)
+            {
+                params["durationMs"]         = static_cast<Json::Int64>(ev->getDuration());
+                params["width"]              = ev->getWidth();
+                params["height"]             = ev->getHeight();
+                params["hasDrm"]             = ev->hasDrm();
+                params["programStartTime"]   = ev->getProgramStartTime();
+                params["tsbDepthMs"]         = ev->getTsbDepth();
+                Json::Value languages(Json::arrayValue);
+                for (const auto &lang : ev->getLanguages())
+                    languages.append(lang);
+                params["languages"] = languages;
+                Json::Value bitrates(Json::arrayValue);
+                for (auto br : ev->getBitrates())
+                    bitrates.append(static_cast<Json::Int64>(br));
+                params["bitrates"] = bitrates;
+                Json::Value speeds(Json::arrayValue);
+                for (auto sp : ev->getSupportedSpeeds())
+                    speeds.append(sp);
+                params["supportedSpeeds"] = speeds;
+                LOG(LogLevel::INFO, "AAMP_EVENT_MEDIA_METADATA: ", ev->getWidth(), "x", ev->getHeight(), " durationMs=", ev->getDuration());
+            }
+            break;
+        }
+        case AAMP_EVENT_TIMED_METADATA:
+        {
+            auto ev = std::dynamic_pointer_cast<TimedMetadataEvent>(e);
+            eventName = "onTimedMetadata";
+            if (ev)
+            {
+                params["name"]       = ev->getName();
+                params["id"]         = ev->getId();
+                params["timeMs"]     = ev->getTime();
+                params["durationMs"] = ev->getDuration();
+                params["content"]    = ev->getContent();
+                LOG(LogLevel::INFO, "AAMP_EVENT_TIMED_METADATA: name=", ev->getName());
+            }
+            break;
+        }
+        case AAMP_EVENT_BULK_TIMED_METADATA:
+        {
+            auto ev = std::dynamic_pointer_cast<BulkTimedMetadataEvent>(e);
+            eventName = "onBulkTimedMetadata";
+            if (ev)
+            {
+                params["content"] = ev->getContent();
+                LOG(LogLevel::INFO, "AAMP_EVENT_BULK_TIMED_METADATA");
+            }
+            break;
+        }
+        case AAMP_EVENT_SPEEDS_CHANGED:
+        {
+            auto ev = std::dynamic_pointer_cast<SupportedSpeedsChangedEvent>(e);
+            eventName = "onSpeedsChanged";
+            if (ev)
+            {
+                Json::Value speeds(Json::arrayValue);
+                for (auto sp : ev->getSupportedSpeeds())
+                    speeds.append(sp);
+                params["supportedSpeeds"] = speeds;
+                LOG(LogLevel::INFO, "AAMP_EVENT_SPEEDS_CHANGED: count=", ev->getSupportedSpeedCount());
+            }
+            break;
+        }
+        case AAMP_EVENT_TUNE_PROFILING:
+        {
+            auto ev = std::dynamic_pointer_cast<TuneProfilingEvent>(e);
+            eventName = "onTuneProfiling";
+            if (ev)
+            {
+                params["profilingData"] = ev->getProfilingData();
+                LOG(LogLevel::INFO, "AAMP_EVENT_TUNE_PROFILING");
+            }
+            break;
+        }
+        case AAMP_EVENT_DRM_METADATA:
+        {
+            auto ev = std::dynamic_pointer_cast<DrmMetaDataEvent>(e);
+            eventName = "onDrmMetadata";
+            if (ev)
+            {
+                params["failure"]            = ev->getFailure();
+                params["accessStatus"]       = ev->getAccessStatus();
+                params["accessStatusValue"]  = ev->getAccessStatusValue();
+                params["responseCode"]       = ev->getResponseCode();
+                params["isSecClientError"]   = ev->getSecclientError();
+                LOG(LogLevel::INFO, "AAMP_EVENT_DRM_METADATA: failure=", ev->getFailure(), " responseCode=", ev->getResponseCode());
+            }
+            break;
+        }
+        case AAMP_EVENT_REPORT_ANOMALY:
+        {
+            auto ev = std::dynamic_pointer_cast<AnomalyReportEvent>(e);
+            eventName = "onAnomalyReport";
+            if (ev)
+            {
+                params["severity"] = ev->getSeverity();
+                params["message"]  = ev->getMessage();
+                LOG(LogLevel::INFO, "AAMP_EVENT_REPORT_ANOMALY: severity=", ev->getSeverity(), " msg=", ev->getMessage());
+            }
+            break;
+        }
+        case AAMP_EVENT_WEBVTT_CUE_DATA:
+        {
+            eventName = "onWebVttCueData";
+            LOG(LogLevel::INFO, "AAMP_EVENT_WEBVTT_CUE_DATA");
+            break;
+        }
+        case AAMP_EVENT_AD_RESOLVED:
+        {
+            auto ev = std::dynamic_pointer_cast<AdResolvedEvent>(e);
+            eventName = "onAdResolved";
+            if (ev)
+            {
+                params["resolveStatus"]    = ev->getResolveStatus();
+                params["adId"]             = ev->getAdId();
+                params["startMs"]          = ev->getStart();
+                params["durationMs"]       = ev->getDuration();
+                params["errorCode"]        = ev->getErrorCode();
+                params["errorDescription"] = ev->getErrorDescription();
+                LOG(LogLevel::INFO, "AAMP_EVENT_AD_RESOLVED: adId=", ev->getAdId(), " resolved=", ev->getResolveStatus());
+            }
+            break;
+        }
+        case AAMP_EVENT_AD_RESERVATION_START:
+        case AAMP_EVENT_AD_RESERVATION_END:
+        {
+            auto ev = std::dynamic_pointer_cast<AdReservationEvent>(e);
+            eventName = (type == AAMP_EVENT_AD_RESERVATION_START) ? "onAdReservationStart" : "onAdReservationEnd";
+            if (ev)
+            {
+                params["adBreakId"] = ev->getAdBreakId();
+                params["position"]  = ev->getPosition();
+                LOG(LogLevel::INFO, eventName, ": adBreakId=", ev->getAdBreakId());
+            }
+            break;
+        }
+        case AAMP_EVENT_AD_PLACEMENT_START:
+        case AAMP_EVENT_AD_PLACEMENT_END:
+        case AAMP_EVENT_AD_PLACEMENT_ERROR:
+        case AAMP_EVENT_AD_PLACEMENT_PROGRESS:
+        {
+            auto ev = std::dynamic_pointer_cast<AdPlacementEvent>(e);
+            if (type == AAMP_EVENT_AD_PLACEMENT_START)        eventName = "onAdPlacementStart";
+            else if (type == AAMP_EVENT_AD_PLACEMENT_END)     eventName = "onAdPlacementEnd";
+            else if (type == AAMP_EVENT_AD_PLACEMENT_ERROR)   eventName = "onAdPlacementError";
+            else                                               eventName = "onAdPlacementProgress";
+            if (ev)
+            {
+                params["adId"]      = ev->getAdId();
+                params["position"]  = ev->getPosition();
+                params["offset"]    = ev->getOffset();
+                params["durationMs"] = ev->getDuration();
+                params["errorCode"] = ev->getErrorCode();
+                LOG(LogLevel::INFO, eventName, ": adId=", ev->getAdId());
+            }
+            break;
+        }
+        case AAMP_EVENT_REPORT_METRICS_DATA:
+        {
+            auto ev = std::dynamic_pointer_cast<MetricsDataEvent>(e);
+            eventName = "onMetricsData";
+            if (ev)
+            {
+                params["type"]       = ev->getMetricsDataType();
+                params["metricUUID"] = ev->getMetricUUID();
+                params["data"]       = ev->getMetricsData();
+                LOG(LogLevel::INFO, "AAMP_EVENT_REPORT_METRICS_DATA: type=", ev->getMetricsDataType());
+            }
+            break;
+        }
+        case AAMP_EVENT_ID3_METADATA:
+        {
+            auto ev = std::dynamic_pointer_cast<ID3MetadataEvent>(e);
+            eventName = "onID3Metadata";
+            if (ev)
+            {
+                params["length"]      = static_cast<Json::UInt>(ev->getMetadataSize());
+                params["schemeIdUri"] = ev->getSchemeIdUri();
+                params["id3Value"]    = ev->getValue();
+                params["presentationTime"] = static_cast<Json::UInt64>(ev->getPresentationTime());
+                params["timeScale"]   = static_cast<Json::UInt>(ev->getTimeScale());
+                LOG(LogLevel::INFO, "AAMP_EVENT_ID3_METADATA: length=", ev->getMetadataSize());
+            }
+            break;
+        }
+        case AAMP_EVENT_DRM_MESSAGE:
+        {
+            auto ev = std::dynamic_pointer_cast<DrmMessageEvent>(e);
+            eventName = "onDrmMessage";
+            if (ev)
+            {
+                params["message"] = ev->getMessage();
+                LOG(LogLevel::INFO, "AAMP_EVENT_DRM_MESSAGE");
+            }
+            break;
+        }
+        case AAMP_EVENT_CONTENT_GAP:
+        {
+            auto ev = std::dynamic_pointer_cast<ContentGapEvent>(e);
+            eventName = "onContentGap";
+            if (ev)
+            {
+                params["timeMs"]     = ev->getTime();
+                params["durationMs"] = ev->getDuration();
+                LOG(LogLevel::INFO, "AAMP_EVENT_CONTENT_GAP: timeMs=", ev->getTime(), " durationMs=", ev->getDuration());
+            }
+            break;
+        }
+        case AAMP_EVENT_HTTP_RESPONSE_HEADER:
+        {
+            auto ev = std::dynamic_pointer_cast<HTTPResponseHeaderEvent>(e);
+            eventName = "onHttpResponseHeader";
+            if (ev)
+            {
+                params["header"]   = ev->getHeader();
+                params["response"] = ev->getResponse();
+                LOG(LogLevel::INFO, "AAMP_EVENT_HTTP_RESPONSE_HEADER: header=", ev->getHeader());
+            }
+            break;
+        }
+        case AAMP_EVENT_CONTENT_PROTECTION_DATA_UPDATE:
+        {
+            auto ev = std::dynamic_pointer_cast<ContentProtectionDataEvent>(e);
+            eventName = "onContentProtectionDataUpdate";
+            if (ev)
+            {
+                params["streamType"] = ev->getStreamType();
+                LOG(LogLevel::INFO, "AAMP_EVENT_CONTENT_PROTECTION_DATA_UPDATE: streamType=", ev->getStreamType());
+            }
+            break;
+        }
+        case AAMP_EVENT_MANIFEST_REFRESH_NOTIFY:
+        {
+            auto ev = std::dynamic_pointer_cast<ManifestRefreshEvent>(e);
+            eventName = "onManifestRefresh";
+            if (ev)
+            {
+                params["manifestDuration"]      = ev->getManifestDuration();
+                params["noOfPeriods"]           = ev->getNoOfPeriods();
+                params["manifestPublishedTime"] = ev->getManifestPublishedTime();
+                params["manifestType"]          = ev->getManifestType();
+                LOG(LogLevel::INFO, "AAMP_EVENT_MANIFEST_REFRESH_NOTIFY: periods=", ev->getNoOfPeriods());
+            }
+            break;
+        }
+        case AAMP_EVENT_TUNE_TIME_METRICS:
+        {
+            auto ev = std::dynamic_pointer_cast<TuneTimeMetricsEvent>(e);
+            eventName = "onTuneTimeMetrics";
+            if (ev)
+            {
+                params["tuneMetricsData"] = ev->getTuneMetricsData();
+                LOG(LogLevel::INFO, "AAMP_EVENT_TUNE_TIME_METRICS");
+            }
+            break;
+        }
+        case AAMP_EVENT_MONITORAV_STATUS:
+        {
+            auto ev = std::dynamic_pointer_cast<MonitorAVStatusEvent>(e);
+            eventName = "onMonitorAVStatus";
+            if (ev)
+            {
+                params["monitorAVStatus"]  = ev->getMonitorAVStatus();
+                params["videoPositionMs"]  = ev->getVideoPositionMS();
+                params["audioPositionMs"]  = ev->getAudioPositionMS();
+                params["timeInStateMs"]    = ev->getTimeInStateMS();
+                params["droppedFrames"]    = ev->getDroppedFrames();
+                LOG(LogLevel::INFO, "AAMP_EVENT_MONITORAV_STATUS: status=", ev->getMonitorAVStatus());
             }
             break;
         }

@@ -1,0 +1,4401 @@
+{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "AAMP Player JSON-RPC API",
+    "version": "1.0.0",
+    "description": "WebSocket-based JSON-RPC 2.0 API for controlling an AAMP media player instance.\n\nEndpoint: ws://<host>:10101\n\nSession lifecycle: openSession -> configureSession (optional) -> playback methods -> closeSession"
+  },
+  "servers": [
+    {
+      "name": "AAMPIPALauncher",
+      "url": "ws://localhost:10101"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "PlayerState": {
+        "title": "PlayerState",
+        "type": "string",
+        "description": "AAMP player lifecycle state",
+        "enum": [
+          "idle",
+          "initializing",
+          "initialized",
+          "preparing",
+          "prepared",
+          "buffering",
+          "paused",
+          "seeking",
+          "playing",
+          "stopping",
+          "stopped",
+          "complete",
+          "error",
+          "released",
+          "blocked"
+        ]
+      },
+      "AudioTrack": {
+        "title": "AudioTrack",
+        "type": "object",
+        "required": [
+          "index",
+          "language"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Zero-based track index"
+          },
+          "language": {
+            "type": "string",
+            "description": "ISO 639 language code"
+          },
+          "rendition": {
+            "type": "string",
+            "description": "Rendition label (e.g. main, alternate, commentary)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable track label"
+          },
+          "codec": {
+            "type": "string",
+            "description": "Audio codec identifier (e.g. mp4a.40.2, ec-3)"
+          },
+          "type": {
+            "type": "string",
+            "description": "Audio type (e.g. AUDIO_STEREO, AUDIO_DOLBY_ATMOS)"
+          },
+          "channels": {
+            "type": "integer",
+            "description": "Number of audio channels"
+          },
+          "bitrate": {
+            "type": "integer",
+            "description": "Track bitrate in bps"
+          }
+        }
+      },
+      "TextTrack": {
+        "title": "TextTrack",
+        "type": "object",
+        "required": [
+          "index",
+          "language"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Zero-based track index"
+          },
+          "language": {
+            "type": "string",
+            "description": "ISO 639 language code"
+          },
+          "rendition": {
+            "type": "string",
+            "description": "Rendition label"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable track label"
+          },
+          "type": {
+            "type": "string",
+            "description": "Subtitle format (e.g. CLOSED_CAPTIONS, SUBTITLES, WEBVTT, TTML)"
+          }
+        }
+      },
+      "SuccessResult": {
+        "title": "SuccessResult",
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        }
+      }
+    }
+  },
+  "methods": [
+    {
+      "name": "org.rdk.player.openSession",
+      "summary": "Open a new player session",
+      "description": "Allocates a player instance and associates it with the calling WebSocket connection. Must be called before any playback or configuration method. Returns a sessionId that is echoed back in all subsequent responses for correlation.",
+      "tags": [
+        {
+          "name": "Session Management"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "instanceId",
+          "required": true,
+          "description": "Client-supplied player instance identifier.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "displayId",
+          "required": true,
+          "description": "Display/window identifier to associate with this player instance.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "openSessionResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "sessionId",
+            "status"
+          ],
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Session identifier to use in subsequent calls"
+            },
+            "status": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "openSessionExample",
+          "params": [
+            {
+              "name": "instanceId",
+              "value": "123-1232-321312-3123"
+            },
+            {
+              "name": "displayId",
+              "value": "wst-mywindow"
+            }
+          ],
+          "result": {
+            "name": "openSessionResult",
+            "value": {
+              "sessionId": "session_1783267426",
+              "status": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.configureSession",
+      "summary": "Apply configuration to an open session",
+      "description": "Applies AAMP configuration key-value pairs to the session. Must be called after openSession and before tune.",
+      "tags": [
+        {
+          "name": "Session Management"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "config",
+          "required": true,
+          "description": "AAMP configuration block as a JSON object or JSON-encoded string.",
+          "schema": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        }
+      ],
+      "result": {
+        "name": "configureSessionResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "sessionId",
+            "success"
+          ],
+          "properties": {
+            "sessionId": {
+              "type": "string"
+            },
+            "success": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "configureSessionExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "config",
+              "value": {
+                "networkTimeout": 10,
+                "downloadBuffer": 30,
+                "preferredDRM": "widevine",
+                "initialBitrate": 2000000
+              }
+            }
+          ],
+          "result": {
+            "name": "configureSessionResult",
+            "value": {
+              "sessionId": "sess-abc-001",
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.closeSession",
+      "summary": "Close and release a player session",
+      "description": "Stops any active playback, releases decoder and DRM resources, and destroys the session. After this call the sessionId is invalid. The WebSocket connection itself is not closed.",
+      "tags": [
+        {
+          "name": "Session Management"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "closeSessionResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "message": {
+              "type": "string",
+              "description": "Human-readable status message"
+            },
+            "status": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "closeSessionExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "closeSessionResult",
+            "value": {
+              "message": "Session closed successfully.",
+              "status": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.play",
+      "summary": "Start playback of a media stream",
+      "description": "Instructs the AAMP player to tune to the given URL. Optionally auto-starts playback and accepts a content type hint and trace UUID for diagnostics.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "required": true,
+          "description": "Media manifest URL (HLS, DASH, progressive MP4, etc.)",
+          "schema": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        {
+          "name": "autoPlay",
+          "required": false,
+          "description": "Start playback immediately after buffering.",
+          "schema": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        {
+          "name": "contentType",
+          "required": false,
+          "description": "Stream type hint.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "VOD",
+              "LIVE",
+              "LINEAR_TV",
+              "IVOD",
+              "EAS",
+              "DVR",
+              "CDVR",
+              "IPVideo",
+              "OTT",
+              "SLE"
+            ]
+          }
+        },
+        {
+          "name": "traceUUID",
+          "required": false,
+          "description": "Correlation UUID forwarded to AAMP diagnostics and telemetry.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "result": {
+        "name": "playResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "message": {
+              "type": "string",
+              "description": "Human-readable status message"
+            },
+            "status": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "playExample",
+          "params": [
+            {
+              "name": "url",
+              "value": "http://dash.akamaized.net/dash264/TestCases/1a/qualcomm/1/MultiRate.mpd"
+            },
+            {
+              "name": "sessionId",
+              "value": "session_1783267426"
+            }
+          ],
+          "result": {
+            "name": "playResult",
+            "value": {
+              "message": "Content playback started.",
+              "status": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.stop",
+      "summary": "Stop playback",
+      "description": "Stops the current playback and releases decoder resources. The player returns to the idle state.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "stopResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "stopExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "stopResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.seek",
+      "summary": "Seek to a position",
+      "description": "Seeks to an absolute position in the stream (in seconds from the start). For live streams, position is relative to the live edge.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "position",
+          "required": true,
+          "description": "Target seek position in seconds (>= 0).",
+          "schema": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "keepPaused",
+          "required": false,
+          "description": "If true, the player remains paused after seeking.",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "result": {
+        "name": "seekResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "seekExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "position",
+              "value": 120.0
+            },
+            {
+              "name": "keepPaused",
+              "value": false
+            }
+          ],
+          "result": {
+            "name": "seekResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.seekToLive",
+      "summary": "Seek to the live edge",
+      "description": "Moves playback to the current live edge of a live or time-shifted stream.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keepPaused",
+          "required": false,
+          "description": "If true, the player remains paused after seeking to live.",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "result": {
+        "name": "seekToLiveResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "seekToLiveExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "keepPaused",
+              "value": false
+            }
+          ],
+          "result": {
+            "name": "seekToLiveResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.setRate",
+      "summary": "Set playback rate / trick-play speed",
+      "description": "Sets the playback rate for trick-play. Rate 1=normal, 0=pause, 2=2x fast-forward, -2=2x rewind.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "rate",
+          "required": true,
+          "description": "Playback rate multiplier.",
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "overshootCorrection",
+          "required": false,
+          "description": "Overshoot correction offset in milliseconds applied during trick play.",
+          "schema": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setRateResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setRateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "rate",
+              "value": 2
+            },
+            {
+              "name": "overshootCorrection",
+              "value": 0
+            }
+          ],
+          "result": {
+            "name": "setRateResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.setPlaybackSpeed",
+      "summary": "Set playback speed",
+      "description": "Sets the playback speed directly (equivalent to setRate without the overshoot correction option).",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "speed",
+          "required": true,
+          "description": "Playback speed multiplier (e.g. 1.0, 0.5, 2.0).",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "setPlaybackSpeedResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setPlaybackSpeedExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "speed",
+              "value": 0.5
+            }
+          ],
+          "result": {
+            "name": "setPlaybackSpeedResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.pauseAt",
+      "summary": "Schedule a pause at a future position",
+      "description": "Requests the player to automatically pause when playback reaches the specified position. Pass a negative value to cancel a previously scheduled pause.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "position",
+          "required": true,
+          "description": "Position in seconds at which to pause. Pass a negative value to cancel.",
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "result": {
+        "name": "pauseAtResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "pauseAtExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "position",
+              "value": 300.0
+            }
+          ],
+          "result": {
+            "name": "pauseAtResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.setRateAndSeek",
+      "summary": "Atomically set rate and seek",
+      "description": "Combines a rate change and a seek into a single atomic operation, avoiding the visual glitch that can occur when calling them separately.",
+      "tags": [
+        {
+          "name": "Playback Control"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "rate",
+          "required": true,
+          "description": "Target playback rate (e.g. 1, -2, 4).",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "position",
+          "required": true,
+          "description": "Target position in seconds (>= 0).",
+          "schema": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setRateAndSeekResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setRateAndSeekExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "rate",
+              "value": 1
+            },
+            {
+              "name": "position",
+              "value": 60.0
+            }
+          ],
+          "result": {
+            "name": "setRateAndSeekResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getState",
+      "summary": "Get current player state",
+      "description": "Returns the current lifecycle state of the AAMP player instance.",
+      "tags": [
+        {
+          "name": "Playback State"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getStateResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/components/schemas/PlayerState"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getStateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getStateResult",
+            "value": {
+              "state": "playing"
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getPlaybackPosition",
+      "summary": "Get current playback position",
+      "tags": [
+        {
+          "name": "Playback State"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getPlaybackPositionResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "position"
+          ],
+          "properties": {
+            "position": {
+              "type": "number",
+              "description": "Current playback position in seconds"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getPlaybackPositionExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getPlaybackPositionResult",
+            "value": {
+              "position": 120.5
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getPlaybackDuration",
+      "summary": "Get total stream duration",
+      "description": "Returns -1 for live streams without a known duration.",
+      "tags": [
+        {
+          "name": "Playback State"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getPlaybackDurationResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "duration"
+          ],
+          "properties": {
+            "duration": {
+              "type": "number",
+              "description": "Total stream duration in seconds; -1 for unbounded live streams"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getPlaybackDurationExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getPlaybackDurationResult",
+            "value": {
+              "duration": 3600.0
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getPlaybackRate",
+      "summary": "Get current playback rate",
+      "tags": [
+        {
+          "name": "Playback State"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getPlaybackRateResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "rate"
+          ],
+          "properties": {
+            "rate": {
+              "type": "number",
+              "description": "Current playback rate multiplier (1.0 = normal, 0 = paused)"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getPlaybackRateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getPlaybackRateResult",
+            "value": {
+              "rate": 1.0
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.isLive",
+      "summary": "Check if stream is live",
+      "tags": [
+        {
+          "name": "Playback State"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "isLiveResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "isLive"
+          ],
+          "properties": {
+            "isLive": {
+              "type": "boolean",
+              "description": "true if the current stream is a live broadcast"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "isLiveExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "isLiveResult",
+            "value": {
+              "isLive": false
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setVideoMute",
+      "summary": "Mute or unmute the video plane",
+      "description": "Blanks (mutes) or restores the video plane without affecting audio.",
+      "tags": [
+        {
+          "name": "Video"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "muted",
+          "required": true,
+          "description": "true to blank the video plane; false to restore it.",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "setVideoMuteResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setVideoMuteExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "muted",
+              "value": true
+            }
+          ],
+          "result": {
+            "name": "setVideoMuteResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getVideoMute",
+      "summary": "Get video mute state",
+      "tags": [
+        {
+          "name": "Video"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getVideoMuteResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "muted"
+          ],
+          "properties": {
+            "muted": {
+              "type": "boolean",
+              "description": "true if the video plane is currently muted (blanked)"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getVideoMuteExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getVideoMuteResult",
+            "value": {
+              "muted": false
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setAudioVolume",
+      "summary": "Set audio volume",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "volume",
+          "required": true,
+          "description": "Volume level from 0 (muted) to 100 (maximum).",
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      ],
+      "result": {
+        "name": "setAudioVolumeResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setAudioVolumeExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "volume",
+              "value": 80
+            }
+          ],
+          "result": {
+            "name": "setAudioVolumeResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getAudioVolume",
+      "summary": "Get audio volume",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getAudioVolumeResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "volume"
+          ],
+          "properties": {
+            "volume": {
+              "type": "integer",
+              "description": "Current volume level (0-100)"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAudioVolumeExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getAudioVolumeResult",
+            "value": {
+              "volume": 80
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getAudioLanguage",
+      "summary": "Get currently active audio language",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getAudioLanguageResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "language"
+          ],
+          "properties": {
+            "language": {
+              "type": "string",
+              "description": "ISO 639 language code of the active audio track (e.g. en)"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAudioLanguageExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getAudioLanguageResult",
+            "value": {
+              "language": "en"
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getAvailableAudioTracks",
+      "summary": "List available audio tracks",
+      "description": "Returns all audio tracks present in the current manifest.",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "allTracks",
+          "required": false,
+          "description": "true to include tracks from all DASH periods, not just the current one.",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "result": {
+        "name": "getAvailableAudioTracksResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "tracks"
+          ],
+          "properties": {
+            "tracks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/AudioTrack"
+              },
+              "description": "Array of available audio track descriptors"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAvailableAudioTracksExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "allTracks",
+              "value": false
+            }
+          ],
+          "result": {
+            "name": "getAvailableAudioTracksResult",
+            "value": {
+              "tracks": [
+                {
+                  "index": 0,
+                  "language": "en",
+                  "rendition": "main",
+                  "label": "English",
+                  "codec": "mp4a.40.2",
+                  "type": "AUDIO_STEREO",
+                  "channels": 2,
+                  "bitrate": 128000
+                },
+                {
+                  "index": 1,
+                  "language": "fra",
+                  "rendition": "main",
+                  "label": "French",
+                  "codec": "mp4a.40.2",
+                  "type": "AUDIO_STEREO",
+                  "channels": 2,
+                  "bitrate": 128000
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.setAudioTrack",
+      "summary": "Select an audio track by index",
+      "description": "Switches to the audio track at the specified index from getAvailableAudioTracks.",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trackId",
+          "required": true,
+          "description": "Zero-based index of the target audio track (>= 0).",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setAudioTrackResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setAudioTrackExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "trackId",
+              "value": 1
+            }
+          ],
+          "result": {
+            "name": "setAudioTrackResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getAudioTrack",
+      "summary": "Get index of active audio track",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getAudioTrackResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "trackId"
+          ],
+          "properties": {
+            "trackId": {
+              "type": "integer",
+              "description": "Zero-based index of the currently active audio track"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAudioTrackExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getAudioTrackResult",
+            "value": {
+              "trackId": 0
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getAudioTrackInfo",
+      "summary": "Get details of active audio track",
+      "tags": [
+        {
+          "name": "Audio"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getAudioTrackInfoResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "trackInfo"
+          ],
+          "properties": {
+            "trackInfo": {
+              "$ref": "#/components/schemas/AudioTrack"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAudioTrackInfoExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getAudioTrackInfoResult",
+            "value": {
+              "trackInfo": {
+                "index": 0,
+                "language": "en",
+                "rendition": "main",
+                "label": "English",
+                "codec": "mp4a.40.2",
+                "type": "AUDIO_STEREO",
+                "channels": 2,
+                "bitrate": 128000
+              }
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setSubtitleMute",
+      "summary": "Mute or unmute subtitles",
+      "description": "Enables or suppresses subtitle rendering without changing the active text track selection.",
+      "tags": [
+        {
+          "name": "Subtitles"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "muted",
+          "required": true,
+          "description": "true to hide subtitles; false to show them.",
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "result": {
+        "name": "setSubtitleMuteResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setSubtitleMuteExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "muted",
+              "value": true
+            }
+          ],
+          "result": {
+            "name": "setSubtitleMuteResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getAvailableTextTracks",
+      "summary": "List available text/subtitle tracks",
+      "tags": [
+        {
+          "name": "Subtitles"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "allTracks",
+          "required": false,
+          "description": "true to include tracks from all DASH periods.",
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "result": {
+        "name": "getAvailableTextTracksResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "tracks"
+          ],
+          "properties": {
+            "tracks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/TextTrack"
+              }
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAvailableTextTracksExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "allTracks",
+              "value": false
+            }
+          ],
+          "result": {
+            "name": "getAvailableTextTracksResult",
+            "value": {
+              "tracks": [
+                {
+                  "index": 0,
+                  "language": "en",
+                  "rendition": "main",
+                  "label": "English",
+                  "type": "SUBTITLES"
+                },
+                {
+                  "index": 1,
+                  "language": "spa",
+                  "rendition": "main",
+                  "label": "Spanish",
+                  "type": "SUBTITLES"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.setTextTrack",
+      "summary": "Select a text track by index",
+      "tags": [
+        {
+          "name": "Subtitles"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trackId",
+          "required": true,
+          "description": "Zero-based index of the target text track (>= 0).",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setTextTrackResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setTextTrackExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "trackId",
+              "value": 0
+            }
+          ],
+          "result": {
+            "name": "setTextTrackResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getTextTrack",
+      "summary": "Get index of active text track",
+      "tags": [
+        {
+          "name": "Subtitles"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getTextTrackResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "trackId"
+          ],
+          "properties": {
+            "trackId": {
+              "type": "integer",
+              "description": "Zero-based index of the currently active text track"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getTextTrackExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getTextTrackResult",
+            "value": {
+              "trackId": 0
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.getVideoBitrate",
+      "summary": "Get current video bitrate",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getVideoBitrateResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "bitrate"
+          ],
+          "properties": {
+            "bitrate": {
+              "type": "integer",
+              "description": "Current video bitrate in bits per second"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getVideoBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getVideoBitrateResult",
+            "value": {
+              "bitrate": 4000000
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setVideoBitrate",
+      "summary": "Lock the video bitrate",
+      "description": "Pins ABR to the profile closest to the specified bitrate. Pass 0 to re-enable automatic ABR.",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bitrate",
+          "required": true,
+          "description": "Target bitrate in bps; 0 restores automatic ABR.",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setVideoBitrateResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setVideoBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "bitrate",
+              "value": 2000000
+            }
+          ],
+          "result": {
+            "name": "setVideoBitrateResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getVideoBitrates",
+      "summary": "List all available video bitrates",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getVideoBitratesResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "bitrates"
+          ],
+          "properties": {
+            "bitrates": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Available video bitrates in bps, ascending order"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getVideoBitratesExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getVideoBitratesResult",
+            "value": {
+              "bitrates": [
+                800000,
+                2000000,
+                4000000,
+                8000000
+              ]
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setInitialBitrate",
+      "summary": "Set the startup bitrate hint",
+      "description": "Hints to AAMP which bitrate profile to select at the start of the next tune. ABR may switch away after the initial segments are downloaded.",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bitrate",
+          "required": true,
+          "description": "Desired startup bitrate in bps.",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setInitialBitrateResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setInitialBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "bitrate",
+              "value": 2000000
+            }
+          ],
+          "result": {
+            "name": "setInitialBitrateResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getInitialBitrate",
+      "summary": "Get the startup bitrate hint",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getInitialBitrateResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "bitrate"
+          ],
+          "properties": {
+            "bitrate": {
+              "type": "integer",
+              "description": "Configured startup bitrate in bps"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getInitialBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getInitialBitrateResult",
+            "value": {
+              "bitrate": 2000000
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setMinimumBitrate",
+      "summary": "Set the ABR minimum bitrate floor",
+      "description": "Prevents AAMP from selecting any video profile below this bitrate during adaptive bitrate switching.",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bitrate",
+          "required": true,
+          "description": "Minimum allowed bitrate in bps.",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setMinimumBitrateResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setMinimumBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "bitrate",
+              "value": 800000
+            }
+          ],
+          "result": {
+            "name": "setMinimumBitrateResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getMinimumBitrate",
+      "summary": "Get the ABR minimum bitrate floor",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getMinimumBitrateResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "bitrate"
+          ],
+          "properties": {
+            "bitrate": {
+              "type": "integer",
+              "description": "Configured minimum ABR bitrate in bps"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getMinimumBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getMinimumBitrateResult",
+            "value": {
+              "bitrate": 800000
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setMaximumBitrate",
+      "summary": "Set the ABR maximum bitrate ceiling",
+      "description": "Prevents AAMP from selecting any video profile above this bitrate during adaptive bitrate switching.",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bitrate",
+          "required": true,
+          "description": "Maximum allowed bitrate in bps.",
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "setMaximumBitrateResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setMaximumBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "bitrate",
+              "value": 8000000
+            }
+          ],
+          "result": {
+            "name": "setMaximumBitrateResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getMaximumBitrate",
+      "summary": "Get the ABR maximum bitrate ceiling",
+      "tags": [
+        {
+          "name": "Bitrate / ABR"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getMaximumBitrateResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "bitrate"
+          ],
+          "properties": {
+            "bitrate": {
+              "type": "integer",
+              "description": "Configured maximum ABR bitrate in bps"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getMaximumBitrateExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getMaximumBitrateResult",
+            "value": {
+              "bitrate": 8000000
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setLicenseServerURL",
+      "summary": "Set the DRM license server URL",
+      "description": "Overrides the license server URL for the active DRM system. Can be used to redirect license requests to a proxy.",
+      "tags": [
+        {
+          "name": "DRM"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "required": true,
+          "description": "License server URL (e.g. https://license.example.com/widevine).",
+          "schema": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      ],
+      "result": {
+        "name": "setLicenseServerURLResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setLicenseServerURLExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "url",
+              "value": "https://license.example.com/widevine"
+            }
+          ],
+          "result": {
+            "name": "setLicenseServerURLResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getDRM",
+      "summary": "Get active DRM system",
+      "tags": [
+        {
+          "name": "DRM"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getDRMResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "drm"
+          ],
+          "properties": {
+            "drm": {
+              "type": "string",
+              "description": "Name of the active DRM system",
+              "enum": [
+                "widevine",
+                "playready",
+                "clearkey",
+                "none"
+              ]
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getDRMExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getDRMResult",
+            "value": {
+              "drm": "widevine"
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setPreferredDRM",
+      "summary": "Set the preferred DRM system",
+      "description": "Tells AAMP which DRM system to prefer when multiple are available in the manifest.",
+      "tags": [
+        {
+          "name": "DRM"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "drmType",
+          "required": true,
+          "description": "DRM identifier.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "widevine",
+              "playready",
+              "clearkey"
+            ]
+          }
+        }
+      ],
+      "result": {
+        "name": "setPreferredDRMResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setPreferredDRMExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "drmType",
+              "value": "widevine"
+            }
+          ],
+          "result": {
+            "name": "setPreferredDRMResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getAAMPConfig",
+      "summary": "Get current AAMP configuration",
+      "tags": [
+        {
+          "name": "Configuration"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getAAMPConfigResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "config"
+          ],
+          "properties": {
+            "config": {
+              "type": "object",
+              "description": "Complete current AAMP configuration as a JSON object"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getAAMPConfigExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getAAMPConfigResult",
+            "value": {
+              "config": {
+                "networkTimeout": 10,
+                "downloadBuffer": 30
+              }
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.setAppName",
+      "summary": "Set the application name",
+      "description": "Sets a human-readable application name included in AAMP diagnostic logs and telemetry.",
+      "tags": [
+        {
+          "name": "Configuration"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "required": true,
+          "description": "Application name (e.g. MyStreamingApp).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "setAppNameResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setAppNameExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "name",
+              "value": "MyStreamingApp"
+            }
+          ],
+          "result": {
+            "name": "setAppNameResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.setPreferredLanguages",
+      "summary": "Set preferred audio/text language preferences",
+      "description": "Configures fine-grained language selection. All parameters are optional; omit to leave that dimension unchanged.",
+      "tags": [
+        {
+          "name": "Configuration"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "languageList",
+          "required": false,
+          "description": "Comma-separated ISO 639 language codes in priority order (e.g. en,fra,spa).",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "rendition",
+          "required": false,
+          "description": "Preferred rendition label (e.g. main, alternate).",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "required": false,
+          "description": "Preferred audio type (e.g. AUDIO_DOLBY_ATMOS, AUDIO_STEREO).",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "codecList",
+          "required": false,
+          "description": "Comma-separated preferred audio codecs (e.g. ec-3,mp4a).",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "labelList",
+          "required": false,
+          "description": "Comma-separated preferred HLS GROUP-ID or DASH label values.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "setPreferredLanguagesResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "setPreferredLanguagesExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "languageList",
+              "value": "en,fra,spa"
+            },
+            {
+              "name": "rendition",
+              "value": "main"
+            },
+            {
+              "name": "type",
+              "value": "AUDIO_STEREO"
+            },
+            {
+              "name": "codecList",
+              "value": "mp4a.40.2"
+            }
+          ],
+          "result": {
+            "name": "setPreferredLanguagesResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getPreferredLanguages",
+      "summary": "Get the preferred language list",
+      "tags": [
+        {
+          "name": "Configuration"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "getPreferredLanguagesResult",
+        "schema": {
+          "type": "object",
+          "required": [
+            "languageList"
+          ],
+          "properties": {
+            "languageList": {
+              "type": "string",
+              "description": "Comma-separated ISO 639 language codes in preference order"
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getPreferredLanguagesExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getPreferredLanguagesResult",
+            "value": {
+              "languageList": "en,fra"
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "org.rdk.player.register",
+      "summary": "Register to server-pushed event notifications",
+      "description": "After registering, the server pushes matching events as JSON-RPC notifications (no id field),
+      "tags": [
+        {
+          "name": "Event Register"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [ 
+       {
+          "name": "id",
+          "required": true,
+          "description": "Identifier",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "event",
+          "required": true,
+          "description": "Event name (e.g. onProgress) or * for all events.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "registerResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "registerExample",
+          "params": [
+            {
+              "name": "id",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "event",
+              "value": "onProgress"
+            }
+          ],
+          "result": {
+            "name": "registerResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.unregister",
+      "summary": "Unregister from event notifications",
+      "tags": [
+        {
+          "name": "Event UnRegister"
+        }
+      ],
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "id",
+          "required": true,
+          "description": "Identifier.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "event",
+          "required": true,
+          "description": "Event name to unregister from.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "unsubscribeResult",
+        "schema": {
+          "$ref": "#/components/schemas/SuccessResult"
+        }
+      },
+      "examples": [
+        {
+          "name": "unregisterExample",
+          "params": [
+            {
+              "name": "id",
+              "value": "sess-abc-001"
+            },
+            {
+              "name": "event",
+              "value": "onProgress"
+            }
+          ],
+          "result": {
+            "name": "unregisterResult",
+            "value": {
+              "success": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "org.rdk.player.getListeners",
+      "summary": "List active event listeners",
+      "tags": [
+        {
+          "name": "Event Listeners"
+        }
+      ],
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "listeners",
+        "schema": {
+          "type": "object",
+          "required": [
+            "listeners"
+          ],
+          "properties": {
+            "listeners": {
+              "type": "array",
+              "description": "Active event listener registrations for this session",
+              "items": {
+                "type": "object",
+                "required": ["event", "id"],
+                "properties": {
+                  "event": {
+                    "type": "string",
+                    "description": "Registered event name (e.g. onProgress)"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Client registration identifier (e.g. events.1)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "getListenersExample",
+          "params": [
+            {
+              "name": "sessionId",
+              "value": "sess-abc-001"
+            }
+          ],
+          "result": {
+            "name": "getListenersResult",
+            "value": {
+              "listeners": [
+                { "event": "onAnomalyReport", "id": "events.1" },
+                { "event": "onBitrateChanged", "id": "events.1" },
+                { "event": "onStateChanged",   "id": "events.1" }
+              ]
+            }
+          }
+        }
+      ],
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onTuned",
+      "summary": "Tune succeeded and playback is ready",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "onTunedParams",
+        "schema": {
+          "type": "object"
+        }
+      },
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onTuneFailed",
+      "summary": "Tune failed",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "description",
+          "schema": {
+            "type": "string",
+            "description": "Human-readable error description"
+          }
+        },
+        {
+          "name": "code",
+          "schema": {
+            "type": "integer",
+            "description": "AAMP internal error code"
+          }
+        },
+        {
+          "name": "shouldRetry",
+          "schema": {
+            "type": "boolean",
+            "description": "true if the application should retry the tune"
+          }
+        }
+      ],
+      "result": {
+        "name": "onTuneFailedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "code": {
+              "type": "integer"
+            },
+            "shouldRetry": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "onStateChanged",
+      "summary": "Player lifecycle state transition",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "state",
+          "schema": {
+            "$ref": "#/components/schemas/PlayerState"
+          }
+        }
+      ],
+      "result": {
+        "name": "onStateChangedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "$ref": "#/components/schemas/PlayerState"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "onProgress",
+      "summary": "Periodic playback heartbeat (~1 s interval)",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "positionMs",
+          "schema": {
+            "type": "number",
+            "description": "Current playback position in milliseconds"
+          }
+        },
+        {
+          "name": "durationMs",
+          "schema": {
+            "type": "number",
+            "description": "Total stream duration in ms; -1 for unbounded live"
+          }
+        },
+        {
+          "name": "speed",
+          "schema": {
+            "type": "number",
+            "description": "Current playback speed multiplier"
+          }
+        },
+        {
+          "name": "startMs",
+          "schema": {
+            "type": "number",
+            "description": "Start of the seekable window in milliseconds"
+          }
+        },
+        {
+          "name": "endMs",
+          "schema": {
+            "type": "number",
+            "description": "End of the seekable window in milliseconds"
+          }
+        },
+        {
+          "name": "videoBufferedMs",
+          "schema": {
+            "type": "number",
+            "description": "Video data buffered ahead of current position in ms"
+          }
+        },
+        {
+          "name": "audioBufferedMs",
+          "schema": {
+            "type": "number",
+            "description": "Audio data buffered ahead of current position in ms"
+          }
+        },
+        {
+          "name": "liveLatencyMs",
+          "schema": {
+            "type": "number",
+            "description": "Distance from the live edge in ms; 0 for VOD"
+          }
+        },
+        {
+          "name": "profileBitrate",
+          "schema": {
+            "type": "integer",
+            "description": "Bitrate of the selected video profile in bps"
+          }
+        },
+        {
+          "name": "networkBitrate",
+          "schema": {
+            "type": "integer",
+            "description": "Estimated download throughput in bps"
+          }
+        }
+      ],
+      "result": {
+        "name": "onProgressParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "positionMs": {
+              "type": "number"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "speed": {
+              "type": "number"
+            },
+            "startMs": {
+              "type": "number"
+            },
+            "endMs": {
+              "type": "number"
+            },
+            "videoBufferedMs": {
+              "type": "number"
+            },
+            "audioBufferedMs": {
+              "type": "number"
+            },
+            "liveLatencyMs": {
+              "type": "number"
+            },
+            "profileBitrate": {
+              "type": "integer"
+            },
+            "networkBitrate": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "onEOS",
+      "summary": "End of stream reached",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "onEOSParams",
+        "schema": {
+          "type": "object"
+        }
+      },
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onSpeedChanged",
+      "summary": "Effective playback speed changed",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "speed",
+          "schema": {
+            "type": "number",
+            "description": "New playback speed multiplier"
+          }
+        }
+      ],
+      "result": {
+        "name": "onSpeedChangedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "speed": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "onBufferingChanged",
+      "summary": "Player entered or exited a buffering state",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "buffering",
+          "schema": {
+            "type": "boolean",
+            "description": "true when actively buffering; false when buffering is complete"
+          }
+        }
+      ],
+      "result": {
+        "name": "onBufferingChangedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "buffering": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "onSeeked",
+      "summary": "Seek operation completed",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "positionMs",
+          "schema": {
+            "type": "number",
+            "description": "New playback position in milliseconds after the seek"
+          }
+        }
+      ],
+      "result": {
+        "name": "onSeekedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "positionMs": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "onBitrateChanged",
+      "summary": "ABR switched to a different video profile",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bitrate",
+          "schema": {
+            "type": "integer",
+            "description": "New video bitrate in bps"
+          }
+        },
+        {
+          "name": "width",
+          "schema": {
+            "type": "integer",
+            "description": "Horizontal resolution of the new profile in pixels"
+          }
+        },
+        {
+          "name": "height",
+          "schema": {
+            "type": "integer",
+            "description": "Vertical resolution of the new profile in pixels"
+          }
+        },
+        {
+          "name": "description",
+          "schema": {
+            "type": "string",
+            "description": "Reason for the bitrate change (e.g. NetworkCongestion)"
+          }
+        },
+        {
+          "name": "frameRate",
+          "schema": {
+            "type": "number",
+            "description": "Frame rate of the new video profile"
+          }
+        },
+        {
+          "name": "position",
+          "schema": {
+            "type": "number",
+            "description": "Playback position in milliseconds when the switch occurred"
+          }
+        },
+        {
+          "name": "cappedProfile",
+          "schema": {
+            "type": "boolean",
+            "description": "true if the selected profile was capped (e.g. by network or display constraints)"
+          }
+        },
+        {
+          "name": "displayWidth",
+          "schema": {
+            "type": "integer",
+            "description": "Display/output width in pixels"
+          }
+        },
+        {
+          "name": "displayHeight",
+          "schema": {
+            "type": "integer",
+            "description": "Display/output height in pixels"
+          }
+        },
+        {
+          "name": "videoScanType",
+          "schema": {
+            "type": "integer",
+            "description": "Video scan type (0=progressive, 1=interlaced)"
+          }
+        },
+        {
+          "name": "aspectRatioWidth",
+          "schema": {
+            "type": "integer",
+            "description": "Aspect ratio width component (e.g. 16 for 16:9)"
+          }
+        },
+        {
+          "name": "aspectRatioHeight",
+          "schema": {
+            "type": "integer",
+            "description": "Aspect ratio height component (e.g. 9 for 16:9)"
+          }
+        }
+      ],
+      "result": {
+        "name": "onBitrateChangedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "bitrate": { "type": "integer" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "description": { "type": "string" },
+            "frameRate": { "type": "number" },
+            "position": { "type": "number" },
+            "cappedProfile": { "type": "boolean" },
+            "displayWidth": { "type": "integer" },
+            "displayHeight": { "type": "integer" },
+            "videoScanType": { "type": "integer" },
+            "aspectRatioWidth": { "type": "integer" },
+            "aspectRatioHeight": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onMediaMetadata",
+      "summary": "Stream metadata parsed after tune",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "durationMs",
+          "schema": {
+            "type": "integer",
+            "description": "Total stream duration in milliseconds"
+          }
+        },
+        {
+          "name": "width",
+          "schema": {
+            "type": "integer",
+            "description": "Horizontal resolution of the highest-quality profile"
+          }
+        },
+        {
+          "name": "height",
+          "schema": {
+            "type": "integer",
+            "description": "Vertical resolution of the highest-quality profile"
+          }
+        },
+        {
+          "name": "hasDrm",
+          "schema": {
+            "type": "boolean",
+            "description": "true if the stream is DRM protected"
+          }
+        },
+        {
+          "name": "programStartTime",
+          "schema": {
+            "type": "number",
+            "description": "Unix timestamp of the program start time (0 for VOD)"
+          }
+        },
+        {
+          "name": "tsbDepthMs",
+          "schema": {
+            "type": "number",
+            "description": "Time-shift buffer depth in milliseconds"
+          }
+        },
+        {
+          "name": "languages",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ISO 639 language codes of all available audio tracks"
+          }
+        },
+        {
+          "name": "bitrates",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Available video bitrates in bps, ascending order"
+          }
+        },
+        {
+          "name": "supportedSpeeds",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Trick-play speeds supported by the stream"
+          }
+        }
+      ],
+      "result": {
+        "name": "onMediaMetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "durationMs": { "type": "integer" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "hasDrm": { "type": "boolean" },
+            "programStartTime": { "type": "number" },
+            "tsbDepthMs": { "type": "number" },
+            "languages": { "type": "array", "items": { "type": "string" } },
+            "bitrates": { "type": "array", "items": { "type": "integer" } },
+            "supportedSpeeds": { "type": "array", "items": { "type": "number" } }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAudioTracksChanged",
+      "summary": "Available audio track list changed",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "onAudioTracksChangedParams",
+        "schema": {
+          "type": "object"
+        }
+      },
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onTextTracksChanged",
+      "summary": "Available text track list changed",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "onTextTracksChangedParams",
+        "schema": {
+          "type": "object"
+        }
+      },
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onDrmMetadata",
+      "summary": "DRM access status update",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "failure",
+          "schema": {
+            "type": "integer",
+            "description": "DRM failure code"
+          }
+        },
+        {
+          "name": "accessStatus",
+          "schema": {
+            "type": "string",
+            "description": "DRM access status string reported by the DRM system"
+          }
+        },
+        {
+          "name": "accessStatusValue",
+          "schema": {
+            "type": "integer",
+            "description": "Numeric value corresponding to accessStatus"
+          }
+        },
+        {
+          "name": "responseCode",
+          "schema": {
+            "type": "integer",
+            "description": "HTTP or DRM response code"
+          }
+        },
+        {
+          "name": "isSecClientError",
+          "schema": {
+            "type": "boolean",
+            "description": "true if the failure originated in the security client"
+          }
+        }
+      ],
+      "result": {
+        "name": "onDrmMetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "failure": { "type": "integer" },
+            "accessStatus": { "type": "string" },
+            "accessStatusValue": { "type": "integer" },
+            "responseCode": { "type": "integer" },
+            "isSecClientError": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdReservationStart",
+      "summary": "SCTE-35 ad reservation window opened",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "adBreakId",
+          "schema": { "type": "string", "description": "Identifier of the ad break" }
+        },
+        {
+          "name": "position",
+          "schema": { "type": "number", "description": "Stream position in milliseconds where the ad break starts" }
+        }
+      ],
+      "result": {
+        "name": "onAdReservationStartParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adBreakId": { "type": "string" },
+            "position": { "type": "number" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdReservationEnd",
+      "summary": "SCTE-35 ad reservation window closed",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "adBreakId",
+          "schema": { "type": "string", "description": "Identifier of the ad break" }
+        },
+        {
+          "name": "position",
+          "schema": { "type": "number", "description": "Stream position in milliseconds where the ad break ends" }
+        }
+      ],
+      "result": {
+        "name": "onAdReservationEndParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adBreakId": { "type": "string" },
+            "position": { "type": "number" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAnomalyReport",
+      "summary": "Internal diagnostic / anomaly report",
+      "tags": [
+        {
+          "name": "Notifications"
+        }
+      ],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "description": "Session identifier returned by openSession.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "severity",
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "description": "Severity level: 0=INFO, 1=WARNING, 2=ERROR, 3=TRACE"
+          }
+        },
+        {
+          "name": "message",
+          "schema": {
+            "type": "string",
+            "description": "Human-readable anomaly description"
+          }
+        }
+      ],
+      "result": {
+        "name": "onAnomalyReportParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "severity": { "type": "integer" },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onCCHandleReceived",
+      "summary": "Closed-caption decoder handle available",
+      "description": "Fired when AAMP provides a handle to the CC decoder after the first decoded video frame.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "handle",
+          "schema": { "type": "integer", "description": "Opaque CC decoder handle" }
+        }
+      ],
+      "result": {
+        "name": "onCCHandleReceivedParams",
+        "schema": {
+          "type": "object",
+          "properties": { "handle": { "type": "integer" } }
+        }
+      }
+    },
+    {
+      "name": "onTimedMetadata",
+      "summary": "Timed metadata cue encountered in the stream",
+      "description": "Emitted for each HLS #EXT-X-DATERANGE, ID3 frame, or DASH Event block encountered during playback.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "name",
+          "schema": { "type": "string", "description": "Metadata tag name" }
+        },
+        {
+          "name": "id",
+          "schema": { "type": "string", "description": "Unique cue identifier" }
+        },
+        {
+          "name": "timeMs",
+          "schema": { "type": "number", "description": "Stream position at which the cue fires (ms)" }
+        },
+        {
+          "name": "durationMs",
+          "schema": { "type": "number", "description": "Duration of the cue in milliseconds (-1 if unknown)" }
+        },
+        {
+          "name": "content",
+          "schema": { "type": "string", "description": "Raw cue payload (e.g. JSON-encoded SCTE data)" }
+        }
+      ],
+      "result": {
+        "name": "onTimedMetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "id": { "type": "string" },
+            "timeMs": { "type": "number" },
+            "durationMs": { "type": "number" },
+            "content": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onBulkTimedMetadata",
+      "summary": "Bulk timed-metadata payload",
+      "description": "Delivers a batch of timed-metadata cues as a single JSON-encoded string.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "content",
+          "schema": { "type": "string", "description": "JSON-encoded array of timed-metadata cues" }
+        }
+      ],
+      "result": {
+        "name": "onBulkTimedMetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": { "content": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onSpeedsChanged",
+      "summary": "Supported trick-play speed list updated",
+      "description": "Emitted when the set of trick-play speeds supported by the current stream changes.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "supportedSpeeds",
+          "schema": {
+            "type": "array",
+            "items": { "type": "number" },
+            "description": "Updated list of supported playback speed multipliers"
+          }
+        }
+      ],
+      "result": {
+        "name": "onSpeedsChangedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "supportedSpeeds": { "type": "array", "items": { "type": "number" } }
+          }
+        }
+      }
+    },
+    {
+      "name": "onTuneProfiling",
+      "summary": "Tune micro-profiling data available",
+      "description": "Delivers a compact encoded string containing per-stage tune timing data for diagnostics.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "profilingData",
+          "schema": { "type": "string", "description": "Encoded tune-profile data string" }
+        }
+      ],
+      "result": {
+        "name": "onTuneProfilingParams",
+        "schema": {
+          "type": "object",
+          "properties": { "profilingData": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onWebVttCueData",
+      "summary": "WebVTT subtitle cue received",
+      "description": "Emitted when a WebVTT cue is parsed and ready for rendering.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        }
+      ],
+      "result": {
+        "name": "onWebVttCueDataParams",
+        "schema": { "type": "object" }
+      },
+      "paramStructure": "by-name"
+    },
+    {
+      "name": "onAdResolved",
+      "summary": "Ad creative resolved (or failed to resolve)",
+      "description": "Reports whether a dynamic ad insertion creative was successfully resolved by the ad server.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        {
+          "name": "sessionId",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "resolveStatus",
+          "schema": { "type": "boolean", "description": "true if the ad was resolved successfully" }
+        },
+        {
+          "name": "adId",
+          "schema": { "type": "string", "description": "Ad creative identifier" }
+        },
+        {
+          "name": "startMs",
+          "schema": { "type": "number", "description": "Ad start position in milliseconds" }
+        },
+        {
+          "name": "durationMs",
+          "schema": { "type": "number", "description": "Ad duration in milliseconds" }
+        },
+        {
+          "name": "errorCode",
+          "schema": { "type": "string", "description": "Error code string if resolution failed, empty otherwise" }
+        },
+        {
+          "name": "errorDescription",
+          "schema": { "type": "string", "description": "Human-readable error description if resolution failed" }
+        }
+      ],
+      "result": {
+        "name": "onAdResolvedParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "resolveStatus": { "type": "boolean" },
+            "adId": { "type": "string" },
+            "startMs": { "type": "number" },
+            "durationMs": { "type": "number" },
+            "errorCode": { "type": "string" },
+            "errorDescription": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementStart",
+      "summary": "Ad placement playback started",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Error code (0 = no error)" } }
+      ],
+      "result": {
+        "name": "onAdPlacementStartParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementEnd",
+      "summary": "Ad placement playback ended",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Error code (0 = no error)" } }
+      ],
+      "result": {
+        "name": "onAdPlacementEndParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementError",
+      "summary": "Ad placement failed",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Non-zero error code indicating the failure reason" } }
+      ],
+      "result": {
+        "name": "onAdPlacementErrorParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onAdPlacementProgress",
+      "summary": "Ad placement playback progress",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "adId",      "schema": { "type": "string",  "description": "Ad creative identifier" } },
+        { "name": "position",  "schema": { "type": "number",  "description": "Position in ms within the ad break" } },
+        { "name": "offset",    "schema": { "type": "integer", "description": "Offset in ms within the ad" } },
+        { "name": "durationMs","schema": { "type": "integer", "description": "Ad duration in milliseconds" } },
+        { "name": "errorCode", "schema": { "type": "integer", "description": "Error code (0 = no error)" } }
+      ],
+      "result": {
+        "name": "onAdPlacementProgressParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "adId": { "type": "string" }, "position": { "type": "number" },
+            "offset": { "type": "integer" }, "durationMs": { "type": "integer" },
+            "errorCode": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onMetricsData",
+      "summary": "Player metrics data report",
+      "description": "Periodic metrics snapshot from AAMP containing tuning and performance data.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "type",       "schema": { "type": "integer", "description": "Metrics data type identifier" } },
+        { "name": "metricUUID", "schema": { "type": "string",  "description": "Unique identifier for this metrics record" } },
+        { "name": "data",       "schema": { "type": "string",  "description": "Encoded metrics payload" } }
+      ],
+      "result": {
+        "name": "onMetricsDataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "integer" },
+            "metricUUID": { "type": "string" },
+            "data": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onID3Metadata",
+      "summary": "ID3 metadata frame received",
+      "description": "Emitted when an in-band ID3 metadata frame is encountered in the media stream.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",         "required": true, "schema": { "type": "string" } },
+        { "name": "length",            "schema": { "type": "integer", "description": "Size of the raw ID3 payload in bytes" } },
+        { "name": "schemeIdUri",       "schema": { "type": "string",  "description": "Scheme ID URI identifying the metadata type" } },
+        { "name": "id3Value",          "schema": { "type": "string",  "description": "String value associated with the ID3 frame" } },
+        { "name": "presentationTime",  "schema": { "type": "integer", "description": "Presentation timestamp of the frame" } },
+        { "name": "timeScale",         "schema": { "type": "integer", "description": "Time scale for the presentation timestamp" } }
+      ],
+      "result": {
+        "name": "onID3MetadataParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "length": { "type": "integer" },
+            "schemeIdUri": { "type": "string" },
+            "id3Value": { "type": "string" },
+            "presentationTime": { "type": "integer" },
+            "timeScale": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onDrmMessage",
+      "summary": "DRM system message",
+      "description": "Informational or diagnostic message emitted by the DRM subsystem.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "message",   "schema": { "type": "string", "description": "DRM system message string" } }
+      ],
+      "result": {
+        "name": "onDrmMessageParams",
+        "schema": {
+          "type": "object",
+          "properties": { "message": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onContentGap",
+      "summary": "Content gap detected in the stream",
+      "description": "Fired when AAMP detects a discontinuity or missing segment in the timeline.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",  "required": true, "schema": { "type": "string" } },
+        { "name": "timeMs",     "schema": { "type": "number",  "description": "Stream position in ms where the gap was detected" } },
+        { "name": "durationMs", "schema": { "type": "number",  "description": "Duration of the gap in milliseconds (-1 if unknown)" } }
+      ],
+      "result": {
+        "name": "onContentGapParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "timeMs": { "type": "number" },
+            "durationMs": { "type": "number" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onHttpResponseHeader",
+      "summary": "HTTP response header received",
+      "description": "Exposes selected HTTP response headers from AAMP network requests.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId", "required": true, "schema": { "type": "string" } },
+        { "name": "header",    "schema": { "type": "string", "description": "HTTP header name" } },
+        { "name": "response",  "schema": { "type": "string", "description": "HTTP header value" } }
+      ],
+      "result": {
+        "name": "onHttpResponseHeaderParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "header": { "type": "string" },
+            "response": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onContentProtectionDataUpdate",
+      "summary": "Content protection key ID updated",
+      "description": "Emitted when the content protection key ID changes (e.g. key rotation in DASH).",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",  "required": true, "schema": { "type": "string" } },
+        { "name": "streamType", "schema": { "type": "string", "description": "Stream type associated with the key update (e.g. video, audio)" } }
+      ],
+      "result": {
+        "name": "onContentProtectionDataUpdateParams",
+        "schema": {
+          "type": "object",
+          "properties": { "streamType": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onManifestRefresh",
+      "summary": "Manifest refreshed (live streams)",
+      "description": "Emitted each time AAMP successfully refreshes a live manifest.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",             "required": true, "schema": { "type": "string" } },
+        { "name": "manifestDuration",      "schema": { "type": "number",  "description": "Total manifest duration in seconds" } },
+        { "name": "noOfPeriods",           "schema": { "type": "integer", "description": "Number of DASH periods in the manifest" } },
+        { "name": "manifestPublishedTime", "schema": { "type": "number",  "description": "UTC publish time from the manifest" } },
+        { "name": "manifestType",          "schema": { "type": "string",  "description": "Manifest type string (e.g. DYNAMIC, STATIC)" } }
+      ],
+      "result": {
+        "name": "onManifestRefreshParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "manifestDuration": { "type": "number" },
+            "noOfPeriods": { "type": "integer" },
+            "manifestPublishedTime": { "type": "number" },
+            "manifestType": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "onTuneTimeMetrics",
+      "summary": "Tune time metrics report",
+      "description": "Provides a detailed breakdown of time spent in each phase of the tune sequence.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",       "required": true, "schema": { "type": "string" } },
+        { "name": "tuneMetricsData", "schema": { "type": "string", "description": "Encoded tune-time metrics string" } }
+      ],
+      "result": {
+        "name": "onTuneTimeMetricsParams",
+        "schema": {
+          "type": "object",
+          "properties": { "tuneMetricsData": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "name": "onMonitorAVStatus",
+      "summary": "AV sync / health monitor status",
+      "description": "Periodic report from the A/V health monitor with current video and audio positions and performance counters.",
+      "tags": [{ "name": "Notifications" }],
+      "x-server-notification": true,
+      "params": [
+        { "name": "sessionId",       "required": true, "schema": { "type": "string" } },
+        { "name": "monitorAVStatus", "schema": { "type": "string",  "description": "Status string from the AV monitor" } },
+        { "name": "videoPositionMs", "schema": { "type": "number",  "description": "Current video decoder position in ms" } },
+        { "name": "audioPositionMs", "schema": { "type": "number",  "description": "Current audio decoder position in ms" } },
+        { "name": "timeInStateMs",   "schema": { "type": "number",  "description": "Time spent in the current AV state in ms" } },
+        { "name": "droppedFrames",   "schema": { "type": "integer", "description": "Cumulative dropped video frames" } }
+      ],
+      "result": {
+        "name": "onMonitorAVStatusParams",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "monitorAVStatus": { "type": "string" },
+            "videoPositionMs": { "type": "number" },
+            "audioPositionMs": { "type": "number" },
+            "timeInStateMs": { "type": "number" },
+            "droppedFrames": { "type": "integer" }
+          }
+        }
+      }
+    }
+  ]
+}
