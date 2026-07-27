@@ -303,6 +303,7 @@ export default class App extends Lightning.Component {
 
   _setup() {
     const { layout, colors, typography, safeArea } = AppSettings
+    const showClock = this._shouldShowClock()
 
     this.tag('Background').patch({
       color: parseInt(colors.background, 16)
@@ -331,7 +332,7 @@ export default class App extends Lightning.Component {
     })
     this.tag('SafeContainer.Header.HeaderGlow').patch({ w: headerW + 24 })
     this.tag('SafeContainer.Header.ConnectionStatus').patch({ x: headerW - 240 })
-    this.tag('SafeContainer.Header.Clock').patch({ x: headerW - 240 })
+    this.tag('SafeContainer.Header.Clock').patch({ x: headerW - 240, visible: showClock })
 
     const warningColor = parseInt(colors.warning, 16)
     this.tag('SafeContainer.Header.ConnectionStatus.Dot').patch({ color: warningColor })
@@ -367,7 +368,7 @@ export default class App extends Lightning.Component {
 
     this._updateFireboltVersion()
     this._startConnectionMonitor()
-    this._startClock()
+    if (showClock) { this._startClock() }
 
     this.tag('SafeContainer.Legends').patch({
       zIndex: 10,
@@ -459,7 +460,7 @@ export default class App extends Lightning.Component {
   }
 
   _startClock() {
-    const version = settings.appSettings && settings.appSettings.version ? ` v${settings.appSettings.version}` : ''
+    const version = settings.appSettings && settings.appSettings.version ? ` ${settings.appSettings.version}` : ''
     const update = () => {
       const now = new Date()
       const h = String(now.getUTCHours()).padStart(2, '0')
@@ -472,6 +473,11 @@ export default class App extends Lightning.Component {
     }
     update()
     this._clockTimer = setInterval(update, 50)
+  }
+
+  _shouldShowClock() {
+    const appShowClock = settings.appSettings && settings.appSettings.showClock
+    return appShowClock !== false
   }
 
   _startConnectionMonitor() {

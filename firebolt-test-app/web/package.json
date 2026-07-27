@@ -24,14 +24,16 @@
   },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.28.6",
-    "@lightningjs/cli": "^2.11.0",
-    "babel-jest": "^30.3.0",
-    "jest": "^30.3.0",
+    "@lightningjs/cli": "^2.2.0",
+    "babel-jest": "^23.6.0",
+    "jest": "^25.0.0",
     "jest-webgl-canvas-mock": "^2.5.3"
   },
   "jest": {
     "testEnvironment": "jsdom",
-    "testEnvironmentOptions": { "resources": "usable" },
+    "testEnvironmentOptions": {
+      "resources": "usable"
+    },
     "setupFiles": [
       "jest-webgl-canvas-mock"
     ],

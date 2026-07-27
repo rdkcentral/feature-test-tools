@@ -7,7 +7,8 @@
       "useImageWorker": false
     },
     "debug": false,
-    "version": "1.0.0"
+    "version": "2.0.0",
+    "showClock": false
   },
   "platformSettings": {
     "path": "./static",
