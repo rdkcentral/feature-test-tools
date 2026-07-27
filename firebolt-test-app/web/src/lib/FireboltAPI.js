@@ -25,6 +25,15 @@
 
 import DeviceConnectionConfig from './DeviceConnectionConfig'
 import AppSettings from './AppSettings'
+import {
+  Accessibility,
+  Advertising,
+  Device,
+  Discovery,
+  Localization,
+  Metrics,
+  Network,
+} from '@firebolt-js/core-client'
 import accountTests from '../data/tests/account.json'
 import accessibilityTests from '../data/tests/accessibility.json'
 import actionsTests from '../data/tests/actions.json'
@@ -380,15 +389,14 @@ async function _doInitializeFireboltModules() {
   setupDeviceConnection()
 
   try {
-    const m = await import('@firebolt-js/core-client')
     const moduleMap = {
-      Accessibility: m.Accessibility,
-      Advertising: m.Advertising,
-      Device: m.Device,
-      Discovery: m.Discovery,
-      Localization: m.Localization,
-      Metrics: m.Metrics,
-      Network: m.Network
+      Accessibility,
+      Advertising,
+      Device,
+      Discovery,
+      Localization,
+      Metrics,
+      Network
     }
     Object.entries(moduleMap).forEach(([name, mod]) => {
       if (mod) FireboltModules[name] = mod

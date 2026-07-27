@@ -4,7 +4,9 @@
   "description": "Lightning-based web app for testing RDK8 Firebolt® API Specification",
   "main": "index.html",
   "scripts": {
+    "prestart": "node scripts/ensure-lightning-cli-rollup.js",
     "start": "lng dev",
+    "prebuild": "node scripts/ensure-lightning-cli-rollup.js",
     "build": "lng build",
     "postbuild": "node scripts/copy-favicon-ico.js",
     "serve": "npm run build && npx http-server build -p 9090 --cors",
