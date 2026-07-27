@@ -50,13 +50,26 @@ add_compile_definitions(
     PROJECT_VERSION="${PROJECT_VERSION}"
 )
 
+# ---------------------------------------------------------------------------
+# Optional Actions/Intents opt-in (default OFF so older SDKs compile cleanly)
+# ---------------------------------------------------------------------------
+option(ENABLE_FIREBOLT9 "Enable optional Actions/Intents APIs (e.g. Actions module)" OFF)
+
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
+
+if(NOT ENABLE_FIREBOLT9)
+    list(FILTER TEST_SOURCES EXCLUDE REGEX "actionsTest\\.cpp$")
+endif()
 
 add_executable(${APP_TARGET}
     src/main.cpp
     src/utils.cpp
     ${TEST_SOURCES}
 )
+
+if(ENABLE_FIREBOLT9)
+    target_compile_definitions(${APP_TARGET} PRIVATE ENABLE_FIREBOLT9)
+endif()
 
 # ---------------------------------------------------------------------------
 # Linking mode: static by default, dynamic opt-in (-DLINK_STATIC=OFF)

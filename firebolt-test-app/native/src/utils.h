@@ -24,6 +24,9 @@
 #pragma once
 
 #include <firebolt/types.h>
+#include <firebolt/common_types.h>
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -61,6 +64,25 @@ namespace Color
     inline const char* reset() { return termSupportsColor() ? "\033[0m"    : ""; }
 }
 
+inline const char* fireboltErrorCodeToString(int errorCode)
+{
+    switch (errorCode)
+    {
+        case -50100: return "Not supported";
+        case -32600: return "Invalid request";
+        case -32601: return "Method not found";
+        case -32602: return "Invalid params";
+        case -32603: return "Internal error";
+        case -32000: return "Server error";
+        default:
+            if (errorCode <= -32000 && errorCode >= -32099)
+            {
+                return "Server error";
+            }
+            return "Unknown error";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Global test-run configuration
 // ---------------------------------------------------------------------------
@@ -88,6 +110,29 @@ std::string paramFromConsole(const std::string& name,
                               const std::string& defaultValue);
 
 // ---------------------------------------------------------------------------
+// Shared console-parsing utilities
+// ---------------------------------------------------------------------------
+
+inline std::string toLowerCopy(std::string s)
+{
+    const size_t start = s.find_first_not_of(" \t\n\r\f\v");
+    if (start == std::string::npos)
+        return "";
+
+    const size_t end = s.find_last_not_of(" \t\n\r\f\v");
+    s = s.substr(start, end - start + 1);
+
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+const char* agePolicyToString(Firebolt::AgePolicy agePolicy);
+Firebolt::AgePolicy parseAgePolicy(const std::string& s);
+bool parseBool(const std::string& s);
+double parseDoubleOrDefault(const std::string& input, double fallback, const char* fieldName);
+
+// ---------------------------------------------------------------------------
 // Base class for every module test-wrapper
 // ---------------------------------------------------------------------------
 class TestModuleBase
@@ -112,9 +157,11 @@ protected:
                       << " " << label << std::endl;
             return true;
         }
+        const int errorCode = static_cast<int>(result.error());
         std::cerr << Color::red() << "[FAIL]" << Color::reset()
                   << " " << label
-                  << " – error code: " << static_cast<int>(result.error())
+                  << " – error code: " << errorCode
+                  << " (" << fireboltErrorCodeToString(errorCode) << ")"
                   << std::endl;
         return false;
     }

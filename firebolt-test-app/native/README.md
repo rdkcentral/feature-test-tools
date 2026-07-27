@@ -59,13 +59,14 @@ cmake --build build --parallel
 SUMMARY = "Firebolt C++ Test Application"
 DESCRIPTION = "Native C++ test application for exercising firebolt-cpp-client APIs and events"
 LICENSE = "Apache-2.0"
-LIC_FILES_CHKSUM = "file://<path-to-license-file>/LICENSE;md5=<md5sum of license file>"
+LIC_FILES_CHKSUM = "file://../../LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 inherit cmake pkgconfig
 
-SRC_URI = "<repo url>/feature-test-tools.git;branch=main;protocol=https"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CMF_GITHUB_ROOT}/feature-test-tools;${CMF_GITHUB_SRC_URI_SUFFIX}"
+SRCREV = "${AUTOREV}"  <=== Replace with SHA
 PV = "1.0.0"
+PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
@@ -96,7 +97,8 @@ firebolt-test-app
 ### Command-line options
 ```
 firebolt-test-app [--auto] [--url <URL>]
-                  [--legacy | --rpc-v2] [--dbg] [--help]
+                  [--legacy | --rpc-v2] [--dbg]
+                  [--firebolt8 | --firebolt9] [--help]
 ```
 
 | Option | Description |
@@ -106,7 +108,8 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--legacy` | Force legacy (v1) RPC protocol |
 | `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
 | `--dbg` | Enable debug logging |
-| `--firebolt8` | Restrict to Firebolt 8 APIs only — excludes Firebolt 9 modules (currently: Actions) |
+| `--firebolt8` | Restrict to the base API set — excludes optional Actions/Intents module. This is the default mode. |
+| `--firebolt9` | Enable optional Actions/Intents module in addition to the base API set. Requires building with `-DENABLE_FIREBOLT9=ON`; otherwise this option is unavailable. |
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
@@ -140,9 +143,9 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Actions** *(Firebolt 9)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll) |
+| **Actions / Intents** *(optional build/runtime module)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context, data? }` model, where `context.source` is required. Unsupported or incomplete intents are logged with "ignored: ..." messages to stdout. Schema reference: _RDK8 Firebolt® Intents Specification_ (see project wiki). |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe ), `unsubscribeAll` |
+| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Discovery** | `watched` |
 | **Display** | `edid`, `maxResolution`, `size` |
 | **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |

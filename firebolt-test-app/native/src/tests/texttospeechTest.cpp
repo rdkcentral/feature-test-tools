@@ -90,7 +90,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
     if (method == "TextToSpeech.speak")
     {
-        const std::string text = "Hello from Firebolt test application.";
+        const std::string text = paramFromConsole("text", "Hello from Firebolt test application.");
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .speak(text);
@@ -118,12 +118,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
     }
     else if (method == "TextToSpeech.listVoices")
     {
+        const std::string locale = paramFromConsole("locale", "en-US");
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
-                     .listVoices("en-US");
+                     .listVoices(locale);
         if (checkResult(r, method))
         {
-            std::cout << "  voices for en-US:" << std::endl;
+            std::cout << "  voices for " << locale << ":" << std::endl;
             for (const auto& v : r->voices)
             {
                 std::cout << "    " << v << std::endl;
