@@ -51,8 +51,10 @@
 #include "tests/metricsTest.h"
 #include "tests/networkTest.h"
 #include "tests/presentationTest.h"
+#include "tests/SpeechSynthesisTest.h"
 #include "tests/statsTest.h"
 #include "tests/texttospeechTest.h"
+#include "tests/VideoOutputTest.h"
 
 #include <firebolt/firebolt.h>
 
@@ -131,7 +133,7 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
         modules.emplace_back(std::make_unique<ActionsTest>());
         modules.emplace_back(std::make_unique<SpeechSynthesisTest>());
         modules.emplace_back(std::make_unique<StatsTest>());
-        modules.emplace_back(std::make_unique<VideooutoutTest>());
+        modules.emplace_back(std::make_unique<VideoOutputTest>());
     }
 
     return modules;
