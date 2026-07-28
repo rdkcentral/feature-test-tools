@@ -86,18 +86,18 @@ inline const char* fireboltErrorCodeToString(int errorCode)
 // ---------------------------------------------------------------------------
 // Global test-run configuration
 // ---------------------------------------------------------------------------
-enum fireboltVersion
+typedef enum fireboltVersion
 {
 	FIREBOLT_VERSION_8 = 8,
 	FIREBOLT_VERSION_9 = 9,
 	FIREBOLT_VERSION_ALL
-};
+} fireboltVersion_t;
 
 struct AppConfig
 {
     bool autoRun      = false; // skip interactive prompts, use defaults
     bool verbose      = false; // print extra diagnostic output
-    fireboltVersion fireboltVersion = FIREBOLT_VERSION_ALL;
+    fireboltVersion_t fireboltVersion = FIREBOLT_VERSION_ALL;
 };
 
 AppConfig& GetAppConfig();
