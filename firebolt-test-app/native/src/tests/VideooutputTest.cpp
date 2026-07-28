@@ -21,7 +21,7 @@
  * @author Arun Madhavan
  */
 
-#include "SpeechSynthesisTest.h"
+#include "VideoOutputTest.h"
 
 #include <firebolt/firebolt.h>
 #include <iostream>

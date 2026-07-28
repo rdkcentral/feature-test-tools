@@ -49,7 +49,7 @@ void DisplayTest::runMethod(const std::string& method)
                       << r->width << "x" << r->height << std::endl;
         }
     }
-    esle if (method == "Display.edid")
+    else if (method == "Display.edid")
     {
         auto r = IFireboltAccessor::Instance().DisplayInterface().edid();
         if (checkResult(r, method))
