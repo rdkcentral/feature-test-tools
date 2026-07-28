@@ -88,9 +88,9 @@ static void printUsage(const char* argv0)
         << "  --legacy       Force legacy (v1) RPC protocol\n"
         << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
         << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Restrict to Firebolt 8 APIs\n"
-        << "  --firebolt9    Restrict to Firebolt 9 APIs\n"
-        << "  --firebolt-all Allow all Firebolt APIs (default)\n"
+        << "  --firebolt8    Firebolt 8 modules only (excludes all Firebolt 9 modules and v9-specific methods)\n"
+        << "  --firebolt9    Firebolt 8 base modules + Firebolt 9 modules (default)\n"
+        << "  --firebolt-all All modules across all Firebolt versions\n"
         << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
         << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
@@ -101,9 +101,9 @@ static void printUsage(const char* argv0)
 // buildModuleList – registers all test modules
 //
 // version: Firebolt version to filter modules by.
-//   FIREBOLT_VERSION_8:   Base API only (excludes Firebolt 9 modules like Actions)
-//   FIREBOLT_VERSION_9:   Firebolt 9 modules only (e.g., Actions)
-//   FIREBOLT_VERSION_ALL: All modules
+//   FIREBOLT_VERSION_8:   Firebolt 8 base modules only (excludes all Firebolt 9 modules)
+//   FIREBOLT_VERSION_9:   Firebolt 8 base modules + Firebolt 9 modules (default)
+//   FIREBOLT_VERSION_ALL: All modules across all Firebolt versions
 // ---------------------------------------------------------------------------
 static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVersion version)
 {
@@ -385,7 +385,7 @@ int main(int argc, char** argv)
             std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
             break;
         case FIREBOLT_VERSION_9:
-            std::cout << "[Mode] Firebolt 9 - Optional modules only (Actions/Intents enabled)." << std::endl;
+            std::cout << "[Mode] Firebolt 9 - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
             break;
         case FIREBOLT_VERSION_ALL:
             std::cout << "[Mode] All Firebolt versions - complete API set (default)." << std::endl;
