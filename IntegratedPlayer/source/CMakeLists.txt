@@ -15,34 +15,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#set PRIVATE_CONNECTION as off by default
+option(PRIVATE_CONNECTION "Enable private connection" OFF)
+
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(Aamp REQUIRED)
-find_package(wsrpcserver REQUIRED)
 find_package( jsoncpp REQUIRED)
 
 find_package(FireboltTransport CONFIG REQUIRED)
 find_package(FireboltClient CONFIG REQUIRED)
 
+IF(PRIVATE_CONNECTION)
+    find_package(wsrpcserver REQUIRED)
+ENDIF()
+
+
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0>=1.18.0)
 pkg_check_modules(GSTREAMERBASE REQUIRED gstreamer-app-1.0)
 
-
 include_directories(${GLIB_INCLUDE_DIRS} 	${GSTREAMER_INCLUDE_DIRS}
 	${GSTREAMERBASE_INCLUDE_DIRS})
 
-add_executable(IPALauncher
+set(IPALAUNCHER_SOURCES)
+list(APPEND IPALAUNCHER_SOURCES
     Application.cpp
     main.cpp
     Player.cpp
-    IPAWSConnector.cpp
-    LifecycleConnector.cpp
+    FireboltConnector.cpp
+    PlayerDelegate.cpp
 )
-message(STATUS "wsrpcserver found ?: ${WSRPCSERVER_FOUND}")
-message (STATUS "wsrpcserver include dirs: ${WSRPCSERVER_INCLUDE_DIRS}")
-message(STATUS "WSRPCSERVER_LIBRARIES: ${WSRPCSERVER_LIBRARIES}")
-message(status "wsrpcserver definitions: ${WSRPCSERVER_DEFINITIONS}")
+
+IF(PRIVATE_CONNECTION)
+    message(STATUS "PRIVATE_CONNECTION is enabled")
+    list(APPEND IPALAUNCHER_SOURCES
+        IPAWSConnector.cpp
+    )
+ELSE()
+    message(STATUS "PRIVATE_CONNECTION is disabled")
+    list(APPEND IPALAUNCHER_SOURCES
+        ActionsDelegate.cpp
+)
+ENDIF()
+add_executable(IPALauncher ${IPALAUNCHER_SOURCES})
 
 target_include_directories(IPALauncher
     PRIVATE
@@ -56,13 +72,18 @@ target_link_libraries(IPALauncher
         ${GSTREAMER_BASE_LIBRARIES}
         ${GSTREAMER_VIDEO_LIBRARIES}
         ${GSTREAMER_APP_LIBRARIES}
-        AAMP::AAMP
-        WSRPCSERVER::WSRPCSERVER
+        AAMP::AAMP        
         JsonCpp::JsonCpp
         uuid
         FireboltTransport::FireboltTransport
         FireboltClient::FireboltClient
 )
+
+if(PRIVATE_CONNECTION)
+    target_compile_definitions(IPALauncher PRIVATE USE_IPAWS_CONNECTOR)
+    target_link_libraries(IPALauncher PRIVATE WSRPCSERVER::WSRPCSERVER)
+endif(PRIVATE_CONNECTION)
+
 install(TARGETS IPALauncher
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

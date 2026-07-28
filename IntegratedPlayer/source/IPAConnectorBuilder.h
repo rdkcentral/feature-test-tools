@@ -17,26 +17,37 @@
  * limitations under the License.
  */
 
-#ifndef _IPLAUNCHER_APPLICATION_H
-#define _IPLAUNCHER_APPLICATION_H
-#include <string>
+#ifndef _IPLAUNCHER_IPACONNECTORBUILDER_H
+#define _IPLAUNCHER_IPACONNECTORBUILDER_H
+
 #include <memory>
 #include "IPAConnector.h"
+#include "PlayerDelegate.h"
+#include "FireboltConnector.h"
+#ifdef USE_IPAWS_CONNECTOR
+#include "IPAWSConnector.h"
+#else
+#include "ActionsDelegate.h"
+#endif
+
 namespace ipalauncher
 {
-
-    class Application
+    class IPAConnectorBuilder
     {
     public:
-        Application();
-        ~Application();
+        static std::unique_ptr<IPAConnector> create()
+        {
+            auto playerDelegate = std::make_unique<PlayerDelegate>();
+            auto fireboltConnector = std::make_unique<FireboltConnector>();
 
-        int run();
-        std::string title() const;
-
-    private:
-        std::unique_ptr<IPAConnector> m_ipawsConnector;
+#ifdef USE_IPAWS_CONNECTOR
+            return std::make_unique<IPAWSConnector>(std::move(playerDelegate), std::move(fireboltConnector));
+#else
+            return std::make_unique<ActionsDelegate>(std::move(playerDelegate), std::move(fireboltConnector));
+#endif // USE_IPAWS_CONNECTOR
+        }
     };
 
 } // namespace ipalauncher
-#endif // _IPLAUNCHER_APPLICATION_H
+
+#endif // _IPLAUNCHER_IPACONNECTORBUILDER_H

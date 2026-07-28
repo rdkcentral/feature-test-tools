@@ -1,4 +1,23 @@
-#include "LifecycleConnector.h"
+/*
+ * If not stated otherwise in this file or this component's LICENSE file the
+ * following copyright and licenses apply:
+ *
+ * Copyright 2026 RDK Management
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "FireboltConnector.h"
 #include "Logger.h"
 #include <iostream>
 #include <firebolt/firebolt.h>
@@ -8,7 +27,7 @@ using ipalauncher::LogLevel;
 
 namespace ipalauncher
 {
-	bool LifecycleConnector::connectToFirebolt()
+	bool FireboltConnector::connectToFirebolt()
 	{
 		LOG(LogLevel::TRACE, "Connecting to Firebolt endpoint: ", m_endpoint);
 
@@ -46,7 +65,7 @@ namespace ipalauncher
 		return true; // Return true if the connection is successful, false otherwise
 	}
 
-	bool LifecycleConnector::disconnectFirebolt()
+	bool FireboltConnector::disconnectFirebolt()
 	{
 		LOG(LogLevel::TRACE, "Disconnecting from Firebolt.");
 		auto error = Firebolt::IFireboltAccessor::Instance().Disconnect();
@@ -59,25 +78,25 @@ namespace ipalauncher
 		LOG(LogLevel::INFO, "Successfully disconnected from Firebolt.");
 		return true;
 	}
-	bool LifecycleConnector::isFireboltConnected()
+	bool FireboltConnector::isFireboltConnected()
 	{
 		std::lock_guard<std::mutex> lock(m_connectionMutex);
 		return m_fbConnected;
 	}
 
-	void LifecycleConnector::setFireboltConnected(bool connected)
+	void FireboltConnector::setFireboltConnected(bool connected)
 	{
 		std::lock_guard<std::mutex> lock(m_connectionMutex);
 		m_fbConnected = connected;
 		m_connectionCV.notify_all();
 	}
-	bool LifecycleConnector::waitForFireboltConnection(int timeout_ms)
+	bool FireboltConnector::waitForFireboltConnection(int timeout_ms)
 	{
 		std::unique_lock<std::mutex> lock(m_connectionMutex);
 		return m_connectionCV.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this]
 									   { return m_fbConnected; });
 	}
-	bool LifecycleConnector::registerForLifecycleEvents()
+	bool FireboltConnector::registerForLifecycleEvents()
 	{
 		if (!isFireboltConnected())
 		{

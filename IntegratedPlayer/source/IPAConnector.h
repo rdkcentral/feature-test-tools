@@ -16,27 +16,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _IPALAUNCHER_IPACONNECTOR_H
+#define _IPALAUNCHER_IPACONNECTOR_H
 
-#ifndef _IPLAUNCHER_APPLICATION_H
-#define _IPLAUNCHER_APPLICATION_H
-#include <string>
-#include <memory>
-#include "IPAConnector.h"
 namespace ipalauncher
 {
 
-    class Application
+    class IPAConnector
     {
     public:
-        Application();
-        ~Application();
+        IPAConnector() = default;
+        virtual ~IPAConnector() = default;
 
-        int run();
-        std::string title() const;
-
-    private:
-        std::unique_ptr<IPAConnector> m_ipawsConnector;
+        // Initialize the connectivity and prepare for incoming requests
+        virtual int initialize() = 0;
+        // Start accepting incoming requests
+        virtual void start() = 0;
+        // Stop accepting incoming requests and clean up resources
+        virtual void shutdown() = 0;
     };
 
 } // namespace ipalauncher
-#endif // _IPLAUNCHER_APPLICATION_H
+
+#endif // _IPALAUNCHER_IPACONNECTOR_H

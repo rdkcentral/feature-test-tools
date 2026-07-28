@@ -326,22 +326,38 @@ namespace ipalauncher
         AAMPPlayerState state = m_player->GetState();
         switch (state)
         {
-            case eSTATE_IDLE:         return "idle";
-            case eSTATE_INITIALIZING: return "initializing";
-            case eSTATE_INITIALIZED:  return "initialized";
-            case eSTATE_PREPARING:    return "preparing";
-            case eSTATE_PREPARED:     return "prepared";
-            case eSTATE_BUFFERING:    return "buffering";
-            case eSTATE_PAUSED:       return "paused";
-            case eSTATE_SEEKING:      return "seeking";
-            case eSTATE_PLAYING:      return "playing";
-            case eSTATE_STOPPING:     return "stopping";
-            case eSTATE_STOPPED:      return "stopped";
-            case eSTATE_COMPLETE:     return "complete";
-            case eSTATE_ERROR:        return "error";
-            case eSTATE_RELEASED:     return "released";
-            case eSTATE_BLOCKED:      return "blocked";
-            default:                  return "idle";
+        case eSTATE_IDLE:
+            return "idle";
+        case eSTATE_INITIALIZING:
+            return "initializing";
+        case eSTATE_INITIALIZED:
+            return "initialized";
+        case eSTATE_PREPARING:
+            return "preparing";
+        case eSTATE_PREPARED:
+            return "prepared";
+        case eSTATE_BUFFERING:
+            return "buffering";
+        case eSTATE_PAUSED:
+            return "paused";
+        case eSTATE_SEEKING:
+            return "seeking";
+        case eSTATE_PLAYING:
+            return "playing";
+        case eSTATE_STOPPING:
+            return "stopping";
+        case eSTATE_STOPPED:
+            return "stopped";
+        case eSTATE_COMPLETE:
+            return "complete";
+        case eSTATE_ERROR:
+            return "error";
+        case eSTATE_RELEASED:
+            return "released";
+        case eSTATE_BLOCKED:
+            return "blocked";
+        default:
+            return "idle";
         }
     }
 
@@ -705,10 +721,10 @@ namespace ipalauncher
     }
 
     bool IPALauncherPlayer::setPreferredLanguages(const std::string &languageList,
-                                                   const std::string &rendition,
-                                                   const std::string &type,
-                                                   const std::string &codecList,
-                                                   const std::string &labelList)
+                                                  const std::string &rendition,
+                                                  const std::string &type,
+                                                  const std::string &codecList,
+                                                  const std::string &labelList)
     {
         if (!m_playerReady || !m_player)
         {
@@ -718,10 +734,10 @@ namespace ipalauncher
         LOG(LogLevel::INFO, "Setting preferred languages: ", languageList);
         m_player->SetPreferredLanguages(
             languageList.empty() ? nullptr : languageList.c_str(),
-            rendition.empty()    ? nullptr : rendition.c_str(),
-            type.empty()         ? nullptr : type.c_str(),
-            codecList.empty()    ? nullptr : codecList.c_str(),
-            labelList.empty()    ? nullptr : labelList.c_str());
+            rendition.empty() ? nullptr : rendition.c_str(),
+            type.empty() ? nullptr : type.c_str(),
+            codecList.empty() ? nullptr : codecList.c_str(),
+            labelList.empty() ? nullptr : labelList.c_str());
         return true;
     }
 
@@ -788,7 +804,7 @@ namespace ipalauncher
             if (ev)
             {
                 params["description"] = ev->getDescription();
-                params["code"]        = ev->getCode();
+                params["code"] = ev->getCode();
                 params["shouldRetry"] = ev->shouldRetry();
                 LOG(LogLevel::ERROR, "AAMP_EVENT_TUNE_FAILED: code=", ev->getCode(), " description=", ev->getDescription());
             }
@@ -803,22 +819,54 @@ namespace ipalauncher
                 const char *stateStr = "idle";
                 switch (ev->getState())
                 {
-                    case eSTATE_IDLE:         stateStr = "idle";         break;
-                    case eSTATE_INITIALIZING: stateStr = "initializing"; break;
-                    case eSTATE_INITIALIZED:  stateStr = "initialized";  break;
-                    case eSTATE_PREPARING:    stateStr = "preparing";    break;
-                    case eSTATE_PREPARED:     stateStr = "prepared";     break;
-                    case eSTATE_BUFFERING:    stateStr = "buffering";    break;
-                    case eSTATE_PAUSED:       stateStr = "paused";       break;
-                    case eSTATE_SEEKING:      stateStr = "seeking";      break;
-                    case eSTATE_PLAYING:      stateStr = "playing";      break;
-                    case eSTATE_STOPPING:     stateStr = "stopping";     break;
-                    case eSTATE_STOPPED:      stateStr = "stopped";      break;
-                    case eSTATE_COMPLETE:     stateStr = "complete";     break;
-                    case eSTATE_ERROR:        stateStr = "error";        break;
-                    case eSTATE_RELEASED:     stateStr = "released";     break;
-                    case eSTATE_BLOCKED:      stateStr = "blocked";      break;
-                    default:                  stateStr = "idle";         break;
+                case eSTATE_IDLE:
+                    stateStr = "idle";
+                    break;
+                case eSTATE_INITIALIZING:
+                    stateStr = "initializing";
+                    break;
+                case eSTATE_INITIALIZED:
+                    stateStr = "initialized";
+                    break;
+                case eSTATE_PREPARING:
+                    stateStr = "preparing";
+                    break;
+                case eSTATE_PREPARED:
+                    stateStr = "prepared";
+                    break;
+                case eSTATE_BUFFERING:
+                    stateStr = "buffering";
+                    break;
+                case eSTATE_PAUSED:
+                    stateStr = "paused";
+                    break;
+                case eSTATE_SEEKING:
+                    stateStr = "seeking";
+                    break;
+                case eSTATE_PLAYING:
+                    stateStr = "playing";
+                    break;
+                case eSTATE_STOPPING:
+                    stateStr = "stopping";
+                    break;
+                case eSTATE_STOPPED:
+                    stateStr = "stopped";
+                    break;
+                case eSTATE_COMPLETE:
+                    stateStr = "complete";
+                    break;
+                case eSTATE_ERROR:
+                    stateStr = "error";
+                    break;
+                case eSTATE_RELEASED:
+                    stateStr = "released";
+                    break;
+                case eSTATE_BLOCKED:
+                    stateStr = "blocked";
+                    break;
+                default:
+                    stateStr = "idle";
+                    break;
                 }
                 params["state"] = stateStr;
                 LOG(LogLevel::INFO, "AAMP_EVENT_STATE_CHANGED: state=", stateStr);
@@ -831,16 +879,16 @@ namespace ipalauncher
             eventName = "onProgress";
             if (ev)
             {
-                params["positionMs"]       = ev->getPosition();
-                params["durationMs"]       = ev->getDuration();
-                params["speed"]            = ev->getSpeed();
-                params["startMs"]          = ev->getStart();
-                params["endMs"]            = ev->getEnd();
-                params["videoBufferedMs"]  = ev->getVideoBufferedDuration();
-                params["audioBufferedMs"]  = ev->getAudioBufferedDuration();
-                params["liveLatencyMs"]    = ev->getLiveLatency();
-                params["profileBitrate"]   = static_cast<Json::Int64>(ev->getProfileBandwidth());
-                params["networkBitrate"]   = static_cast<Json::Int64>(ev->getNetworkBandwidth());
+                params["positionMs"] = ev->getPosition();
+                params["durationMs"] = ev->getDuration();
+                params["speed"] = ev->getSpeed();
+                params["startMs"] = ev->getStart();
+                params["endMs"] = ev->getEnd();
+                params["videoBufferedMs"] = ev->getVideoBufferedDuration();
+                params["audioBufferedMs"] = ev->getAudioBufferedDuration();
+                params["liveLatencyMs"] = ev->getLiveLatency();
+                params["profileBitrate"] = static_cast<Json::Int64>(ev->getProfileBandwidth());
+                params["networkBitrate"] = static_cast<Json::Int64>(ev->getNetworkBandwidth());
                 LOG(LogLevel::TRACE, "AAMP_EVENT_PROGRESS: position=", ev->getPosition(), " duration=", ev->getDuration());
             }
             break;
@@ -890,17 +938,17 @@ namespace ipalauncher
             eventName = "onBitrateChanged";
             if (ev)
             {
-                params["bitrate"]        = static_cast<Json::Int64>(ev->getBitrate());
-                params["description"]    = ev->getDescription();
-                params["width"]          = ev->getWidth();
-                params["height"]         = ev->getHeight();
-                params["frameRate"]      = ev->getFrameRate();
-                params["position"]       = ev->getPosition();
-                params["cappedProfile"]  = ev->getCappedProfileStatus();
-                params["displayWidth"]   = ev->getDisplayWidth();
-                params["displayHeight"]  = ev->getDisplayHeight();
-                params["videoScanType"]  = ev->getScanType();
-                params["aspectRatioWidth"]  = ev->getAspectRatioWidth();
+                params["bitrate"] = static_cast<Json::Int64>(ev->getBitrate());
+                params["description"] = ev->getDescription();
+                params["width"] = ev->getWidth();
+                params["height"] = ev->getHeight();
+                params["frameRate"] = ev->getFrameRate();
+                params["position"] = ev->getPosition();
+                params["cappedProfile"] = ev->getCappedProfileStatus();
+                params["displayWidth"] = ev->getDisplayWidth();
+                params["displayHeight"] = ev->getDisplayHeight();
+                params["videoScanType"] = ev->getScanType();
+                params["aspectRatioWidth"] = ev->getAspectRatioWidth();
                 params["aspectRatioHeight"] = ev->getAspectRatioHeight();
                 LOG(LogLevel::INFO, "AAMP_EVENT_BITRATE_CHANGED: bitrate=", ev->getBitrate(), " ", ev->getWidth(), "x", ev->getHeight());
             }
@@ -923,12 +971,12 @@ namespace ipalauncher
             eventName = "onMediaMetadata";
             if (ev)
             {
-                params["durationMs"]         = static_cast<Json::Int64>(ev->getDuration());
-                params["width"]              = ev->getWidth();
-                params["height"]             = ev->getHeight();
-                params["hasDrm"]             = ev->hasDrm();
-                params["programStartTime"]   = ev->getProgramStartTime();
-                params["tsbDepthMs"]         = ev->getTsbDepth();
+                params["durationMs"] = static_cast<Json::Int64>(ev->getDuration());
+                params["width"] = ev->getWidth();
+                params["height"] = ev->getHeight();
+                params["hasDrm"] = ev->hasDrm();
+                params["programStartTime"] = ev->getProgramStartTime();
+                params["tsbDepthMs"] = ev->getTsbDepth();
                 Json::Value languages(Json::arrayValue);
                 for (const auto &lang : ev->getLanguages())
                     languages.append(lang);
@@ -951,11 +999,11 @@ namespace ipalauncher
             eventName = "onTimedMetadata";
             if (ev)
             {
-                params["name"]       = ev->getName();
-                params["id"]         = ev->getId();
-                params["timeMs"]     = ev->getTime();
+                params["name"] = ev->getName();
+                params["id"] = ev->getId();
+                params["timeMs"] = ev->getTime();
                 params["durationMs"] = ev->getDuration();
-                params["content"]    = ev->getContent();
+                params["content"] = ev->getContent();
                 LOG(LogLevel::INFO, "AAMP_EVENT_TIMED_METADATA: name=", ev->getName());
             }
             break;
@@ -1002,11 +1050,11 @@ namespace ipalauncher
             eventName = "onDrmMetadata";
             if (ev)
             {
-                params["failure"]            = ev->getFailure();
-                params["accessStatus"]       = ev->getAccessStatus();
-                params["accessStatusValue"]  = ev->getAccessStatusValue();
-                params["responseCode"]       = ev->getResponseCode();
-                params["isSecClientError"]   = ev->getSecclientError();
+                params["failure"] = ev->getFailure();
+                params["accessStatus"] = ev->getAccessStatus();
+                params["accessStatusValue"] = ev->getAccessStatusValue();
+                params["responseCode"] = ev->getResponseCode();
+                params["isSecClientError"] = ev->getSecclientError();
                 LOG(LogLevel::INFO, "AAMP_EVENT_DRM_METADATA: failure=", ev->getFailure(), " responseCode=", ev->getResponseCode());
             }
             break;
@@ -1018,7 +1066,7 @@ namespace ipalauncher
             if (ev)
             {
                 params["severity"] = ev->getSeverity();
-                params["message"]  = ev->getMessage();
+                params["message"] = ev->getMessage();
                 LOG(LogLevel::INFO, "AAMP_EVENT_REPORT_ANOMALY: severity=", ev->getSeverity(), " msg=", ev->getMessage());
             }
             break;
@@ -1035,11 +1083,11 @@ namespace ipalauncher
             eventName = "onAdResolved";
             if (ev)
             {
-                params["resolveStatus"]    = ev->getResolveStatus();
-                params["adId"]             = ev->getAdId();
-                params["startMs"]          = ev->getStart();
-                params["durationMs"]       = ev->getDuration();
-                params["errorCode"]        = ev->getErrorCode();
+                params["resolveStatus"] = ev->getResolveStatus();
+                params["adId"] = ev->getAdId();
+                params["startMs"] = ev->getStart();
+                params["durationMs"] = ev->getDuration();
+                params["errorCode"] = ev->getErrorCode();
                 params["errorDescription"] = ev->getErrorDescription();
                 LOG(LogLevel::INFO, "AAMP_EVENT_AD_RESOLVED: adId=", ev->getAdId(), " resolved=", ev->getResolveStatus());
             }
@@ -1053,7 +1101,7 @@ namespace ipalauncher
             if (ev)
             {
                 params["adBreakId"] = ev->getAdBreakId();
-                params["position"]  = ev->getPosition();
+                params["position"] = ev->getPosition();
                 LOG(LogLevel::INFO, eventName, ": adBreakId=", ev->getAdBreakId());
             }
             break;
@@ -1064,15 +1112,19 @@ namespace ipalauncher
         case AAMP_EVENT_AD_PLACEMENT_PROGRESS:
         {
             auto ev = std::dynamic_pointer_cast<AdPlacementEvent>(e);
-            if (type == AAMP_EVENT_AD_PLACEMENT_START)        eventName = "onAdPlacementStart";
-            else if (type == AAMP_EVENT_AD_PLACEMENT_END)     eventName = "onAdPlacementEnd";
-            else if (type == AAMP_EVENT_AD_PLACEMENT_ERROR)   eventName = "onAdPlacementError";
-            else                                               eventName = "onAdPlacementProgress";
+            if (type == AAMP_EVENT_AD_PLACEMENT_START)
+                eventName = "onAdPlacementStart";
+            else if (type == AAMP_EVENT_AD_PLACEMENT_END)
+                eventName = "onAdPlacementEnd";
+            else if (type == AAMP_EVENT_AD_PLACEMENT_ERROR)
+                eventName = "onAdPlacementError";
+            else
+                eventName = "onAdPlacementProgress";
             if (ev)
             {
-                params["adId"]      = ev->getAdId();
-                params["position"]  = ev->getPosition();
-                params["offset"]    = ev->getOffset();
+                params["adId"] = ev->getAdId();
+                params["position"] = ev->getPosition();
+                params["offset"] = ev->getOffset();
                 params["durationMs"] = ev->getDuration();
                 params["errorCode"] = ev->getErrorCode();
                 LOG(LogLevel::INFO, eventName, ": adId=", ev->getAdId());
@@ -1085,9 +1137,9 @@ namespace ipalauncher
             eventName = "onMetricsData";
             if (ev)
             {
-                params["type"]       = ev->getMetricsDataType();
+                params["type"] = ev->getMetricsDataType();
                 params["metricUUID"] = ev->getMetricUUID();
-                params["data"]       = ev->getMetricsData();
+                params["data"] = ev->getMetricsData();
                 LOG(LogLevel::INFO, "AAMP_EVENT_REPORT_METRICS_DATA: type=", ev->getMetricsDataType());
             }
             break;
@@ -1098,11 +1150,11 @@ namespace ipalauncher
             eventName = "onID3Metadata";
             if (ev)
             {
-                params["length"]      = static_cast<Json::UInt>(ev->getMetadataSize());
+                params["length"] = static_cast<Json::UInt>(ev->getMetadataSize());
                 params["schemeIdUri"] = ev->getSchemeIdUri();
-                params["id3Value"]    = ev->getValue();
+                params["id3Value"] = ev->getValue();
                 params["presentationTime"] = static_cast<Json::UInt64>(ev->getPresentationTime());
-                params["timeScale"]   = static_cast<Json::UInt>(ev->getTimeScale());
+                params["timeScale"] = static_cast<Json::UInt>(ev->getTimeScale());
                 LOG(LogLevel::INFO, "AAMP_EVENT_ID3_METADATA: length=", ev->getMetadataSize());
             }
             break;
@@ -1124,7 +1176,7 @@ namespace ipalauncher
             eventName = "onContentGap";
             if (ev)
             {
-                params["timeMs"]     = ev->getTime();
+                params["timeMs"] = ev->getTime();
                 params["durationMs"] = ev->getDuration();
                 LOG(LogLevel::INFO, "AAMP_EVENT_CONTENT_GAP: timeMs=", ev->getTime(), " durationMs=", ev->getDuration());
             }
@@ -1136,7 +1188,7 @@ namespace ipalauncher
             eventName = "onHttpResponseHeader";
             if (ev)
             {
-                params["header"]   = ev->getHeader();
+                params["header"] = ev->getHeader();
                 params["response"] = ev->getResponse();
                 LOG(LogLevel::INFO, "AAMP_EVENT_HTTP_RESPONSE_HEADER: header=", ev->getHeader());
             }
@@ -1159,10 +1211,10 @@ namespace ipalauncher
             eventName = "onManifestRefresh";
             if (ev)
             {
-                params["manifestDuration"]      = ev->getManifestDuration();
-                params["noOfPeriods"]           = ev->getNoOfPeriods();
+                params["manifestDuration"] = ev->getManifestDuration();
+                params["noOfPeriods"] = ev->getNoOfPeriods();
                 params["manifestPublishedTime"] = ev->getManifestPublishedTime();
-                params["manifestType"]          = ev->getManifestType();
+                params["manifestType"] = ev->getManifestType();
                 LOG(LogLevel::INFO, "AAMP_EVENT_MANIFEST_REFRESH_NOTIFY: periods=", ev->getNoOfPeriods());
             }
             break;
@@ -1184,11 +1236,11 @@ namespace ipalauncher
             eventName = "onMonitorAVStatus";
             if (ev)
             {
-                params["monitorAVStatus"]  = ev->getMonitorAVStatus();
-                params["videoPositionMs"]  = ev->getVideoPositionMS();
-                params["audioPositionMs"]  = ev->getAudioPositionMS();
-                params["timeInStateMs"]    = ev->getTimeInStateMS();
-                params["droppedFrames"]    = ev->getDroppedFrames();
+                params["monitorAVStatus"] = ev->getMonitorAVStatus();
+                params["videoPositionMs"] = ev->getVideoPositionMS();
+                params["audioPositionMs"] = ev->getAudioPositionMS();
+                params["timeInStateMs"] = ev->getTimeInStateMS();
+                params["droppedFrames"] = ev->getDroppedFrames();
                 LOG(LogLevel::INFO, "AAMP_EVENT_MONITORAV_STATUS: status=", ev->getMonitorAVStatus());
             }
             break;

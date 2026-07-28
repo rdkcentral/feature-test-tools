@@ -21,6 +21,9 @@
 #include <cstdlib> //For getEnv
 #include <iostream>
 #include "Logger.h"
+#include "PlayerEvent.h"
+#include "PlayerDelegate.h"
+#include "IPAConnectorBuilder.h"
 
 namespace ipalauncher
 {
@@ -41,7 +44,9 @@ namespace ipalauncher
 
     Application::Application()
     {
-        m_ipawsConnector = std::make_unique<IPAWSConnector>(); // Initialize the IPAWSConnector with the default constructor
+        // Create a unique instance of PlayerDelegate and pass it to the IPAWSConnector
+        m_ipawsConnector = IPAConnectorBuilder::create(); // Initialize the IPAWSConnector using the builder
+
         // Constructor implementation
     }
     Application::~Application()

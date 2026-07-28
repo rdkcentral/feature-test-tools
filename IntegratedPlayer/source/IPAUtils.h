@@ -40,9 +40,23 @@ namespace ipalauncher
             LOG(LogLevel::ERROR, "Request has no 'sessionId' parameter or not a string. Active session ID: ", activeSessionId);
         return false;
     }
+    inline bool convertRawStringToJson(const std::string &rawString, Json::Value &jsonValue)
+    {
+        Json::CharReaderBuilder readerBuilder;
+        std::unique_ptr<Json::CharReader> reader(readerBuilder.newCharReader());
+        std::string errors;
+
+        bool parsingSuccessful = reader->parse(rawString.c_str(), rawString.c_str() + rawString.size(), &jsonValue, &errors);
+        if (!parsingSuccessful)
+        {
+            LOG(LogLevel::ERROR, "Failed to parse JSON: ", errors);
+            return false;
+        }
+        return true;
+    }
     inline std::string generateSessionId()
     {
-       uuid_t uuid;
+        uuid_t uuid;
         uuid_generate(uuid);
         char uuidStr[37]; // UUID string representation is 36 characters + null terminator
         uuid_unparse(uuid, uuidStr);
@@ -150,6 +164,7 @@ namespace ipalauncher
             return "Unknown AAMP Event ";
         }
     }
+
 } // namespace ipalauncher
 
 #endif // _IPLAUNCHER_UTILS_H

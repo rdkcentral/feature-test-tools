@@ -17,26 +17,18 @@
  * limitations under the License.
  */
 
-#ifndef _IPLAUNCHER_APPLICATION_H
-#define _IPLAUNCHER_APPLICATION_H
+#ifndef _IPALAUNCHER_PLAYER_EVENT_H
+#define _IPALAUNCHER_PLAYER_EVENT_H
+
 #include <string>
-#include <memory>
-#include "IPAConnector.h"
+#include <json/json.h>
 namespace ipalauncher
 {
-
-    class Application
+    class PlayerEventListener
     {
     public:
-        Application();
-        ~Application();
-
-        int run();
-        std::string title() const;
-
-    private:
-        std::unique_ptr<IPAConnector> m_ipawsConnector;
+        virtual void onEvent(const std::string &eventName, const std::string &sessionId, const Json::Value &params) = 0;
     };
+}
 
-} // namespace ipalauncher
-#endif // _IPLAUNCHER_APPLICATION_H
+#endif // _IPALAUNCHER_PLAYER_EVENT_H
