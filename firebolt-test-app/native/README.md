@@ -109,7 +109,7 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
 | `--dbg` | Enable debug logging |
 | `--firebolt8` | Restrict to the base API set — excludes optional Actions/Intents module. This is the default mode. |
-| `--firebolt9` | Enable optional Actions/Intents module in addition to the base API set. Requires building with `-DENABLE_FIREBOLT9=ON`; otherwise this option is unavailable. |
+| `--firebolt9` | Enable optional Actions/Intents module in addition to the base API set. |
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
