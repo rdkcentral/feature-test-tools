@@ -241,7 +241,7 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
 int main(int argc, char** argv)
 {
     std::cout << "Firebolt Test App v" << PROJECT_VERSION
-              << " (base API set by default - use --firebolt9 to enable optional Actions/Intents)" << std::endl;
+              << " (default: --firebolt9; see --help for options)" << std::endl;
 
     auto& appConfig = GetAppConfig();
 

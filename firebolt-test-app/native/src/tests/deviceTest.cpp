@@ -79,16 +79,18 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  deviceClass: " << classStr << std::endl;
         }
     }
-#if 0 // TODO: enable when client wrapper supports this.
     else if (method == "Device.uptime")
     {
+#if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().uptime();
         if (checkResult(r, method))
         {
             std::cout << "  uptime (s): " << *r << std::endl;
         }
-    }
+#else
+        std::cout << "  [WARN] Device.uptime is not supported yet." << std::endl;
 #endif
+    }
     else if (method == "Device.timeInActiveState")
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().timeInActiveState();

@@ -29,7 +29,7 @@
 using namespace Firebolt;
 // FIXME: enable when ClientWrapper supports this
 
-VideoOutputTest::VideoOutputTest(fireboltVersion version)
+VideoOutputTest::VideoOutputTest(fireboltVersion /* version */)
 	: TestModuleBase("VideoOutput")
 {
 	methods_.push_back("VideoOutput.resolution");
@@ -73,7 +73,8 @@ void VideoOutputTest::runMethod(const std::string& method)
 		method == "VideoOutput.onCecStateChanged.subscribe" ||
 		method == "VideoOutput.onCecStateChanged.unsubscribe" ||
 		method == "VideoOutput.onRefreshRateChanged.subscribe" ||
-		method == "VideoOutput.onRefreshRateChanged.unsubscribe")
+		method == "VideoOutput.onRefreshRateChanged.unsubscribe" ||
+		method == "VideoOutput.unsubscribeAll")
 	{
 		std::cout << "  [WARN] Not supported yet: " << method << std::endl;
 	}

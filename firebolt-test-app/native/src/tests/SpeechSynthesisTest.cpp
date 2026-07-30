@@ -28,7 +28,7 @@
 
 using namespace Firebolt;
 
-SpeechSynthesisTest::SpeechSynthesisTest(fireboltVersion version)
+SpeechSynthesisTest::SpeechSynthesisTest(fireboltVersion /* version */)
 	: TestModuleBase("SpeechSynthesis")
 {
 	methods_.push_back("SpeechSynthesis.voices");

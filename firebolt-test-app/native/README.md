@@ -29,7 +29,7 @@ native/
         ├── SpeechSynthesisTest.h/.cpp  ← To be implemented
         ├── statsTest.h/.cpp
         ├── texttospeechTest.h/.cpp
-        └── VideooutputTest.h/.cpp      ← To be implemented
+        └── VideoOutputTest.h/.cpp      ← To be implemented
 ```
 
 ---
@@ -127,7 +127,7 @@ Some modules expose additional methods depending on the selected Firebolt versio
 
 | Module | Firebolt 8 methods | Additional Firebolt 9 methods |
 |---|---|---|
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass` |
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timezone`, `onTimezoneChanged` (subscribe / unsubscribe) |
 
 ---
@@ -190,7 +190,7 @@ printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url w
 
 | Module | Methods / Events |
 |---|---|
-| **Actions** | `intent` *(validates response schema)*, `start` *(validates JSON input)*, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context.source, intentId }` model. |
+| **Actions** | `intent` *(validates response schema)*, `start` *(validates JSON input)*, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context.source?, intentId }` model. |
 | **SpeechSynthesis** | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged` (subscribe / unsubscribe), `onUtteranceEvent` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Stats** | `memoryUsage` |
 | **VideoOutput** | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged` (subscribe / unsubscribe), `onHdcpChanged` (subscribe / unsubscribe), `onCecStateChanged` (subscribe / unsubscribe), `onRefreshRateChanged` (subscribe / unsubscribe), `unsubscribeAll` |
