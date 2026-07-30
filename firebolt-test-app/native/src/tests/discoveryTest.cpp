@@ -33,6 +33,7 @@ DiscoveryTest::DiscoveryTest()
     : TestModuleBase("Discovery")
 {
     methods_.push_back("Discovery.watched");
+    methods_.push_back("Discovery.watchedV2");
 }
 
 void DiscoveryTest::runMethod(const std::string& method)
@@ -61,6 +62,31 @@ void DiscoveryTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  watched reported." << std::endl;
+        }
+    }
+    else if (method == "Discovery.watchedV2")
+    {
+        const std::string entityId     = paramFromConsole("entityId", "exampleEntity001");
+        const std::string progressStr  = paramFromConsole("progress (0.0-0.999 for VOD, seconds for live)", "0.5");
+        const std::string completedStr = paramFromConsole("completed (true/false)", "false");
+        const std::string watchedOn    = paramFromConsole("watchedOn (ISO 8601)", "2024-01-01T00:00:00Z");
+        const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+
+        const double progress = parseDoubleOrDefault(progressStr, 0.5, "progress");
+        const bool completed = parseBool(completedStr);
+        const Firebolt::AgePolicy agePolicy = parseAgePolicy(agePolicyStr);
+        std::cout << "  parsed progress: " << progress << std::endl;
+        std::cout << "  parsed completed: " << std::boolalpha << completed << std::noboolalpha << std::endl;
+        std::cout << "  parsed agePolicy: " << agePolicyToString(agePolicy) << std::endl;
+
+        auto r = IFireboltAccessor::Instance()
+                     .DiscoveryInterface()
+                     .watchedV2(entityId, progress, completed,
+                                watchedOn, agePolicy);
+        if (checkResult(r, method))
+        {
+            std::cout << "  watchedV2 reported; accepted="
+                      << std::boolalpha << *r << std::noboolalpha << std::endl;
         }
     }
     else

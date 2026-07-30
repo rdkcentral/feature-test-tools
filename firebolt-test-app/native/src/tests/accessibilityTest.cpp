@@ -75,7 +75,6 @@ AccessibilityTest::AccessibilityTest()
     methods_.push_back("Accessibility.onVoiceGuidanceSettingsChanged.subscribe");
     methods_.push_back("Accessibility.onVoiceGuidanceSettingsChanged.unsubscribe");
     methods_.push_back("Accessibility.unsubscribeAll");
-
 }
 
 void AccessibilityTest::runMethod(const std::string& method)

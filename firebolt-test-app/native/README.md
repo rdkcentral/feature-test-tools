@@ -13,20 +13,23 @@ native/
 ├── CMakeLists.txt          # Top-level CMake project
 └── src/
     ├── main.cpp            # Entry point, connection management, run-mode dispatch
-    ├── utils.h / utils.cpp # Shared helpers: AppConfig, chooseFromList, TestModuleBase
+    ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
     └── tests/
         ├── accessibilityTest.h/.cpp
+        ├── actionsTest.h/.cpp
         ├── advertisingTest.h/.cpp
         ├── deviceTest.h/.cpp
         ├── discoveryTest.h/.cpp
         ├── displayTest.h/.cpp
-        ├── lifecycleTest.h/.cpp    ← includes event subscription/unsubscription
+        ├── lifecycleTest.h/.cpp
         ├── localizationTest.h/.cpp
         ├── metricsTest.h/.cpp
         ├── networkTest.h/.cpp
-        ├── presentationTest.h/.cpp ← includes onFocusedChanged event
+        ├── presentationTest.h/.cpp
+        ├── SpeechSynthesisTest.h/.cpp  ← To be implemented
         ├── statsTest.h/.cpp
-        └── texttospeechTest.h/.cpp ← includes TTS events (start/pause/resume/willSpeak)
+        ├── texttospeechTest.h/.cpp
+        └── VideooutputTest.h/.cpp      ← To be implemented
 ```
 
 ---
@@ -39,8 +42,9 @@ native/
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
 | **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
+| **nlohmann-json** installed | Used for JSON input/response validation in tests |
 
-The `FireboltClient` and `FireboltTransport` CMake packages must be findable via
+The `FireboltClient`, `FireboltTransport`, and `nlohmann_json` CMake packages must be findable via
 `CMAKE_PREFIX_PATH` (or `SYSROOT_PATH` for cross-compilation).
 
 ---
@@ -70,7 +74,7 @@ PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client"
+DEPENDS = "firebolt-cpp-client nlohmann-json"
 RDEPENDS:${PN} += "firebolt-cpp-client"
 
 EXTRA_OECMAKE = ""
@@ -98,7 +102,7 @@ firebolt-test-app
 ```
 firebolt-test-app [--auto] [--url <URL>]
                   [--legacy | --rpc-v2] [--dbg]
-                  [--firebolt8 | --firebolt9] [--help]
+                  [--firebolt8 | --firebolt9 | --firebolt-all] [--help]
 ```
 
 | Option | Description |
@@ -108,11 +112,23 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--legacy` | Force legacy (v1) RPC protocol |
 | `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
 | `--dbg` | Enable debug logging |
-| `--firebolt8` | Restrict to the base API set — excludes optional Actions/Intents module. This is the default mode. |
-| `--firebolt9` | Enable optional Actions/Intents module in addition to the base API set. Requires building with `-DENABLE_FIREBOLT9=ON`; otherwise this option is unavailable. |
+| `--firebolt8` | Firebolt 8 modules only — excludes all Firebolt 9 modules and v9-specific methods within shared modules |
+| `--firebolt9` | Firebolt 8 base modules + Firebolt 9 modules (default) — includes all base APIs plus Actions, SpeechSynthesis, Stats, VideoOutput, and v9-specific methods within shared modules |
+| `--firebolt-all` | All modules across all Firebolt versions |
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
+
+---
+
+## Version-Aware Modules
+
+Some modules expose additional methods depending on the selected Firebolt version at runtime:
+
+| Module | Firebolt 8 methods | Additional Firebolt 9 methods |
+|---|---|---|
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
+| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timezone`, `onTimezoneChanged` (subscribe / unsubscribe) |
 
 ---
 
@@ -125,36 +141,59 @@ Shows a two-level menu:
 3. Enter `q` or press Enter to go back / quit
 
 ### 2. Auto mode (`--auto`)
-Runs every method of every module sequentially. Use this for CI / smoke testing.
+Runs every method of every module sequentially. The set of modules and methods exercised is determined by the active version flag — only the methods registered for the selected version are run. Use this for CI / smoke testing.
 ```bash
+# Run all Firebolt 8 + 9 modules (default)
 firebolt-test-app --auto
+
+# Run Firebolt 8 base modules only
+firebolt-test-app --auto --firebolt8
+
+# Run all modules including any future additions
+firebolt-test-app --auto --firebolt-all
 ```
 
 ### 3. Piped stdin mode
-Reads one `Module.method` name per line from stdin. Unknown names print a warning.
+Reads one `Module.method` name per line from stdin. Only methods registered for the active version are recognized — requests for methods outside the active version will print `Method not found:` and be skipped.
 ```bash
+# Firebolt 8 methods (default --firebolt9 mode includes these)
 printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --url ws://127.0.0.1:9998
+
+# Firebolt 9 methods — require --firebolt9 or --firebolt-all
+printf "Actions.intent\nVideoOutput.resolution\nSpeechSynthesis.voices\n" | firebolt-test-app --url ws://127.0.0.1:9998 --firebolt9
+
+# Version-specific method on a shared module — only available in --firebolt9 or --firebolt-all
+printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url ws://127.0.0.1:9998 --firebolt9
 ```
 
 ---
 
 ## Covered Modules & APIs
 
+### Firebolt 8 modules (available in all modes and restricted to `--firebolt8`)
+
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Actions / Intents** *(optional build/runtime module)* | `intent`, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context, data? }` model, where `context.source` is required. Unsupported or incomplete intents are logged with "ignored: ..." messages to stdout. Schema reference: _RDK8 Firebolt® Intents Specification_ (see project wiki). |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `deviceClass`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Discovery** | `watched` |
-| **Display** | `edid`, `maxResolution`, `size` |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
+| **Discovery** | `watched`, `watchedV2` |
+| **Display** | `size`, `maxResolution`, `edid` |
 | **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event`, `appInfo` |
+| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
+| **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event` *(validates schema + JSON data input)*, `appInfo` |
 | **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Presentation** | `focused`, `onFocusedChanged` (subscribe / unsubscribe / unsubscribeAll) |
-| **Stats** | `memoryUsage` |
 | **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart` (subscribe / unsubscribe), `onSpeechPause` (subscribe / unsubscribe), `onSpeechResume` (subscribe / unsubscribe), `onWillSpeak` (subscribe / unsubscribe), `onSpeechComplete` (subscribe / unsubscribe), `onSpeechInterrupted` (subscribe / unsubscribe), `onNetworkError` (subscribe / unsubscribe), `onPlaybackError` (subscribe / unsubscribe), `unsubscribeAll` |
+
+### Firebolt 9 modules (`--firebolt9` or `--firebolt-all`)
+
+| Module | Methods / Events |
+|---|---|
+| **Actions** | `intent` *(validates response schema)*, `start` *(validates JSON input)*, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context.source, intentId }` model. |
+| **SpeechSynthesis** | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged` (subscribe / unsubscribe), `onUtteranceEvent` (subscribe / unsubscribe), `unsubscribeAll` |
+| **Stats** | `memoryUsage` |
+| **VideoOutput** | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged` (subscribe / unsubscribe), `onHdcpChanged` (subscribe / unsubscribe), `onCecStateChanged` (subscribe / unsubscribe), `onRefreshRateChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 
 ---
 
@@ -162,10 +201,11 @@ printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --
 
 1. Create `src/tests/myModuleTest.h` and `.cpp` following the same pattern:
    - Inherit from `TestModuleBase`
+   - Accept `fireboltVersion version` in the constructor if the module has version-specific methods; use `version != FIREBOLT_VERSION_8` to gate v9 method registration
    - Register method names in the constructor
    - Implement `runMethod(const std::string& method)` calling the firebolt interface
 2. `#include` the new header in `src/main.cpp`
-3. Add `std::make_unique<MyModuleTest>()` to `buildModuleList()` in `main.cpp`
+3. Add `std::make_unique<MyModuleTest>(version)` to the appropriate version block inside `buildModuleList()` in `main.cpp`
 4. CMake automatically globs `src/tests/*.cpp` – no `CMakeLists.txt` edit needed
 
 ---
