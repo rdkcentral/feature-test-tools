@@ -387,10 +387,10 @@ int main(int argc, char** argv)
             std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
             break;
         case FIREBOLT_VERSION_9:
-            std::cout << "[Mode] Firebolt 9 - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
+            std::cout << "[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
             break;
-        case FIREBOLT_VERSION_ALL:
-            std::cout << "[Mode] All Firebolt versions - complete API set (default)." << std::endl;
+        default:
+            std::cout << "[Mode] Firebolt All - All modules across all Firebolt versions enabled." << std::endl;
             break;
     }
 
