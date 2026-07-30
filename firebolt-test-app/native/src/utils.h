@@ -107,7 +107,7 @@ AppConfig& GetAppConfig();
 // ---------------------------------------------------------------------------
 
 /// Print a numbered list and return the 0-based index the user chose,
-/// or -1 if the user went back / EOF.
+/// or -1 if the user quit / EOF.
 int chooseFromList(const std::vector<std::string>& options,
                    const std::string& prompt,
                    const std::string& quitLabel = "go back");
