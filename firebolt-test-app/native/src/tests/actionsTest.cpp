@@ -97,79 +97,6 @@ bool validateIntentResponseSchema(const Json& response, std::string& error)
     return true;
 }
 
-bool parseAndValidateStartInput(const std::string& rawInput,
-                                IntentData& intentData,
-                                std::optional<std::string>& handlerAppId,
-                                std::string& error)
-{
-    Json root;
-    try
-    {
-        root = Json::parse(rawInput);
-    }
-    catch (const std::exception& e)
-    {
-        error = std::string("Invalid JSON input: ") + e.what();
-        return false;
-    }
-
-    if (!root.is_object())
-    {
-        error = "Input must be a JSON object.";
-        return false;
-    }
-
-    if (!root.contains("intent") || !root["intent"].is_object())
-    {
-        error = "Missing or invalid 'intent' object in input.";
-        return false;
-    }
-
-    const Json& intent = root["intent"];
-    if (!intent.contains("action") || !intent["action"].is_string() || intent["action"].get<std::string>().empty())
-    {
-        error = "Missing or invalid 'intent.action' string in input.";
-        return false;
-    }
-
-    intentData = IntentData{ intent["action"].get<std::string>() };
-
-    if (intent.contains("context"))
-    {
-        if (!intent["context"].is_object())
-        {
-            error = "'intent.context' must be an object when provided.";
-            return false;
-        }
-
-        if (intent["context"].contains("source"))
-        {
-            if (!intent["context"]["source"].is_string())
-            {
-                error = "'intent.context.source' must be a string when provided.";
-                return false;
-            }
-            intentData.context = IntentContext{ intent["context"]["source"].get<std::string>() };
-        }
-    }
-
-    if (root.contains("handlerAppId"))
-    {
-        if (!root["handlerAppId"].is_string())
-        {
-            error = "'handlerAppId' must be a string when provided.";
-            return false;
-        }
-        const std::string value = root["handlerAppId"].get<std::string>();
-        if (!value.empty())
-        {
-            handlerAppId = value;
-        }
-    }
-
-    return true;
-}
-
 void printIntentSummary(const Intent& intent, const std::string& prefix)
 {
     const Json responseJson = toIntentResponseJson(intent);
@@ -221,18 +148,20 @@ void ActionsTest::runMethod(const std::string& method)
     }
     else if (method == "Actions.start")
     {
-        const std::string inputJson = paramFromConsole(
-            "input JSON {intent:{action,context.source?},handlerAppId?}",
-            "{\"intent\":{\"action\":\"pre-load\",\"context\":{\"source\":\"system\"}}}"
-        );
+        const std::string action         = paramFromConsole("intent.action", "pre-load");
+        const std::string contextSrc     = paramFromConsole("intent.context.source (leave empty to omit)", "system");
+        const std::string handlerAppIdIn = paramFromConsole("handlerAppId (leave empty to use default)", "com.rdkcentral.refui");
 
-        IntentData intentData{ "" };
-        std::optional<std::string> handlerAppId;
-        std::string validationError;
-        if (!parseAndValidateStartInput(inputJson, intentData, handlerAppId, validationError))
+        IntentData intentData{ action };
+        if (!contextSrc.empty())
         {
-            std::cout << "  [WARN] Input validation failed: " << validationError << std::endl;
-            return;
+            intentData.context = IntentContext{ contextSrc };
+        }
+
+        std::optional<std::string> handlerAppId;
+        if (!handlerAppIdIn.empty())
+        {
+            handlerAppId = handlerAppIdIn;
         }
 
         auto r = IFireboltAccessor::Instance()
