@@ -223,14 +223,47 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
         auto& selectedModule = modules[static_cast<size_t>(modIdx)];
         const std::vector<std::string>& methodNames = selectedModule->methods();
 
+        const auto isSubscribeMethod = [](const std::string& methodName) {
+            static constexpr const char* kSuffix = ".subscribe";
+            static constexpr size_t kSuffixLen = 10;
+            return methodName.size() >= kSuffixLen &&
+                   methodName.compare(methodName.size() - kSuffixLen, kSuffixLen, kSuffix) == 0;
+        };
+
+        const bool hasSubscribeMethods = std::any_of(methodNames.begin(), methodNames.end(), isSubscribeMethod);
+        const std::string subscribeAllMethod = selectedModule->name() + ".subscribeAll";
+
+        std::vector<std::string> methodMenu;
+        methodMenu.reserve(methodNames.size() + (hasSubscribeMethods ? 1 : 0));
+        methodMenu.insert(methodMenu.end(), methodNames.begin(), methodNames.end());
+        if (hasSubscribeMethods)
+        {
+            methodMenu.push_back(subscribeAllMethod);
+        }
+
         while (true)
         {
-            int methodIdx = chooseFromList(methodNames, "Select a method to run:");
+            int methodIdx = chooseFromList(methodMenu, "Select a method to run:");
             if (methodIdx == -1)
             {
                 break;
             }
-            selectedModule->runMethod(methodNames[static_cast<size_t>(methodIdx)]);
+
+            const std::string& selectedMethod = methodMenu[static_cast<size_t>(methodIdx)];
+            if (hasSubscribeMethods && selectedMethod == subscribeAllMethod)
+            {
+                std::cout << "  Running all subscribe methods for " << selectedModule->name() << "..." << std::endl;
+                for (const auto& methodName : methodNames)
+                {
+                    if (isSubscribeMethod(methodName))
+                    {
+                        selectedModule->runMethod(methodName);
+                    }
+                }
+                continue;
+            }
+
+            selectedModule->runMethod(selectedMethod);
         }
     }
 }
