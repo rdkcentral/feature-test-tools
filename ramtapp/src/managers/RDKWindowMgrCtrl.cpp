@@ -130,6 +130,7 @@ void RDKWindowMgrCtrl::handleCreateDisplayRequest()
     uint32_t groupId = 0;
     bool topmost = false;
     bool focus = true;
+    std::string capabilities;
 
     if (extra == 1)
     {
@@ -145,12 +146,13 @@ void RDKWindowMgrCtrl::handleCreateDisplayRequest()
         groupId = retrieveInputFromUser<uint32_t>("Enter group ID: ", true, 0);
         topmost = retrieveInputFromUser<bool>("Should the display be topmost? (0 for No, 1 for Yes): ", true, false);
         focus = retrieveInputFromUser<bool>("Should the display have focus? (0 for No, 1 for Yes): ", true, true);
+        capabilities = retrieveInputFromUser<std::string>("Enter display capabilities (optional): ", true, "");
     }
 
     Core::hresult result = windowMgrCtrl->CreateDisplay(instanceId, displayName,
                                                         displayWidth, displayHeight,
                                                         virtualDisplay, virtualWidth, virtualHeight,
-                                                        ownerId, groupId, topmost, focus);
+                                                        ownerId, groupId, topmost, focus, capabilities);
     if (result == Core::ERROR_NONE)
     {
         std::cout << "Display created successfully: " << displayName << std::endl;

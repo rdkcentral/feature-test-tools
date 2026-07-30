@@ -422,10 +422,12 @@ void AppMgrControl::handleLaunchApplicationRequest()
 {
     assert(appManager != nullptr && "AppManager interface is not initialized.");
 
-    std::string appId;
+    std::string appId,intent,launchParams;
     appId = retrieveInputFromUser<std::string>("Enter the App ID to launch: ", false, "");
+    intent = retrieveInputFromUser<std::string>("Enter the intent for launching (optional): ", true, "");
+    launchParams = retrieveInputFromUser<std::string>("Enter the launch parameters (optional): ", true, "");
 
-    uint32_t result = appManager->LaunchApp(appId, "", "");
+    uint32_t result = appManager->LaunchApp(appId, intent, launchParams);
 
     if (result != Core::ERROR_NONE)
     {
