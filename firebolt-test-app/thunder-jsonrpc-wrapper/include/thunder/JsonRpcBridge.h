@@ -59,13 +59,14 @@ public:
 
     // Send a JSON-RPC request and block until the response arrives or the timeout elapses.
     // On success, returns the "result" value from the JSON-RPC response.
-    // On error, returns {"error": {"code": <int>, "message": <string>}}.
+    // On error, throws std::runtime_error.
     nlohmann::json send(const std::string& method,
                         const nlohmann::json& params = nlohmann::json::object(),
                         std::optional<std::chrono::milliseconds> timeout = std::nullopt);
 
     // Send a JSON-RPC request, wait for the acknowledgement, and discard the result.
     // Useful when the caller has no interest in the response value.
+    // On error, throws std::runtime_error.
     void sendWithoutResponse(const std::string& method,
                              const nlohmann::json& params = nlohmann::json::object(),
                              std::optional<std::chrono::milliseconds> timeout = std::nullopt);

@@ -68,6 +68,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -82,12 +83,14 @@ static void printThunderFirmwareVersionAtStartup()
 {
     Thunder::JsonRpcBridge& bridge = GetJsonRpcBridge();
 
-    const nlohmann::json result = bridge.send("DeviceInfo.firmwareversion");
-
-    if (result.is_object() && result.contains("error"))
+    nlohmann::json result;
+    try
     {
-        const std::string msg = result["error"].value("message", "unknown error");
-        std::cerr << "DeviceInfo.firmwareversion failed: " << msg << std::endl;
+        result = bridge.send("DeviceInfo.firmwareversion");
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "DeviceInfo.firmwareversion failed: " << ex.what() << std::endl;
         return;
     }
 

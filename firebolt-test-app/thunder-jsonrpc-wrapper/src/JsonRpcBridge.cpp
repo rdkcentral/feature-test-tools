@@ -30,6 +30,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <utility>
 
 namespace Thunder
@@ -116,15 +117,17 @@ nlohmann::json JsonRpcBridge::parseRpcResult(const nlohmann::json& payload)
 {
 	if (!payload.is_object())
 	{
-		return {{"error", {{"code", -32700}, {"message", "JSON-RPC response is not a JSON object"}}}};
+		throw std::runtime_error("JSON-RPC response is not a JSON object");
 	}
 	if (payload.contains("error"))
 	{
-		return {{"error", payload["error"]}};
+		const auto& error = payload["error"];
+		const std::string message = error.value("message", "JSON-RPC error");
+		throw std::runtime_error(message);
 	}
 	if (!payload.contains("result"))
 	{
-		return {{"error", {{"code", -32700}, {"message", "JSON-RPC response missing result"}}}};
+		throw std::runtime_error("JSON-RPC response missing result");
 	}
 	return payload["result"];
 }
@@ -135,7 +138,7 @@ nlohmann::json JsonRpcBridge::invokeInternal(const std::string& method,
 {
 	if (!writer_)
 	{
-		return {{"error", {{"code", -32099}, {"message", "transport not connected"}}}};
+		throw std::runtime_error("transport not connected");
 	}
 
 	const nlohmann::json request = buildRequest(method, params);
@@ -151,7 +154,7 @@ nlohmann::json JsonRpcBridge::invokeInternal(const std::string& method,
 	{
 		std::lock_guard<std::mutex> lock(pendingMutex_);
 		pending_.erase(id);
-		return {{"error", {{"code", -32099}, {"message", "transport failed to send request"}}}};
+		throw std::runtime_error("transport failed to send request");
 	}
 
 	const std::chrono::milliseconds effectiveTimeout = timeout.value_or(std::chrono::milliseconds(5000));
@@ -159,7 +162,7 @@ nlohmann::json JsonRpcBridge::invokeInternal(const std::string& method,
 	{
 		std::lock_guard<std::mutex> lock(pendingMutex_);
 		pending_.erase(id);
-		return {{"error", {{"code", -32099}, {"message", "JSON-RPC response timed out"}}}};
+		throw std::runtime_error("JSON-RPC response timed out");
 	}
 
 	return parseRpcResult(future.get());

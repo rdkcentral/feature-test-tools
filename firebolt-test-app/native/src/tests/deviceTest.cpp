@@ -25,6 +25,7 @@
 
 #include <firebolt/firebolt.h>
 #include <iostream>
+#include <stdexcept>
 
 using namespace Firebolt;
 using namespace Firebolt::Device;
@@ -65,6 +66,18 @@ void DeviceTest::runMethod(const std::string& method)
     }
     else if (method == "Device.deviceClass")
     {
+        std::string deviceType = "UNKNOWN";
+        try
+        {
+            const nlohmann::json thunderResponse = GetJsonRpcBridge().send("DeviceInfo.devicetype");
+            deviceType = thunderResponse.value("devicetype", "UNKNOWN");
+        }
+        catch (const std::exception& ex)
+        {
+            std::cout << "  [WARN] " << ex.what() << std::endl;
+        }
+
+        std::cout << "ThunderJRPC Response - deviceType: " << deviceType << std::endl;
         auto r = IFireboltAccessor::Instance().DeviceInterface().deviceClass();
         if (checkResult(r, method))
         {

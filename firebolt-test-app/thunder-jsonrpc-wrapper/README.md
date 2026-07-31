@@ -80,6 +80,19 @@ bridge.sendWithoutResponse("Metrics.ready");
 
 Use this when caller does not need the returned JSON.
 
+## Error Handling
+
+Both `send()` and `sendWithoutResponse()` throw `std::runtime_error` on failure.
+
+That includes:
+- transport not connected
+- transport send failure
+- timeout waiting for response
+- JSON-RPC error responses
+- malformed JSON-RPC responses
+
+Consumers should wrap calls in `try` / `catch` when they need to recover locally.
+
 ## Events
 
 ```cpp
