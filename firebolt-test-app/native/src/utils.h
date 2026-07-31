@@ -25,6 +25,7 @@
 
 #include <firebolt/types.h>
 #include <firebolt/common_types.h>
+#include <thunder/JsonRpcBridge.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -101,6 +102,10 @@ struct AppConfig
 };
 
 AppConfig& GetAppConfig();
+
+/// Returns the shared Thunder JSON-RPC bridge instance.
+/// Call initialize() once in main before use.
+Thunder::JsonRpcBridge& GetJsonRpcBridge();
 
 // ---------------------------------------------------------------------------
 // Console helpers

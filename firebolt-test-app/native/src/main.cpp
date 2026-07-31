@@ -75,6 +75,45 @@
 #define ISATTY(fd) isatty(fd)
 #define STDIN_FD   fileno(stdin)
 
+/***
+  * @brief Print device firmware version information at startup.
+  */
+static void printThunderFirmwareVersionAtStartup()
+{
+    Thunder::JsonRpcBridge& bridge = GetJsonRpcBridge();
+
+    const nlohmann::json result = bridge.send("DeviceInfo.firmwareversion");
+
+    if (result.is_object() && result.contains("error"))
+    {
+        const std::string msg = result["error"].value("message", "unknown error");
+        std::cerr << "DeviceInfo.firmwareversion failed: " << msg << std::endl;
+        return;
+    }
+
+    if (!result.is_object())
+    {
+        std::cerr << "DeviceInfo.firmwareversion: unexpected response shape." << std::endl;
+        return;
+    }
+
+    const auto getValue = [&](const char* key) -> std::string {
+        const auto it = result.find(key);
+        if (it != result.end() && it->is_string())
+        {
+            return it->get<std::string>();
+        }
+        return "Not Available";
+    };
+
+    std::cout << "DeviceInfo.firmwareversion:" << std::endl
+              << "  imagename: " << getValue("imagename") << std::endl
+              << "  sdk: " << getValue("sdk") << std::endl
+              << "  mediarite: " << getValue("mediarite") << std::endl
+              << "  yocto: " << getValue("yocto") << std::endl
+              << "  pdri: " << getValue("pdri") << std::endl;
+}
+
 // ---------------------------------------------------------------------------
 // printUsage
 // ---------------------------------------------------------------------------
@@ -189,11 +228,59 @@ static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
 // ---------------------------------------------------------------------------
 static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
 {
+    const auto hasSuffix = [](const std::string& value, const std::string& suffix) {
+        return value.size() >= suffix.size() &&
+               value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+
+    const auto autoSkipReason = [&](const std::string& methodName) -> const char* {
+        if (hasSuffix(methodName, ".unsubscribe"))
+        {
+            return "auto mode relies on module cleanup via unsubscribeAll";
+        }
+
+        if (methodName == "Lifecycle.close")
+        {
+            return "destructive lifecycle transition disrupts later auto tests";
+        }
+
+        if (methodName.rfind("SpeechSynthesis.", 0) == 0)
+        {
+            return "module is not implemented yet in the native test app";
+        }
+
+        if (methodName.rfind("VideoOutput.", 0) == 0)
+        {
+            return "module is not implemented yet in the native test app";
+        }
+
+        if (methodName == "Localization.timezone" ||
+            methodName == "Localization.onTimezoneChanged.subscribe" ||
+            methodName == "Localization.onTimezoneChanged.unsubscribe")
+        {
+            return "method is marked unsupported in the native test app";
+        }
+
+        if (methodName == "Device.uptime")
+        {
+            return "method is marked unsupported in the native test app";
+        }
+
+        return nullptr;
+    };
+
     for (auto& mod : modules)
     {
         std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
         for (const auto& m : mod->methods())
         {
+            if (const char* skipReason = autoSkipReason(m))
+            {
+                std::cout << "--- " << m << " ---" << std::endl;
+                std::cout << "[SKIP] " << m << " – " << skipReason << std::endl;
+                continue;
+            }
+
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
         }
@@ -413,6 +500,13 @@ int main(int argc, char** argv)
 
     std::cout << "Connected to Firebolt." << std::endl;
 
+    if (!GetJsonRpcBridge().initialize())
+    {
+        std::cerr << "Failed to initialize shared JsonRpcBridge." << std::endl;
+        Firebolt::IFireboltAccessor::Instance().Disconnect();
+        return 1;
+    }
+
     // Display active version mode
     switch (appConfig.fireboltVersion)
     {
@@ -426,6 +520,8 @@ int main(int argc, char** argv)
             std::cout << "[Mode] Firebolt All - All modules across all Firebolt versions enabled." << std::endl;
             break;
     }
+
+    printThunderFirmwareVersionAtStartup();
 
     auto modules = buildModuleList(appConfig.fireboltVersion);
 

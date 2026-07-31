@@ -52,6 +52,8 @@ add_compile_definitions(
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
 
+add_subdirectory(../thunder-jsonrpc-wrapper thunder-jsonrpc-wrapper)
+
 add_executable(${APP_TARGET}
     src/main.cpp
     src/utils.cpp
@@ -81,6 +83,7 @@ target_link_libraries(${APP_TARGET}
         FireboltTransport::FireboltTransport
         FireboltClient::FireboltClient
         nlohmann_json::nlohmann_json
+        ThunderJsonRpcWrapper::ThunderJsonRpcWrapper
 )
 
 target_include_directories(${APP_TARGET}

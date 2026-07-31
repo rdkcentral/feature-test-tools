@@ -28,10 +28,16 @@
 #include <strings.h>
 
 static AppConfig gAppConfig;
+static Thunder::JsonRpcBridge gJsonRpcBridge;
 
 AppConfig& GetAppConfig()
 {
     return gAppConfig;
+}
+
+Thunder::JsonRpcBridge& GetJsonRpcBridge()
+{
+    return gJsonRpcBridge;
 }
 
 // ---------------------------------------------------------------------------
