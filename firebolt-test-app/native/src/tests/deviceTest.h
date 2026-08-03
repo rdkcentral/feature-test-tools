@@ -28,10 +28,11 @@
 class DeviceTest : public TestModuleBase
 {
 public:
-    DeviceTest();
+    explicit DeviceTest(fireboltVersion version = FIREBOLT_VERSION_ALL);
     ~DeviceTest() override = default;
     void runMethod(const std::string& method) override;
 
 private:
     Firebolt::SubscriptionId onHdrChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onDolbyAtmosExperienceAvailableChangedSubId_{ 0 };
 };

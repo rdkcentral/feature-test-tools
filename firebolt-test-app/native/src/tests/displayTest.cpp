@@ -31,16 +31,25 @@ using namespace Firebolt;
 DisplayTest::DisplayTest()
     : TestModuleBase("Display")
 {
-    methods_.push_back("Display.edid");
-    methods_.push_back("Display.maxResolution");
     methods_.push_back("Display.size");
+    methods_.push_back("Display.maxResolution");
+    methods_.push_back("Display.edid");
 }
 
 void DisplayTest::runMethod(const std::string& method)
 {
     std::cout << "[Display] Running: " << method << std::endl;
 
-    if (method == "Display.edid")
+    if (method == "Display.size")
+    {
+        auto r = IFireboltAccessor::Instance().DisplayInterface().size();
+        if (checkResult(r, method))
+        {
+            std::cout << "  size (mm): "
+                      << r->width << "x" << r->height << std::endl;
+        }
+    }
+    else if (method == "Display.edid")
     {
         auto r = IFireboltAccessor::Instance().DisplayInterface().edid();
         if (checkResult(r, method))
@@ -54,15 +63,6 @@ void DisplayTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  maxResolution: "
-                      << r->width << "x" << r->height << std::endl;
-        }
-    }
-    else if (method == "Display.size")
-    {
-        auto r = IFireboltAccessor::Instance().DisplayInterface().size();
-        if (checkResult(r, method))
-        {
-            std::cout << "  size (mm): "
                       << r->width << "x" << r->height << std::endl;
         }
     }

@@ -41,9 +41,7 @@
 #include "utils.h"
 
 #include "tests/accessibilityTest.h"
-#ifdef ENABLE_FIREBOLT9
 #include "tests/actionsTest.h"
-#endif
 #include "tests/advertisingTest.h"
 #include "tests/deviceTest.h"
 #include "tests/discoveryTest.h"
@@ -53,8 +51,10 @@
 #include "tests/metricsTest.h"
 #include "tests/networkTest.h"
 #include "tests/presentationTest.h"
+#include "tests/SpeechSynthesisTest.h"
 #include "tests/statsTest.h"
 #include "tests/texttospeechTest.h"
+#include "tests/VideoOutputTest.h"
 
 #include <firebolt/firebolt.h>
 
@@ -90,10 +90,9 @@ static void printUsage(const char* argv0)
         << "  --legacy       Force legacy (v1) RPC protocol\n"
         << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
         << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Restrict to base API set only (default; excludes optional Actions/Intents module)\n"
-    #ifdef ENABLE_FIREBOLT9
-        << "  --firebolt9    Enable optional Actions/Intents module; base API set is the default\n"
-    #endif
+        << "  --firebolt8    Firebolt 8 modules only (excludes all Firebolt 9 modules and v9-specific methods)\n"
+        << "  --firebolt9    Firebolt 8 base modules + Firebolt 9 modules (default)\n"
+        << "  --firebolt-all All modules across all Firebolt versions\n"
         << "  --help         Show this help and exit\n\n"
         << "ENVIRONMENT\n"
         << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
@@ -103,34 +102,40 @@ static void printUsage(const char* argv0)
 // ---------------------------------------------------------------------------
 // buildModuleList – registers all test modules
 //
-// firebolt8Only: when true, Firebolt 9-only modules (Actions) are excluded.
+// version: Firebolt version to filter modules by.
+//   FIREBOLT_VERSION_8:   Firebolt 8 base modules only (excludes all Firebolt 9 modules)
+//   FIREBOLT_VERSION_9:   Firebolt 8 base modules + Firebolt 9 modules (default)
+//   FIREBOLT_VERSION_ALL: All modules across all Firebolt versions
 // ---------------------------------------------------------------------------
-static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(bool firebolt8Only)
+static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVersion version)
 {
- #ifndef ENABLE_FIREBOLT9
-    // fix for -Wunused-parameter when ActionsTest is not compiled in.
-    (void)firebolt8Only;
- #endif
     std::vector<std::unique_ptr<TestModuleBase>> modules;
-    modules.emplace_back(std::make_unique<AccessibilityTest>());
-    modules.emplace_back(std::make_unique<AdvertisingTest>());
-    modules.emplace_back(std::make_unique<DeviceTest>());
-    modules.emplace_back(std::make_unique<DiscoveryTest>());
-    modules.emplace_back(std::make_unique<DisplayTest>());
-    modules.emplace_back(std::make_unique<LifecycleTest>());
-    modules.emplace_back(std::make_unique<LocalizationTest>());
-    modules.emplace_back(std::make_unique<MetricsTest>());
-    modules.emplace_back(std::make_unique<NetworkTest>());
-    modules.emplace_back(std::make_unique<PresentationTest>());
-    modules.emplace_back(std::make_unique<StatsTest>());
-    modules.emplace_back(std::make_unique<TextToSpeechTest>());
-    // Firebolt 9 modules — omitted when --firebolt8 is set or not compiled in
-#ifdef ENABLE_FIREBOLT9
-    if (!firebolt8Only)
+
+    // Base API modules (Firebolt 8 and later)
+    if (version >= FIREBOLT_VERSION_8)
+    {
+        modules.emplace_back(std::make_unique<AccessibilityTest>());
+        modules.emplace_back(std::make_unique<AdvertisingTest>());
+        modules.emplace_back(std::make_unique<DeviceTest>(version));
+        modules.emplace_back(std::make_unique<DiscoveryTest>());
+        modules.emplace_back(std::make_unique<DisplayTest>());
+        modules.emplace_back(std::make_unique<LifecycleTest>());
+        modules.emplace_back(std::make_unique<LocalizationTest>(version));
+        modules.emplace_back(std::make_unique<MetricsTest>());
+        modules.emplace_back(std::make_unique<NetworkTest>());
+        modules.emplace_back(std::make_unique<PresentationTest>());
+        modules.emplace_back(std::make_unique<TextToSpeechTest>());
+    }
+
+    // Firebolt 9 modules (Actions/Intents)
+    if (version >= FIREBOLT_VERSION_9)
     {
         modules.emplace_back(std::make_unique<ActionsTest>());
+        modules.emplace_back(std::make_unique<SpeechSynthesisTest>());
+        modules.emplace_back(std::make_unique<StatsTest>());
+        modules.emplace_back(std::make_unique<VideoOutputTest>());
     }
-#endif
+
     return modules;
 }
 
@@ -218,14 +223,47 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
         auto& selectedModule = modules[static_cast<size_t>(modIdx)];
         const std::vector<std::string>& methodNames = selectedModule->methods();
 
+        const auto isSubscribeMethod = [](const std::string& methodName) {
+            static constexpr const char* kSuffix = ".subscribe";
+            static constexpr size_t kSuffixLen = 10;
+            return methodName.size() >= kSuffixLen &&
+                   methodName.compare(methodName.size() - kSuffixLen, kSuffixLen, kSuffix) == 0;
+        };
+
+        const bool hasSubscribeMethods = std::any_of(methodNames.begin(), methodNames.end(), isSubscribeMethod);
+        const std::string subscribeAllMethod = selectedModule->name() + ".subscribeAll";
+
+        std::vector<std::string> methodMenu;
+        methodMenu.reserve(methodNames.size() + (hasSubscribeMethods ? 1 : 0));
+        methodMenu.insert(methodMenu.end(), methodNames.begin(), methodNames.end());
+        if (hasSubscribeMethods)
+        {
+            methodMenu.push_back(subscribeAllMethod);
+        }
+
         while (true)
         {
-            int methodIdx = chooseFromList(methodNames, "Select a method to run:");
+            int methodIdx = chooseFromList(methodMenu, "Select a method to run:");
             if (methodIdx == -1)
             {
                 break;
             }
-            selectedModule->runMethod(methodNames[static_cast<size_t>(methodIdx)]);
+
+            const std::string& selectedMethod = methodMenu[static_cast<size_t>(methodIdx)];
+            if (hasSubscribeMethods && selectedMethod == subscribeAllMethod)
+            {
+                std::cout << "  Running all subscribe methods for " << selectedModule->name() << "..." << std::endl;
+                for (const auto& methodName : methodNames)
+                {
+                    if (isSubscribeMethod(methodName))
+                    {
+                        selectedModule->runMethod(methodName);
+                    }
+                }
+                continue;
+            }
+
+            selectedModule->runMethod(selectedMethod);
         }
     }
 }
@@ -235,13 +273,8 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
-    std::cout << "Firebolt Test App v" << PROJECT_VERSION;
-#ifdef ENABLE_FIREBOLT9
-    std::cout << " (base API set by default - use --firebolt9 to enable optional Actions/Intents)";
-#else
-    std::cout << " (base API set only; rebuild with -DENABLE_FIREBOLT9=ON for optional Actions/Intents)";
-#endif
-    std::cout << std::endl;
+    std::cout << "Firebolt Test App v" << PROJECT_VERSION
+              << " (default: --firebolt9; see --help for options)" << std::endl;
 
     auto& appConfig = GetAppConfig();
 
@@ -284,17 +317,15 @@ int main(int argc, char** argv)
         }
         else if (arg == "--firebolt9")
         {
-#ifdef ENABLE_FIREBOLT9
-            appConfig.firebolt8Only = false;
-#else
-            std::cerr << "Error: --firebolt9 is unavailable in this build. "
-                      << "Rebuild with -DENABLE_FIREBOLT9=ON to enable Firebolt 9 modules.\n";
-            return 1;
-#endif
+            appConfig.fireboltVersion = FIREBOLT_VERSION_9;
         }
         else if (arg == "--firebolt8")
         {
-            appConfig.firebolt8Only = true;
+            appConfig.fireboltVersion = FIREBOLT_VERSION_8;
+        }
+        else if (arg == "--firebolt-all")
+        {
+            appConfig.fireboltVersion = FIREBOLT_VERSION_ALL;
         }
         else if (arg == "--help")
         {
@@ -382,16 +413,21 @@ int main(int argc, char** argv)
 
     std::cout << "Connected to Firebolt." << std::endl;
 
-    if (appConfig.firebolt8Only)
+    // Display active version mode
+    switch (appConfig.fireboltVersion)
     {
-        std::cout << "[Mode] Base API set only (default) - Actions/Intents excluded." << std::endl;
-    }
-    else
-    {
-        std::cout << "[Mode] Extended set - all modules including Actions/Intents enabled." << std::endl;
+        case FIREBOLT_VERSION_8:
+            std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
+            break;
+        case FIREBOLT_VERSION_9:
+            std::cout << "[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
+            break;
+        default:
+            std::cout << "[Mode] Firebolt All - All modules across all Firebolt versions enabled." << std::endl;
+            break;
     }
 
-    auto modules = buildModuleList(appConfig.firebolt8Only);
+    auto modules = buildModuleList(appConfig.fireboltVersion);
 
     if (appConfig.autoRun)
     {

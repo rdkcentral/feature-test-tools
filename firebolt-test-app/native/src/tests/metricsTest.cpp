@@ -28,6 +28,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <stdexcept>
 
@@ -36,6 +37,33 @@ using namespace Firebolt::Metrics;
 
 namespace
 {
+using Json = nlohmann::json;
+
+bool validateMetricsEventInput(const std::string& schema,
+                               const std::string& rawData,
+                               std::string& normalizedData,
+                               std::string& error)
+{
+    if (schema.empty())
+    {
+        error = "'schema' must not be empty.";
+        return false;
+    }
+
+    try
+    {
+        const Json data = Json::parse(rawData);
+        normalizedData = data.dump();
+    }
+    catch (const std::exception& e)
+    {
+        error = std::string("Invalid JSON in 'data': ") + e.what();
+        return false;
+    }
+
+    return true;
+}
+
 const char* errorTypeToString(ErrorType type)
 {
     switch (type)
@@ -358,9 +386,20 @@ void MetricsTest::runMethod(const std::string& method)
         const std::string schema       = paramFromConsole("schema", "https://com.example.firebolt-test-app.event");
         const std::string data         = paramFromConsole("data (JSON)", "{\"key\":\"value\"}");
         const std::string agePolicyStr = paramFromConsole("agePolicy (adult/teen/child)", "adult");
+
+        std::string normalizedData;
+        std::string validationError;
+        if (!validateMetricsEventInput(schema, data, normalizedData, validationError))
+        {
+            std::cout << "  [WARN] Input validation failed: " << validationError << std::endl;
+            return;
+        }
+
+        std::cout << "  validated event data JSON: " << normalizedData << std::endl;
+
         auto r = IFireboltAccessor::Instance()
                      .MetricsInterface()
-                     .event(schema, data, parseAgePolicy(agePolicyStr));
+                     .event(schema, normalizedData, parseAgePolicy(agePolicyStr));
         if (checkResult(r, method))
         {
             std::cout << "  custom event reported." << std::endl;
