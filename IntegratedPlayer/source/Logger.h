@@ -64,7 +64,7 @@ namespace ipalauncher
     {
         if(level <= CURRENT_LOG_LEVEL)
         {
-            std::cout << "[FbActions][" << logLevelToString(level) << "] " << firstArg;
+            std::cout << "[IPALauncher][" << logLevelToString(level) << "] " << firstArg;
             using expander = int[];
             (void)expander{0, (void(std::cout << args), 0)...};
             std::cout << std::endl;

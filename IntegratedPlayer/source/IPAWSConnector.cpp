@@ -28,6 +28,7 @@
 #include "IPAUtils.h"
 using namespace std;
 
+#define DEFAULT_IPAWS_PORT 10101
 // The general response format for the methods is as follows:
 // {
 //      "status" : true or false,
@@ -38,19 +39,28 @@ namespace ipalauncher
 {
     int IPAWSConnector::initialize()
     {
+
+        const char *portEnv = std::getenv("IPAWS_PORT"); // Get the port from environment variable if needed
+
+        int port = portEnv ? std::atoi(portEnv) : DEFAULT_IPAWS_PORT; // Use the environment variable if available, otherwise default to 10101
+        m_port = static_cast<uint16_t>(port);
+
         // Create the RPC server instance
         std::string registerMethodName(IPAWSMethods::IPA_METHOD_REGISTER);
         std::string unregisterMethodName(IPAWSMethods::IPA_METHOD_UNREGISTER);
         std::string getListenersMethodName(IPAWSMethods::IPA_METHOD_GET_LISTENERS);
 
         // Set up the RPC server with the specified port and method names
-
         WsRpcServerBuilder builder(m_port, true);
         m_wsRpcServer = std::shared_ptr<IAbstractRpcServer>(builder.enableServerEvents(registerMethodName, unregisterMethodName, getListenersMethodName)
                                                                 .numThreads(1)
                                                                 .build());
 
+        LOG(LogLevel::INFO, "RPC server initialized on port: ", m_port);
         registerMethods();
+
+        bool status = connectToFirebolt();
+        LOG(LogLevel::TRACE, "Connection  to Firebolt endpoint status: ", (status ? "Connected" : "Not Connected"));
         return 0;
     }
     void IPAWSConnector::start()
@@ -58,11 +68,19 @@ namespace ipalauncher
         if (m_wsRpcServer)
         {
             m_wsRpcServer->StartListening();
+            LOG(LogLevel::INFO, "RPC server started listening on port: ", m_port);
+        }
+        if (waitForFireboltConnection(5000)) // Wait for Firebolt connection with a timeout of 5000 ms
+        {
+            LOG(LogLevel::INFO, "Registering for lifecycle events with Firebolt: ");
+            registerForLifecycleEvents();
         }
     }
 
     void IPAWSConnector::shutdown()
     {
+        LOG(LogLevel::INFO, "Shutting down IPAWSConnector...");
+        disconnectFirebolt();
         if (m_wsRpcServer)
         {
             m_wsRpcServer->StopListening();

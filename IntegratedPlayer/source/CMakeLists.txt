@@ -21,6 +21,9 @@ find_package(Aamp REQUIRED)
 find_package(wsrpcserver REQUIRED)
 find_package( jsoncpp REQUIRED)
 
+find_package(FireboltTransport CONFIG REQUIRED)
+find_package(FireboltClient CONFIG REQUIRED)
+
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0>=1.18.0)
 pkg_check_modules(GSTREAMERBASE REQUIRED gstreamer-app-1.0)
@@ -34,6 +37,7 @@ add_executable(IPALauncher
     main.cpp
     Player.cpp
     IPAWSConnector.cpp
+    LifecycleConnector.cpp
 )
 message(STATUS "wsrpcserver found ?: ${WSRPCSERVER_FOUND}")
 message (STATUS "wsrpcserver include dirs: ${WSRPCSERVER_INCLUDE_DIRS}")
@@ -56,6 +60,8 @@ target_link_libraries(IPALauncher
         WSRPCSERVER::WSRPCSERVER
         JsonCpp::JsonCpp
         uuid
+        FireboltTransport::FireboltTransport
+        FireboltClient::FireboltClient
 )
 install(TARGETS IPALauncher
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

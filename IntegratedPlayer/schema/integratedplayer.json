@@ -2835,14 +2835,14 @@
     {
       "name": "org.rdk.player.register",
       "summary": "Register to server-pushed event notifications",
-      "description": "After registering, the server pushes matching events as JSON-RPC notifications (no id field),
+      "description": "After registering, the server pushes matching events as JSON-RPC notifications (no id field)",
       "tags": [
         {
           "name": "Event Register"
         }
       ],
       "paramStructure": "by-name",
-      "params": [ 
+      "params": [
        {
           "name": "id",
           "required": true,

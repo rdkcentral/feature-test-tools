@@ -26,17 +26,17 @@
 #include "rpcserver/IAbstractRpcServer.h"
 #include "rpcserver/WsRpcServerBuilder.h"
 #include "Player.h"
-
+#include "LifecycleConnector.h"
 using namespace rpcserver;
 
 namespace ipalauncher
 {
 
-    class IPAWSConnector
+    class IPAWSConnector : public LifecycleConnector
     {
     public:
-        IPAWSConnector(uint16_t port)
-            : m_port(port), m_playerInstance(nullptr)
+        IPAWSConnector()
+            : m_port(0), m_playerInstance(nullptr)
         {
         }
         // Initialize the RPC server and start listening for incoming connections
