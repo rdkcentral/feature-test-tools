@@ -60,15 +60,19 @@ static int getNumericOption(int max, const std::string& quitLabel)
     std::string input;
     while (true)
     {
-        std::cout << "Select option (1-" << max << ") or Enter/q to " << quitLabel << ": ";
+        std::cout << "Select option (1-" << max << ") or q to " << quitLabel << ": ";
         if (!std::getline(std::cin, input))
         {
             // Treat EOF or input errors as a quit signal.
             return -1;
         }
 
-        if (input.empty() ||
-            strcasecmp(input.c_str(), "q") == 0)
+        if (input.empty())
+        {
+            continue;
+        }
+
+        if (strcasecmp(input.c_str(), "q") == 0)
         {
             return -1;
         }

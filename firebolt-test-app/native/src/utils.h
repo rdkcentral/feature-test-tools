@@ -86,11 +86,18 @@ inline const char* fireboltErrorCodeToString(int errorCode)
 // ---------------------------------------------------------------------------
 // Global test-run configuration
 // ---------------------------------------------------------------------------
+typedef enum fireboltVersion
+{
+	FIREBOLT_VERSION_8 = 8,
+	FIREBOLT_VERSION_9 = 9,
+	FIREBOLT_VERSION_ALL = 9 // Need to increment when new versions are added.
+} fireboltVersion_t;
+
 struct AppConfig
 {
     bool autoRun      = false; // skip interactive prompts, use defaults
     bool verbose      = false; // print extra diagnostic output
-    bool firebolt8Only = true;  // restrict to Firebolt 8 APIs (excludes Firebolt 9 modules); default ON
+    fireboltVersion_t fireboltVersion = FIREBOLT_VERSION_ALL;
 };
 
 AppConfig& GetAppConfig();
@@ -100,7 +107,7 @@ AppConfig& GetAppConfig();
 // ---------------------------------------------------------------------------
 
 /// Print a numbered list and return the 0-based index the user chose,
-/// or -1 if the user went back / EOF.
+/// or -1 if the user quit / EOF.
 int chooseFromList(const std::vector<std::string>& options,
                    const std::string& prompt,
                    const std::string& quitLabel = "go back");

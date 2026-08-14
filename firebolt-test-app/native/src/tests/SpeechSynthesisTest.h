@@ -21,20 +21,19 @@
  * @author Arun Madhavan
  */
 
+
 #pragma once
 
 #include "../utils.h"
 
-class LocalizationTest : public TestModuleBase
+class SpeechSynthesisTest : public TestModuleBase
 {
 public:
-    explicit LocalizationTest(fireboltVersion version = FIREBOLT_VERSION_ALL);
-    ~LocalizationTest() override = default;
+    explicit SpeechSynthesisTest(fireboltVersion version = FIREBOLT_VERSION_ALL);
+    ~SpeechSynthesisTest() override = default;
     void runMethod(const std::string& method) override;
 
 private:
-    Firebolt::SubscriptionId onCountryChangedSubId_{ 0 };
-    Firebolt::SubscriptionId onPreferredAudioLanguagesChangedSubId_{ 0 };
-    Firebolt::SubscriptionId onPresentationLanguageChangedSubId_{ 0 };
-    Firebolt::SubscriptionId onTimezoneChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onVoicesChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onUtteranceEventSubId_{ 0 };
 };

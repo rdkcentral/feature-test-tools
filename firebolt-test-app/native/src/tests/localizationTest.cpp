@@ -29,7 +29,7 @@
 using namespace Firebolt;
 using namespace Firebolt::Localization;
 
-LocalizationTest::LocalizationTest()
+LocalizationTest::LocalizationTest(fireboltVersion version)
     : TestModuleBase("Localization")
 {
     methods_.push_back("Localization.country");
@@ -41,6 +41,12 @@ LocalizationTest::LocalizationTest()
     methods_.push_back("Localization.onPreferredAudioLanguagesChanged.unsubscribe");
     methods_.push_back("Localization.onPresentationLanguageChanged.subscribe");
     methods_.push_back("Localization.onPresentationLanguageChanged.unsubscribe");
+    if (version >= FIREBOLT_VERSION_9)
+    {
+        methods_.push_back("Localization.timezone");
+        methods_.push_back("Localization.onTimezoneChanged.subscribe");
+        methods_.push_back("Localization.onTimezoneChanged.unsubscribe");
+    }
     methods_.push_back("Localization.unsubscribeAll");
 }
 
@@ -82,6 +88,21 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  presentationLanguage: " << *r << std::endl;
         }
+    }
+    else if (method == "Localization.timezone")
+    {
+#if 0
+        // TODO: Implement Localization.timezone when the Firebolt SDK supports it.
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .timezone();
+        if (checkResult(r, method))
+        {
+            std::cout << "  timezone: " << *r << std::endl;
+        }
+#else
+        std::cout << "  [WARN] Localization.timezone is not supported yet." << std::endl;
+#endif
     }
     else if (method == "Localization.onCountryChanged.subscribe")
     {
@@ -203,12 +224,60 @@ void LocalizationTest::runMethod(const std::string& method)
             onPresentationLanguageChangedSubId_ = 0;
         }
     }
+    else if (method == "Localization.onTimezoneChanged.subscribe")
+    {
+        if (onTimezoneChangedSubId_ != 0)
+        {
+            std::cout << "  [WARN] Already subscribed to Localization.onTimezoneChanged (ID: "
+                      << onTimezoneChangedSubId_ << "). Unsubscribe first." << std::endl;
+            return;
+        }
+
+#if 0
+        // TODO: Implement Localization.onTimezoneChanged.subscribe when the Firebolt SDK supports it.
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .subscribeOnTimezoneChanged([](const std::string& timezone) {
+                         std::cout << "  [EVENT] onTimezoneChanged: " << timezone << std::endl;
+                     });
+        if (checkResult(r, method))
+        {
+            onTimezoneChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onTimezoneChangedSubId_ << std::endl;
+        }
+#else
+        std::cout << "  [WARN] Localization.onTimezoneChanged.subscribe is not supported yet." << std::endl;
+#endif
+    }
+    else if (method == "Localization.onTimezoneChanged.unsubscribe")
+    {
+        if (onTimezoneChangedSubId_ == 0)
+        {
+            std::cout << "  [WARN] No active Localization.onTimezoneChanged subscription. Subscribe first."
+                      << std::endl;
+            return;
+        }
+#if 0
+        // TODO: Implement Localization.onTimezoneChanged.unsubscribe when the Firebolt SDK supports it.
+        std::cout << "  Unsubscribing ID: " << onTimezoneChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .LocalizationInterface()
+                     .unsubscribe(onTimezoneChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onTimezoneChangedSubId_ = 0;
+        }
+#else
+        std::cout << "  [WARN] Localization.onTimezoneChanged.unsubscribe is not supported yet." << std::endl;
+#endif
+    }
     else if (method == "Localization.unsubscribeAll")
     {
         IFireboltAccessor::Instance().LocalizationInterface().unsubscribeAll();
         onCountryChangedSubId_ = 0;
         onPreferredAudioLanguagesChangedSubId_ = 0;
         onPresentationLanguageChangedSubId_ = 0;
+        onTimezoneChangedSubId_ = 0;
         std::cout << "  Unsubscribed from all Localization events." << std::endl;
     }
     else
