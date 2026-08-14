@@ -59,7 +59,7 @@ class AppActionsControl : public MgrCtrl
 {
 
 private:
-    Exchange::IAppActions *appActions;
+    Exchange::IAppActions *appActions = nullptr;
     shared_ptr<Exchange::IAppActions::INotification> appActionsEvtHandler = nullptr;
 
 public:
