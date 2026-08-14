@@ -19,8 +19,21 @@
  * @author Josekutty Kuriakose
  */
 #include "AppActionsControl.hpp"
-#include "json/json.h"
 #include <cassert>
+
+AppActionsControl::~AppActionsControl()
+{
+    if (appActions != nullptr)
+    {
+        if (appActionsEvtHandler != nullptr)
+        {
+            appActions->Unregister(appActionsEvtHandler.get());
+            appActionsEvtHandler.reset();
+        }
+        appActions->Release();
+        appActions = nullptr;
+    }
+}
 
 bool AppActionsControl::initialize(Core::ProxyType<RPC::CommunicatorClient> &client)
 {
