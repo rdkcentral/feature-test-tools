@@ -36,7 +36,7 @@ struct AppContext;
 class GlApp {
     public:
         GlApp(int width, int height,
-              const std::string& fontPath = "assets/LiberationSans-Bold.ttf",
+              const std::string& fontPath = "/usr/share/firebolt-test-app/assets/LiberationSans-Bold.ttf",
               BackgroundPatternMode pattern = PATTERN_NONE);
         ~GlApp();
 

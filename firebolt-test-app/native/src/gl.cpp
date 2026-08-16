@@ -49,7 +49,11 @@
 extern "C" {
     #include <wayland-client.h>
     #include <wayland-egl.h>
+    #ifdef USE_WESTEROS_SIMPLESHELL
+    #include "simpleshell-client-protocol.h"
+    #else // !USE_WESTEROS_SIMPLESHELL
     #include "xdg-shell-client-protocol.h"
+    #endif // !USE_WESTEROS_SIMPLESHELL
 }
 
 #define DEFAULT_DISPLAY "wayland-0"
@@ -63,9 +67,14 @@ struct AppContext {
     wl_seat* seat = nullptr;
     wl_keyboard* keyboard = nullptr;
 
+    #ifdef USE_WESTEROS_SIMPLESHELL
+    wl_simple_shell* simple_shell_ptr = nullptr;
+    uint32_t simple_shell_surface_id = 0;
+    #else // !USE_WESTEROS_SIMPLESHELL
     xdg_wm_base* xdg_wm_base_ptr = nullptr;
     xdg_surface* xdg_surface_ptr = nullptr;
     xdg_toplevel* xdg_toplevel_ptr = nullptr;
+    #endif // !USE_WESTEROS_SIMPLESHELL
 
     wl_surface* surface = nullptr;
     wl_egl_window* egl_window = nullptr;
@@ -90,7 +99,7 @@ struct AppContext {
 
     int width = DEFAULT_WIDTH;
     int height = DEFAULT_HEIGHT;
-    std::string fontPath = "assets/Roboto-Bold.ttf";
+    std::string fontPath = "/usr/share/fonts/ttf/LiberationSans-Bold.ttf";
 };
 
 struct FontResourceBundle {
@@ -335,6 +344,35 @@ static const wl_seat_listener seat_listener = {
     seat_handle_capabilities, [](void* d, wl_seat* s, const char* n){}
 };
 
+#ifdef USE_WESTEROS_SIMPLESHELL
+static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surface* surface, uint32_t surface_id)
+{
+    AppContext* app = static_cast<AppContext*>(data);
+    if (surface != app->surface) {
+        return;
+    }
+
+    app->simple_shell_surface_id = surface_id;
+    wl_simple_shell_set_name(shell, surface_id, "Firebolt Wayland EGL App");
+    wl_simple_shell_set_visible(shell, surface_id, 1);
+    wl_simple_shell_set_geometry(shell, surface_id, 0, 0, app->width, app->height);
+    app->configured = true;
+}
+
+static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name) {}
+static void simple_shell_surface_destroyed(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name) {}
+static void simple_shell_surface_status(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name, uint32_t visible, int32_t x, int32_t y, int32_t width, int32_t height, wl_fixed_t opacity, wl_fixed_t zorder) {}
+static void simple_shell_get_surfaces_done(void* data, wl_simple_shell* shell) {}
+
+static const wl_simple_shell_listener simple_shell_listener = {
+    simple_shell_surface_id,
+    simple_shell_surface_created,
+    simple_shell_surface_destroyed,
+    simple_shell_surface_status,
+    simple_shell_get_surfaces_done
+};
+#else // !USE_WESTEROS_SIMPLESHELL
+
 static void xdg_surface_handle_configure(void* data, xdg_surface* xdg_surf, uint32_t serial)
 {
     AppContext* app = static_cast<AppContext*>(data);
@@ -356,15 +394,22 @@ static const xdg_toplevel_listener xoplevel_listener = {
         static_cast<AppContext*>(data)->running = false;
     }
 };
+#endif // !USE_WESTEROS_SIMPLESHELL
 
 static void global_registry_handler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
 {
     AppContext* app = static_cast<AppContext*>(data);
     if (std::strcmp(interface, "wl_compositor") == 0) {
         app->compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, id, &wl_compositor_interface, 1));
+    #ifdef USE_WESTEROS_SIMPLESHELL
+    } else if (std::strcmp(interface, "wl_simple_shell") == 0) {
+        app->simple_shell_ptr = static_cast<wl_simple_shell*>(wl_registry_bind(registry, id, &wl_simple_shell_interface, 1));
+        wl_simple_shell_add_listener(app->simple_shell_ptr, &simple_shell_listener, app);
+    #else // !USE_WESTEROS_SIMPLESHELL
     } else if (std::strcmp(interface, "xdg_wm_base") == 0) {
         app->xdg_wm_base_ptr = static_cast<xdg_wm_base*>(wl_registry_bind(registry, id, &xdg_wm_base_interface, 1));
         xdg_wm_base_add_listener(app->xdg_wm_base_ptr, &wm_base_listener, app);
+    #endif //!USE_WESTEROS_SIMPLESHELL
     } else if (std::strcmp(interface, "wl_seat") == 0) {
         app->seat = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface, 1));
         wl_seat_add_listener(app->seat, &seat_listener, app);
@@ -401,8 +446,12 @@ GlApp::~GlApp()
         eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
     if (m_ctx->egl_window)
         wl_egl_window_destroy(m_ctx->egl_window);
+    #ifdef USE_WESTEROS_SIMPLESHELL
+    if (m_ctx->simple_shell_ptr)  wl_simple_shell_destroy(m_ctx->simple_shell_ptr);
+    #else // !USE_WESTEROS_SIMPLESHELL
     if (m_ctx->xdg_toplevel_ptr) xdg_toplevel_destroy(m_ctx->xdg_toplevel_ptr);
     if (m_ctx->xdg_surface_ptr)  xdg_surface_destroy(m_ctx->xdg_surface_ptr);
+    #endif // !USE_WESTEROS_SIMPLESHELL
     if (m_ctx->surface)          wl_surface_destroy(m_ctx->surface);
     if (m_ctx->egl_context != EGL_NO_CONTEXT)
         eglDestroyContext(m_ctx->egl_display, m_ctx->egl_context);
@@ -436,7 +485,11 @@ bool GlApp::init(const char* waylandDisplay)
     wl_registry_add_listener(m_ctx->registry, &registry_listener, m_ctx);
     wl_display_roundtrip(m_ctx->display);
 
+    #ifdef USE_WESTEROS_SIMPLESHELL
+    if (!m_ctx->compositor || !m_ctx->simple_shell_ptr) {
+    #else // !USE_WESTEROS_SIMPLESHELL
     if (!m_ctx->compositor || !m_ctx->xdg_wm_base_ptr) {
+    #endif // !USE_WESTEROS_SIMPLESHELL
         std::cerr << "CRITICAL ERROR: Missing core Wayland protocol interfaces!\n";
         return false;
     }
@@ -458,6 +511,14 @@ bool GlApp::init(const char* waylandDisplay)
     m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
 
     m_ctx->surface = wl_compositor_create_surface(m_ctx->compositor);
+    #ifdef USE_WESTEROS_SIMPLESHELL
+    wl_surface_commit(m_ctx->surface);
+    wl_display_roundtrip(m_ctx->display);
+    if (m_ctx->simple_shell_surface_id == 0) {
+        std::cerr << "CRITICAL ERROR: Failed to acquire simple-shell surface id!\n";
+        return false;
+    }
+    #else // !USE_WESTEROS_SIMPLESHELL
     m_ctx->xdg_surface_ptr = xdg_wm_base_get_xdg_surface(m_ctx->xdg_wm_base_ptr, m_ctx->surface);
     xdg_surface_add_listener(m_ctx->xdg_surface_ptr, &xdg_surface_listener, m_ctx);
     m_ctx->xdg_toplevel_ptr = xdg_surface_get_toplevel(m_ctx->xdg_surface_ptr);
@@ -465,6 +526,7 @@ bool GlApp::init(const char* waylandDisplay)
     xdg_toplevel_set_title(m_ctx->xdg_toplevel_ptr, "Firebolt Wayland EGL App");
     wl_surface_commit(m_ctx->surface);
     wl_display_roundtrip(m_ctx->display);
+    #endif // !USE_WESTEROS_SIMPLESHELL
 
     m_ctx->egl_window = wl_egl_window_create(m_ctx->surface, m_ctx->width, m_ctx->height);
     m_ctx->egl_surface = eglCreateWindowSurface(m_ctx->egl_display, m_ctx->egl_config, (EGLNativeWindowType)m_ctx->egl_window, nullptr);

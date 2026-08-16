@@ -433,7 +433,7 @@ int main(int argc, char** argv)
             else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
         }
         const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
-        auto glApp = std::make_shared<GlApp>(glW, glH, "assets/LiberationSans-Bold.ttf", glPat);
+        auto glApp = std::make_shared<GlApp>(glW, glH, "/usr/share/firebolt-test-app/assets/LiberationSans-Bold.ttf", glPat);
         std::thread([glApp, waylandDisp]() {
             if (glApp->init(waylandDisp)) glApp->run();
         }).detach();

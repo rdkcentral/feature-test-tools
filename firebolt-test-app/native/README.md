@@ -13,7 +13,7 @@ native/
 ├── CMakeLists.txt          # Top-level CMake project
 ├── assets/
 │   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
-│   └── OFL.txt                 # SIL Open Font License 1.1 — required attribution for the font
+│   └── OFL.txt                 # License text installed from the Liberation font package (OFL 1.1)
 └── src/
     ├── main.cpp            # Entry point, connection management, run-mode dispatch
     ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
@@ -100,6 +100,11 @@ FILES:${PN} += "${bindir}/firebolt-test-app ${datadir}/firebolt-test-app"
 ```
 
 </details>
+
+### Font License Note
+
+`assets/OFL.txt` is the license text installed from the Liberation font package for
+`LiberationSans-Bold.ttf`.
 
 ---
 
@@ -243,12 +248,13 @@ Apache-2.0 – see [LICENSE](./../../LICENSE)
 
 ## Third-Party Attributions
 
-### LiberationSans-Bold.ttf
+#### Font used in this app: Liberation Sans Bold (LiberationSans-Bold.ttf)
 
 | Field | Value |
 |---|---|
 | **Font** | Liberation Sans Bold |
-| **Author** | Steve Matteson (design); Red Hat, Inc. (release) |
+| **Copyright holders** | Google Corporation (digitized data); Red Hat, Inc. |
+| **Reserved Font Names** | Arimo, Tinos, Cousine, Liberation |
 | **License** | [SIL Open Font License, Version 1.1](./assets/OFL.txt) |
 | **Source** | https://github.com/liberationfonts/liberation-fonts |
 | **Bundled at** | `assets/LiberationSans-Bold.ttf` |

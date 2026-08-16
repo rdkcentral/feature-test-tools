@@ -89,11 +89,45 @@ target_link_libraries(${APP_TARGET}
 # ---------------------------------------------------------------------------
 find_package(PkgConfig REQUIRED)
 
+option(PREFER_WESTEROS_SIMPLESHELL "Prefer Westeros simple-shell when detected" ON)
+set(USE_WESTEROS_SIMPLESHELL OFF)
+set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS "")
+set(WESTEROS_SIMPLESHELL_LINK_LIBS "")
+
+if(PREFER_WESTEROS_SIMPLESHELL)
+    # Prefer pkg-config when the client .pc file is available.
+    pkg_check_modules(WESTEROS_SIMPLESHELL QUIET westeros-simpleshell-client)
+    if(WESTEROS_SIMPLESHELL_FOUND)
+        set(USE_WESTEROS_SIMPLESHELL ON)
+        set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
+        set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WESTEROS_SIMPLESHELL_LIBRARIES})
+        message(STATUS "Using Westeros simple-shell protocol backend (pkg-config)")
+    else()
+        find_package(WesterosSimpleShell QUIET)
+    endif()
+
+    if((NOT USE_WESTEROS_SIMPLESHELL) AND WesterosSimpleShell_FOUND)
+        set(USE_WESTEROS_SIMPLESHELL ON)
+        set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WesterosSimpleShell_INCLUDE_DIRS})
+        set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WesterosSimpleShell_LIBRARIES})
+        message(STATUS "Using Westeros simple-shell protocol backend (find_package)")
+    endif()
+endif()
+
 # Some cross/Yocto sysroots ship Wayland libs/headers without pkg-config
 # metadata for wayland-client/wayland-egl. Try pkg-config first, then fall
 # back to direct library/header discovery.
 set(WAYLAND_INCLUDE_DIRS "")
 set(WAYLAND_LINK_LIBS "")
+
+set(WAYLAND_SEARCH_HINTS
+    ${CMAKE_SYSROOT}
+    ${CMAKE_SYSROOT}/usr
+    ${CMAKE_SYSROOT}/usr/local
+    ${CMAKE_PREFIX_PATH}
+    ${CMAKE_FIND_ROOT_PATH}
+)
+list(REMOVE_DUPLICATES WAYLAND_SEARCH_HINTS)
 
 pkg_check_modules(WAYLAND_CLIENT wayland-client)
 pkg_check_modules(WAYLAND_EGL wayland-egl)
@@ -104,12 +138,16 @@ if(WAYLAND_CLIENT_FOUND)
 else()
     find_path(WAYLAND_CLIENT_INCLUDE_DIR
         NAMES wayland-client.h
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES include include/wayland wayland
     )
     find_library(WAYLAND_CLIENT_LIBRARY
         NAMES wayland-client
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES lib lib64
     )
     if(NOT WAYLAND_CLIENT_INCLUDE_DIR OR NOT WAYLAND_CLIENT_LIBRARY)
-        message(FATAL_ERROR "Could not find wayland-client (header/library)")
+        message(FATAL_ERROR "Could not find wayland-client (header/library). Set CMAKE_SYSROOT or CMAKE_PREFIX_PATH to a Wayland SDK/sysroot that provides wayland-client.h and libwayland-client.")
     endif()
     list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_CLIENT_INCLUDE_DIR})
     list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_CLIENT_LIBRARY})
@@ -121,15 +159,35 @@ if(WAYLAND_EGL_FOUND)
 else()
     find_path(WAYLAND_EGL_INCLUDE_DIR
         NAMES wayland-egl.h
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES include include/wayland wayland
     )
     find_library(WAYLAND_EGL_LIBRARY
         NAMES wayland-egl
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES lib lib64
     )
     if(NOT WAYLAND_EGL_INCLUDE_DIR OR NOT WAYLAND_EGL_LIBRARY)
-        message(FATAL_ERROR "Could not find wayland-egl (header/library)")
+        message(FATAL_ERROR "Could not find wayland-egl (header/library). Set CMAKE_SYSROOT or CMAKE_PREFIX_PATH to a Wayland SDK/sysroot that provides wayland-egl.h and libwayland-egl.")
     endif()
     list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_EGL_INCLUDE_DIR})
     list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_EGL_LIBRARY})
+endif()
+
+if(USE_WESTEROS_SIMPLESHELL)
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
+    list(APPEND WAYLAND_LINK_LIBS ${WESTEROS_SIMPLESHELL_LINK_LIBS})
+else()
+    find_path(WAYLAND_PROTOCOLS_INCLUDE_DIR
+        NAMES xdg-shell-client-protocol.h
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES include include/wayland wayland wayland-protocols
+    )
+    if(NOT WAYLAND_PROTOCOLS_INCLUDE_DIR)
+        message(FATAL_ERROR "Could not find xdg-shell-client-protocol.h. Install wayland-protocols or provide a sysroot that ships the generated xdg-shell client protocol header.")
+    endif()
+
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_PROTOCOLS_INCLUDE_DIR})
 endif()
 
 list(REMOVE_DUPLICATES WAYLAND_INCLUDE_DIRS)
@@ -160,6 +218,11 @@ target_include_directories(${APP_TARGET}
         ${FREETYPE_INCLUDE_DIRS}
 )
 
+    target_compile_definitions(${APP_TARGET}
+        PRIVATE
+        $<$<BOOL:${USE_WESTEROS_SIMPLESHELL}>:USE_WESTEROS_SIMPLESHELL>
+    )
+
 set_target_properties(${APP_TARGET} PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
@@ -169,6 +232,10 @@ install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
     assets/LiberationSans-Bold.ttf
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/fonts/ttf/
+)
+
+install(FILES
     assets/OFL.txt
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/firebolt-test-app/assets
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/liberation-fonts/
 )
