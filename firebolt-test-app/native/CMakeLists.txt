@@ -88,7 +88,53 @@ target_link_libraries(${APP_TARGET}
 # GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(WAYLAND_EGL REQUIRED wayland-client wayland-egl)
+
+# Some cross/Yocto sysroots ship Wayland libs/headers without pkg-config
+# metadata for wayland-client/wayland-egl. Try pkg-config first, then fall
+# back to direct library/header discovery.
+set(WAYLAND_INCLUDE_DIRS "")
+set(WAYLAND_LINK_LIBS "")
+
+pkg_check_modules(WAYLAND_CLIENT wayland-client)
+pkg_check_modules(WAYLAND_EGL wayland-egl)
+
+if(WAYLAND_CLIENT_FOUND)
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_CLIENT_INCLUDE_DIRS})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_CLIENT_LIBRARIES})
+else()
+    find_path(WAYLAND_CLIENT_INCLUDE_DIR
+        NAMES wayland-client.h
+    )
+    find_library(WAYLAND_CLIENT_LIBRARY
+        NAMES wayland-client
+    )
+    if(NOT WAYLAND_CLIENT_INCLUDE_DIR OR NOT WAYLAND_CLIENT_LIBRARY)
+        message(FATAL_ERROR "Could not find wayland-client (header/library)")
+    endif()
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_CLIENT_INCLUDE_DIR})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_CLIENT_LIBRARY})
+endif()
+
+if(WAYLAND_EGL_FOUND)
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_EGL_INCLUDE_DIRS})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_EGL_LIBRARIES})
+else()
+    find_path(WAYLAND_EGL_INCLUDE_DIR
+        NAMES wayland-egl.h
+    )
+    find_library(WAYLAND_EGL_LIBRARY
+        NAMES wayland-egl
+    )
+    if(NOT WAYLAND_EGL_INCLUDE_DIR OR NOT WAYLAND_EGL_LIBRARY)
+        message(FATAL_ERROR "Could not find wayland-egl (header/library)")
+    endif()
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_EGL_INCLUDE_DIR})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_EGL_LIBRARY})
+endif()
+
+list(REMOVE_DUPLICATES WAYLAND_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES WAYLAND_LINK_LIBS)
+
 pkg_check_modules(EGL         REQUIRED egl)
 pkg_check_modules(GLESV2      REQUIRED glesv2)
 pkg_check_modules(CAIRO_FT    REQUIRED cairo cairo-ft)
@@ -96,7 +142,7 @@ pkg_check_modules(FREETYPE    REQUIRED freetype2)
 
 target_link_libraries(${APP_TARGET}
     PRIVATE
-        ${WAYLAND_EGL_LIBRARIES}
+    ${WAYLAND_LINK_LIBS}
         ${EGL_LIBRARIES}
         ${GLESV2_LIBRARIES}
         ${CAIRO_FT_LIBRARIES}
@@ -107,7 +153,7 @@ target_include_directories(${APP_TARGET}
     PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
-        ${WAYLAND_EGL_INCLUDE_DIRS}
+    ${WAYLAND_INCLUDE_DIRS}
         ${EGL_INCLUDE_DIRS}
         ${GLESV2_INCLUDE_DIRS}
         ${CAIRO_FT_INCLUDE_DIRS}
