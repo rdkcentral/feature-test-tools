@@ -20,7 +20,7 @@
 cmake_minimum_required(VERSION 3.12)
 project(firebolt-test-app CXX)
 
-set(PROJECT_VERSION_MAJOR 1)
+set(PROJECT_VERSION_MAJOR 2)
 set(PROJECT_VERSION_MINOR 0)
 
 # get the patch version from short git sha if available, otherwise default to 0
@@ -55,6 +55,7 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
 add_executable(${APP_TARGET}
     src/main.cpp
     src/utils.cpp
+    src/gl.cpp
     ${TEST_SOURCES}
 )
 
@@ -83,10 +84,34 @@ target_link_libraries(${APP_TARGET}
         nlohmann_json::nlohmann_json
 )
 
+# ---------------------------------------------------------------------------
+# GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
+# ---------------------------------------------------------------------------
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(WAYLAND_EGL REQUIRED wayland-client wayland-egl)
+pkg_check_modules(EGL         REQUIRED egl)
+pkg_check_modules(GLESV2      REQUIRED glesv2)
+pkg_check_modules(CAIRO_FT    REQUIRED cairo cairo-ft)
+pkg_check_modules(FREETYPE    REQUIRED freetype2)
+
+target_link_libraries(${APP_TARGET}
+    PRIVATE
+        ${WAYLAND_EGL_LIBRARIES}
+        ${EGL_LIBRARIES}
+        ${GLESV2_LIBRARIES}
+        ${CAIRO_FT_LIBRARIES}
+        ${FREETYPE_LIBRARIES}
+)
+
 target_include_directories(${APP_TARGET}
     PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
+        ${WAYLAND_EGL_INCLUDE_DIRS}
+        ${EGL_INCLUDE_DIRS}
+        ${GLESV2_INCLUDE_DIRS}
+        ${CAIRO_FT_INCLUDE_DIRS}
+        ${FREETYPE_INCLUDE_DIRS}
 )
 
 set_target_properties(${APP_TARGET} PROPERTIES
@@ -95,3 +120,9 @@ set_target_properties(${APP_TARGET} PROPERTIES
 )
 
 install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(FILES
+    assets/LiberationSans-Bold.ttf
+    assets/OFL.txt
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/firebolt-test-app/assets
+)

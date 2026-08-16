@@ -58,17 +58,21 @@
 
 #include <firebolt/firebolt.h>
 
+#include "gl.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <future>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -412,6 +416,28 @@ int main(int argc, char** argv)
     }
 
     std::cout << "Connected to Firebolt." << std::endl;
+
+    // ---------------------------------------------------------------------------
+    // Start GL/Wayland display window on a background thread when a Wayland
+    // display is available.  The window runs independently alongside the tests.
+    // Width, height, and pattern can be overridden via WIDTH / HEIGHT /
+    // PATTERN_MODE environment variables.
+    // ---------------------------------------------------------------------------
+    if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
+        int glW = 1280, glH = 720;
+        if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
+        if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
+        BackgroundPatternMode glPat = PATTERN_NONE;
+        if (const char* pm = std::getenv("PATTERN_MODE")) {
+            if      (std::strcmp(pm, "GRID") == 0) glPat = PATTERN_GRID;
+            else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
+        }
+        const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
+        auto glApp = std::make_shared<GlApp>(glW, glH, "assets/LiberationSans-Bold.ttf", glPat);
+        std::thread([glApp, waylandDisp]() {
+            if (glApp->init(waylandDisp)) glApp->run();
+        }).detach();
+    }
 
     // Display active version mode
     switch (appConfig.fireboltVersion)

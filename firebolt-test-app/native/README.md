@@ -11,9 +11,14 @@ and events/notifications across all supported Firebolt modules.
 ```
 native/
 ├── CMakeLists.txt          # Top-level CMake project
+├── assets/
+│   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
+│   └── OFL.txt                 # SIL Open Font License 1.1 — required attribution for the font
 └── src/
     ├── main.cpp            # Entry point, connection management, run-mode dispatch
     ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
+    ├── gl.h                # GlApp class declaration (Wayland/EGL/GLES keycode display window)
+    ├── gl.cpp              # GlApp implementation
     └── tests/
         ├── accessibilityTest.h/.cpp
         ├── actionsTest.h/.cpp
@@ -26,10 +31,10 @@ native/
         ├── metricsTest.h/.cpp
         ├── networkTest.h/.cpp
         ├── presentationTest.h/.cpp
-        ├── SpeechSynthesisTest.h/.cpp  ← To be implemented
+        ├── SpeechSynthesisTest.h/.cpp
         ├── statsTest.h/.cpp
         ├── texttospeechTest.h/.cpp
-        └── VideoOutputTest.h/.cpp      ← To be implemented
+        └── VideoOutputTest.h/.cpp
 ```
 
 ---
@@ -43,6 +48,9 @@ native/
 | **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
 | **nlohmann-json** installed | Used for JSON input/response validation in tests |
+| **wayland-client / wayland-egl** | Required for the GL display window (`gl.cpp`) |
+| **EGL / GLESv2** | Required for the GL display window (`gl.cpp`) |
+| **Cairo / cairo-ft / FreeType** | Required for the GL display window (`gl.cpp`) |
 
 The `FireboltClient`, `FireboltTransport`, and `nlohmann_json` CMake packages must be findable via
 `CMAKE_PREFIX_PATH` (or `SYSROOT_PATH` for cross-compilation).
@@ -74,7 +82,7 @@ PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client nlohmann-json"
+DEPENDS = "firebolt-cpp-client nlohmann-json wayland wayland-native libgles-mali cairo freetype"
 RDEPENDS:${PN} += "firebolt-cpp-client"
 
 EXTRA_OECMAKE = ""
@@ -82,9 +90,13 @@ EXTRA_OECMAKE = ""
 do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${B}/firebolt-test-app ${D}${bindir}/firebolt-test-app
+
+    install -d ${D}${datadir}/firebolt-test-app/assets
+    install -m 0644 ${S}/assets/LiberationSans-Bold.ttf ${D}${datadir}/firebolt-test-app/assets/
+    install -m 0644 ${S}/assets/OFL.txt                 ${D}${datadir}/firebolt-test-app/assets/
 }
 
-FILES:${PN} += "${bindir}/firebolt-test-app"
+FILES:${PN} += "${bindir}/firebolt-test-app ${datadir}/firebolt-test-app"
 ```
 
 </details>
@@ -118,6 +130,19 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
+
+### GL display window (optional)
+
+When `XDG_RUNTIME_DIR` or `WAYLAND_DISPLAY` is set, a Wayland/EGL overlay window launches in a
+background thread automatically after connecting to Firebolt.  It renders the last received key
+code using the bundled Liberation Sans Bold font.  The following environment variables control it:
+
+| Variable | Default | Description |
+|---|---|---|
+| `WAYLAND_DISPLAY` | `wayland-0` | Wayland socket name |
+| `WIDTH` | `1280` | Window width in pixels |
+| `HEIGHT` | `720` | Window height in pixels |
+| `PATTERN_MODE` | *(none)* | Background pattern: `GRID` or `DOT` |
 
 ---
 
@@ -213,3 +238,17 @@ printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url w
 ## License
 
 Apache-2.0 – see [LICENSE](./../../LICENSE)
+
+---
+
+## Third-Party Attributions
+
+### LiberationSans-Bold.ttf
+
+| Field | Value |
+|---|---|
+| **Font** | Liberation Sans Bold |
+| **Author** | Steve Matteson (design); Red Hat, Inc. (release) |
+| **License** | [SIL Open Font License, Version 1.1](./assets/OFL.txt) |
+| **Source** | https://github.com/liberationfonts/liberation-fonts |
+| **Bundled at** | `assets/LiberationSans-Bold.ttf` |
