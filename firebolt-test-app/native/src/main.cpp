@@ -438,8 +438,8 @@ int main(int argc, char** argv)
         }
         const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
         std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
-        if (!std::filesystem::exists(fontFile)) {
-            std::cerr << "Aborting; " << fontFile << " not found." << std::endl;
+        if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
+            std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
             std::exit(EXIT_FAILURE);
         }
         auto glApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
