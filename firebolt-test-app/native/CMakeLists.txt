@@ -218,10 +218,17 @@ target_include_directories(${APP_TARGET}
         ${FREETYPE_INCLUDE_DIRS}
 )
 
-    target_compile_definitions(${APP_TARGET}
-        PRIVATE
+set(FONT_BASE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}")
+set(APP_FONT_DIR "${FONT_BASE_DIR}/fonts/ttf/")
+set(APP_FONT_LIC_DIR "${FONT_BASE_DIR}/doc/liberation-fonts/")
+
+message("Application font directory: ${APP_FONT_DIR}")
+
+target_compile_definitions(${APP_TARGET}
+    PRIVATE
         $<$<BOOL:${USE_WESTEROS_SIMPLESHELL}>:USE_WESTEROS_SIMPLESHELL>
-    )
+        APP_FONT_DIR=\"${APP_FONT_DIR}\"
+)
 
 set_target_properties(${APP_TARGET} PROPERTIES
     CXX_STANDARD 17
@@ -232,10 +239,10 @@ install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
     assets/LiberationSans-Bold.ttf
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/fonts/ttf/
+    DESTINATION "${APP_FONT_DIR}"
 )
 
 install(FILES
     assets/OFL.txt
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/liberation-fonts/
+    DESTINATION "${APP_FONT_LIC_DIR}"
 )

@@ -79,6 +79,10 @@
 #define ISATTY(fd) isatty(fd)
 #define STDIN_FD   fileno(stdin)
 
+#ifndef APP_FONT_DIR
+#define APP_FONT_DIR "/usr/share/fonts/ttf/"
+#endif
+
 // ---------------------------------------------------------------------------
 // printUsage
 // ---------------------------------------------------------------------------
@@ -433,7 +437,12 @@ int main(int argc, char** argv)
             else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
         }
         const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
-        auto glApp = std::make_shared<GlApp>(glW, glH, "/usr/share/firebolt-test-app/assets/LiberationSans-Bold.ttf", glPat);
+        std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
+        if (!std::filesystem::exists(fontFile)) {
+            std::cerr << "Aborting; " << fontFile << " not found." << std::endl;
+            std::exit(EXIT_FAILURE);
+        }
+        auto glApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
         std::thread([glApp, waylandDisp]() {
             if (glApp->init(waylandDisp)) glApp->run();
         }).detach();
