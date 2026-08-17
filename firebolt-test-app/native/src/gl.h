@@ -37,7 +37,7 @@ class GlApp {
     public:
         GlApp(int width, int height,
               const std::string& fontPath = "/usr/share/fonts/ttf/LiberationSans-Bold.ttf",
-              BackgroundPatternMode pattern = PATTERN_NONE);
+              BackgroundPatternMode pattern = PATTERN_DOT);
         ~GlApp();
 
         GlApp(const GlApp&)            = delete;

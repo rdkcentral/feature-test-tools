@@ -24,14 +24,136 @@
 #include "utils.h"
 
 #include <cctype>
+#include <deque>
+#include <mutex>
+#include <poll.h>
 #include <stdexcept>
 #include <strings.h>
 
 static AppConfig gAppConfig;
+static bool gMenuInputBridgeEnabled = false;
+static std::mutex gMenuInputMutex;
+static std::deque<MenuInputEvent> gMenuInputQueue;
 
 AppConfig& GetAppConfig()
 {
     return gAppConfig;
+}
+
+void SetMenuInputBridgeEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(gMenuInputMutex);
+    gMenuInputBridgeEnabled = enabled;
+    if (!enabled)
+    {
+        gMenuInputQueue.clear();
+    }
+}
+
+bool IsMenuInputBridgeEnabled()
+{
+    std::lock_guard<std::mutex> lock(gMenuInputMutex);
+    return gMenuInputBridgeEnabled;
+}
+
+void PushMenuInputEvent(const MenuInputEvent& event)
+{
+    std::lock_guard<std::mutex> lock(gMenuInputMutex);
+    if (!gMenuInputBridgeEnabled)
+    {
+        return;
+    }
+    gMenuInputQueue.push_back(event);
+}
+
+static bool tryPopMenuInputEvent(MenuInputEvent& event)
+{
+    std::lock_guard<std::mutex> lock(gMenuInputMutex);
+    if (gMenuInputQueue.empty())
+    {
+        return false;
+    }
+
+    event = gMenuInputQueue.front();
+    gMenuInputQueue.pop_front();
+    return true;
+}
+
+static bool pollConsoleLine(std::string& input, int timeoutMs)
+{
+    struct pollfd stdinPollFd = {
+        fileno(stdin),
+        POLLIN,
+        0
+    };
+
+    const int pollResult = poll(&stdinPollFd, 1, timeoutMs);
+    if (pollResult <= 0)
+    {
+        return false;
+    }
+
+    if ((stdinPollFd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0)
+    {
+        return false;
+    }
+
+    if ((stdinPollFd.revents & POLLIN) == 0)
+    {
+        return false;
+    }
+
+    return static_cast<bool>(std::getline(std::cin, input));
+}
+
+static int parseNumericSelection(const std::string& input, int max, const std::string& quitLabel)
+{
+    if (input.empty())
+    {
+        return -2;
+    }
+
+    if (strcasecmp(input.c_str(), "q") == 0)
+    {
+        return -1;
+    }
+
+    try
+    {
+        size_t idx = 0;
+        const int num = std::stoi(input, &idx);
+        while (idx < input.size() && std::isspace(static_cast<unsigned char>(input[idx])))
+        {
+            ++idx;
+        }
+        if (idx != input.size())
+        {
+            throw std::invalid_argument("trailing characters");
+        }
+        if (num >= 1 && num <= max)
+        {
+            return num;
+        }
+        std::cout << "Please enter a number between 1 and " << max << ".\n";
+    }
+    catch (const std::invalid_argument&)
+    {
+        std::cout << "Invalid input. Please enter a number or 'q' to " << quitLabel << ".\n";
+    }
+    catch (const std::out_of_range&)
+    {
+        std::cout << "Number out of range.\n";
+    }
+
+    return -2;
+}
+
+static void printHighlightedSelection(const std::vector<std::string>& options, int selected)
+{
+    if (selected >= 0 && selected < static_cast<int>(options.size()))
+    {
+        std::cout << "Current selection: " << (selected + 1) << ". " << options[static_cast<size_t>(selected)] << std::endl;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -67,41 +189,14 @@ static int getNumericOption(int max, const std::string& quitLabel)
             return -1;
         }
 
-        if (input.empty())
-        {
-            continue;
-        }
-
-        if (strcasecmp(input.c_str(), "q") == 0)
+        const int parsed = parseNumericSelection(input, max, quitLabel);
+        if (parsed == -1)
         {
             return -1;
         }
-
-        try
+        if (parsed >= 1)
         {
-            size_t idx = 0;
-            int num = std::stoi(input, &idx);
-            while (idx < input.size() && std::isspace(static_cast<unsigned char>(input[idx])))
-            {
-                ++idx;
-            }
-            if (idx != input.size())
-            {
-                throw std::invalid_argument("trailing characters");
-            }
-            if (num >= 1 && num <= max)
-            {
-                return num;
-            }
-            std::cout << "Please enter a number between 1 and " << max << ".\n";
-        }
-        catch (const std::invalid_argument&)
-        {
-            std::cout << "Invalid input. Please enter a number, Enter, or 'q'.\n";
-        }
-        catch (const std::out_of_range&)
-        {
-            std::cout << "Number out of range.\n";
+            return parsed;
         }
     }
 }
@@ -119,6 +214,60 @@ int chooseFromList(const std::vector<std::string>& options,
     for (size_t i = 0; i < options.size(); ++i)
     {
         std::cout << "  " << (i + 1) << ". " << options[i] << "\n";
+    }
+
+    if (IsMenuInputBridgeEnabled())
+    {
+        std::cout << "Use remote arrow keys and OK on the GL surface, or type a number/q in the terminal." << std::endl;
+
+        int selected = 0;
+        printHighlightedSelection(options, selected);
+
+        while (true)
+        {
+            MenuInputEvent event;
+            if (tryPopMenuInputEvent(event))
+            {
+                switch (event.action)
+                {
+                    case MenuInputAction::Up:
+                        selected = (selected == 0) ? static_cast<int>(options.size()) - 1 : selected - 1;
+                        printHighlightedSelection(options, selected);
+                        break;
+                    case MenuInputAction::Down:
+                        selected = (selected + 1) % static_cast<int>(options.size());
+                        printHighlightedSelection(options, selected);
+                        break;
+                    case MenuInputAction::Select:
+                        return selected;
+                    case MenuInputAction::Back:
+                        return -1;
+                    case MenuInputAction::Digit:
+                        if (event.digit >= 1 && event.digit <= static_cast<int>(options.size()))
+                        {
+                            return event.digit - 1;
+                        }
+                        break;
+                }
+                continue;
+            }
+
+            std::string input;
+            if (!pollConsoleLine(input, 100))
+            {
+                continue;
+            }
+
+            const int parsed = parseNumericSelection(input, static_cast<int>(options.size()), quitLabel);
+            if (parsed == -1)
+            {
+                return -1;
+            }
+            if (parsed >= 1)
+            {
+                return parsed - 1;
+            }
+        }
     }
 
     int choice = getNumericOption(static_cast<int>(options.size()), quitLabel);

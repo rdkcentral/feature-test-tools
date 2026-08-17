@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <firebolt/types.h>
 #include <firebolt/common_types.h>
 #include <algorithm>
@@ -101,6 +102,26 @@ struct AppConfig
 };
 
 AppConfig& GetAppConfig();
+
+enum class MenuInputAction
+{
+    Up,
+    Down,
+    Select,
+    Back,
+    Digit
+};
+
+struct MenuInputEvent
+{
+    MenuInputAction action = MenuInputAction::Select;
+    int digit = -1;
+    uint32_t rawKeyCode = 0;
+};
+
+void SetMenuInputBridgeEnabled(bool enabled);
+bool IsMenuInputBridgeEnabled();
+void PushMenuInputEvent(const MenuInputEvent& event);
 
 // ---------------------------------------------------------------------------
 // Console helpers

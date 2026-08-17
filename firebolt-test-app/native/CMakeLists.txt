@@ -89,12 +89,12 @@ target_link_libraries(${APP_TARGET}
 # ---------------------------------------------------------------------------
 find_package(PkgConfig REQUIRED)
 
-option(PREFER_WESTEROS_SIMPLESHELL "Prefer Westeros simple-shell when detected" ON)
+option(REQUIRE_WESTEROS_SIMPLESHELL "Require Westeros simple-shell client backend" ON)
 set(USE_WESTEROS_SIMPLESHELL OFF)
 set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS "")
 set(WESTEROS_SIMPLESHELL_LINK_LIBS "")
 
-if(PREFER_WESTEROS_SIMPLESHELL)
+if(REQUIRE_WESTEROS_SIMPLESHELL)
     # Prefer pkg-config when the client .pc file is available.
     pkg_check_modules(WESTEROS_SIMPLESHELL QUIET westeros-simpleshell-client)
     if(WESTEROS_SIMPLESHELL_FOUND)
@@ -111,6 +111,10 @@ if(PREFER_WESTEROS_SIMPLESHELL)
         set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WesterosSimpleShell_INCLUDE_DIRS})
         set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WesterosSimpleShell_LIBRARIES})
         message(STATUS "Using Westeros simple-shell protocol backend (find_package)")
+    endif()
+
+    if(NOT USE_WESTEROS_SIMPLESHELL)
+        message(FATAL_ERROR "Westeros simple-shell client is required but was not found. Install westeros-simpleshell-client or provide a sysroot/CMAKE_PREFIX_PATH with simpleshell-client-protocol.h and libwesteros_simpleshell_client.")
     endif()
 endif()
 
@@ -174,21 +178,8 @@ else()
     list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_EGL_LIBRARY})
 endif()
 
-if(USE_WESTEROS_SIMPLESHELL)
-    list(APPEND WAYLAND_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
-    list(APPEND WAYLAND_LINK_LIBS ${WESTEROS_SIMPLESHELL_LINK_LIBS})
-else()
-    find_path(WAYLAND_PROTOCOLS_INCLUDE_DIR
-        NAMES xdg-shell-client-protocol.h
-        HINTS ${WAYLAND_SEARCH_HINTS}
-        PATH_SUFFIXES include include/wayland wayland wayland-protocols
-    )
-    if(NOT WAYLAND_PROTOCOLS_INCLUDE_DIR)
-        message(FATAL_ERROR "Could not find xdg-shell-client-protocol.h. Install wayland-protocols or provide a sysroot that ships the generated xdg-shell client protocol header.")
-    endif()
-
-    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_PROTOCOLS_INCLUDE_DIR})
-endif()
+list(APPEND WAYLAND_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
+list(APPEND WAYLAND_LINK_LIBS ${WESTEROS_SIMPLESHELL_LINK_LIBS})
 
 list(REMOVE_DUPLICATES WAYLAND_INCLUDE_DIRS)
 list(REMOVE_DUPLICATES WAYLAND_LINK_LIBS)

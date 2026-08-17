@@ -428,7 +428,8 @@ int main(int argc, char** argv)
     // PATTERN_MODE environment variables.
     // ---------------------------------------------------------------------------
     if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
-        int glW = 1280, glH = 720;
+        SetMenuInputBridgeEnabled(true);
+        int glW = 1920, glH = 1080;
         if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
         if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
         BackgroundPatternMode glPat = PATTERN_NONE;
@@ -438,14 +439,20 @@ int main(int argc, char** argv)
         }
         const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
         std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
+        std::cout << "[GlApp] Using font file: " << fontFile << std::endl;
         if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
             std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
             std::exit(EXIT_FAILURE);
         }
+        std::cout << "[GlApp] Starting background GL window: width=" << glW << ", height=" << glH
+                  << ", display=" << (waylandDisp ? waylandDisp : "<default>")
+                  << ", pattern=" << glPat << std::endl;
         auto glApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
         std::thread([glApp, waylandDisp]() {
             if (glApp->init(waylandDisp)) glApp->run();
         }).detach();
+    } else {
+        SetMenuInputBridgeEnabled(false);
     }
 
     // Display active version mode
