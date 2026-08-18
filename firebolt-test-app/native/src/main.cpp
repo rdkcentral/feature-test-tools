@@ -64,6 +64,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -428,6 +429,14 @@ int main(int argc, char** argv)
     std::thread glThread;
     std::thread testThread;
     std::atomic<bool> testThreadStarted{ false };
+    std::atomic<bool> glThreadStarted{ false };
+    std::condition_variable glStartCv;
+    std::mutex glStartMutex;
+    bool glRunRequested = false;
+    bool glStopRequested = false;
+    std::mutex pausedStateMutex;
+    std::atomic<bool> pausedStateWorkScheduled{ false };
+    Firebolt::SubscriptionId lifecycleSubId = 0;
     std::promise<int> exitCodePromise;
     std::once_flag exitCodeOnce;
     std::once_flag cleanupOnce;
@@ -438,34 +447,205 @@ int main(int argc, char** argv)
         });
     };
 
+    auto startGlThread = [&]() {
+        if (!glApp) {
+            std::cerr << "[startGlThread] Cannot start GlApp thread: GlApp not initialized." << std::endl;
+            return;
+        }
+
+        bool expected = false;
+        if (!glThreadStarted.compare_exchange_strong(expected, true)) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(glStartMutex);
+            glRunRequested = false;
+            glStopRequested = false;
+        }
+
+        std::cout << "[startGlThread] Starting GlApp thread..." << std::endl;
+        std::shared_ptr<GlApp> glAppCopy = glApp;
+        glThread = std::thread([&, glAppCopy]() {
+            std::unique_lock<std::mutex> lock(glStartMutex);
+            glStartCv.wait(lock, [&] {
+                return glRunRequested || glStopRequested;
+            });
+
+            const bool shouldStop = glStopRequested;
+            lock.unlock();
+
+            if (!shouldStop) {
+                std::cout << "[startGlThread] GlApp start run()." << std::endl;
+                glAppCopy->run();
+            } else {
+                std::cout << "[startGlThread] GlApp run() skipped due to stop request." << std::endl;
+            }
+        });
+    };
+
+    auto stopGlThread = [&]() {
+        {
+            std::lock_guard<std::mutex> lock(glStartMutex);
+            glStopRequested = true;
+            glRunRequested = true;
+        }
+        glStartCv.notify_all();
+
+        if (glApp) {
+            std::cout << "[stopGlThread] GlApp shutdown requested." << std::endl;
+            glApp->shutdown();
+        } else {
+            std::cout << "[stopGlThread] GlApp shutdown skipped (not initialized)." << std::endl;
+        }
+
+        if (glThread.joinable() && glThread.get_id() != std::this_thread::get_id()) {
+            glThread.join();
+        }
+
+        glApp.reset();
+        glThreadStarted = false;
+
+        {
+            std::lock_guard<std::mutex> lock(glStartMutex);
+            glRunRequested = false;
+            glStopRequested = false;
+        }
+    };
+
+    auto initializeGlApp = [&]() -> bool {
+        SetMenuInputBridgeEnabled(true);
+
+        int glW = 1920, glH = 1080;
+        if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
+        if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
+
+        BackgroundPatternMode glPat = PATTERN_NONE;
+        if (const char* pm = std::getenv("PATTERN_MODE")) {
+            if      (std::strcmp(pm, "GRID") == 0) glPat = PATTERN_GRID;
+            else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
+        }
+
+        const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
+        std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
+        if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
+            std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
+            return false;
+        }
+
+        auto nextGlApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
+        if (!nextGlApp || !nextGlApp->init(waylandDisp)) {
+            std::cerr << "Aborting: GlApp failed to initialize." << std::endl;
+            return false;
+        }
+
+        glApp = std::move(nextGlApp);
+        std::cout << "[Lifecycle] GlApp initialized successfully." << std::endl;
+        startGlThread();
+        return true;
+    };
+
     auto cleanupAndExit = [&](int code) {
         std::call_once(cleanupOnce, [&] {
-            if (glApp) {
-                glApp->shutdown();
+            // Unsubscribe from lifecycle events FIRST to prevent race conditions
+            if (lifecycleSubId != 0) {
+                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
             }
+
+            // Shutdown GL app and thread
+            std::cout << "[cleanupAndExit] Cleaning up GL app and thread..." << std::endl;
+            stopGlThread();
+
+            // Wait for test thread to complete
             if (testThread.joinable() && testThread.get_id() != std::this_thread::get_id()) {
                 testThread.join();
             }
-            if (glThread.joinable()) {
-                glThread.join();
-            }
+
+            // Disable input bridge and disconnect
             SetMenuInputBridgeEnabled(false);
-            Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
             Firebolt::IFireboltAccessor::Instance().Disconnect();
             signalExit(code);
         });
     };
 
-    // Register for Lifecycle.listen() events so the test app can exit gracefully when the Firebolt endpoint requests it.
-    Firebolt::IFireboltAccessor::Instance().LifecycleInterface().subscribeOnStateChanged(
+    /**
+      * @brief Schedule work to be done when the app is in PAUSED state.
+      */
+    auto schedulePausedStateWork = [&](Firebolt::Lifecycle::LifecycleState oldState) {
+        bool expected = false;
+        if (!pausedStateWorkScheduled.compare_exchange_strong(expected, true)) {
+            std::cout << "[schedulePausedStateWork] PAUSED handling already scheduled. Skipping duplicate work." << std::endl;
+            return;
+        }
+
+        std::thread([&, oldState]() {
+            std::lock_guard<std::mutex> stateLock(pausedStateMutex);
+
+            if (oldState == Firebolt::Lifecycle::LifecycleState::INITIALIZING) {
+                gModules = buildModuleList(appConfig.fireboltVersion);
+                if (gModules.empty()) {
+                    std::cerr << "[schedulePausedStateWork] No modules registered for the selected Firebolt version." << std::endl;
+                    pausedStateWorkScheduled = false;
+                    cleanupAndExit(1);
+                    return;
+                }
+            }
+
+            if (oldState == Firebolt::Lifecycle::LifecycleState::ACTIVE ||
+                oldState == Firebolt::Lifecycle::LifecycleState::SUSPENDED) {
+                stopGlThread();
+            }
+
+            if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
+                if (!initializeGlApp()) {
+                    pausedStateWorkScheduled = false;
+                    cleanupAndExit(1);
+                    return;
+                }
+
+                // Start rendering so that WindowMgr puts app to ACTIVE state.
+                if (glApp && glThreadStarted.load()) {
+                    {
+                        std::lock_guard<std::mutex> lock(glStartMutex);
+                        glRunRequested = true;
+                    }
+                    glStartCv.notify_one();
+                    std::cout << "[schedulePausedStateWork] GlApp run() requested." << std::endl;
+                }
+#if 0
+                bool testExpected = false;
+                if (testThreadStarted.compare_exchange_strong(testExpected, true)) {
+                    testThread = std::thread([&]() {
+                        std::cout << "[schedulePausedStateWork] Test mode loader thread started." << std::endl;
+                        if (appConfig.autoRun) {
+                            runAutoMode(gModules);
+                        } else if (!ISATTY(STDIN_FD)) {
+                            runPipedMode(gModules);
+                        } else {
+                            runInteractiveMode(gModules);
+                        }
+                        cleanupAndExit(0);
+                    });
+                }
+#endif
+            } else {
+                SetMenuInputBridgeEnabled(false);
+            }
+
+            pausedStateWorkScheduled = false;
+        }).detach();
+    };
+
+    // Register for Lifecycle state changes
+    auto subResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().subscribeOnStateChanged(
         [&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
             for (const auto& change : changes) {
-                std::cout << "[Lifecycle] State change: " << static_cast<int>(change.oldState)
+                std::cout << "[LifecycleCB] State change: " << static_cast<int>(change.oldState)
                           << " -> " << static_cast<int>(change.newState) << std::endl;
 
                 switch (change.newState) {
                     case Firebolt::Lifecycle::LifecycleState::INITIALIZING: {
-                        std::cout << "[Lifecycle] State INITIALIZING" << std::endl;
+                        std::cout << "[LifecycleCB] State INITIALIZING" << std::endl;
                         switch (appConfig.fireboltVersion) {
                             case FIREBOLT_VERSION_8:
                                 std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
@@ -480,104 +660,44 @@ int main(int argc, char** argv)
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::PAUSED: {
-                        std::cout << "[Lifecycle] State PAUSED" << std::endl;
-                        if (change.oldState == Firebolt::Lifecycle::LifecycleState::INITIALIZING) {
-                            gModules = buildModuleList(appConfig.fireboltVersion);
-                            if (gModules.empty()) {
-                                std::cerr << "[Lifecycle] No modules registered for the selected Firebolt version." << std::endl;
-                                cleanupAndExit(1);
-                                return;
-                            }
-
-                            if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
-                                SetMenuInputBridgeEnabled(true);
-                                int glW = 1920, glH = 1080;
-                                if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
-                                if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
-                                BackgroundPatternMode glPat = PATTERN_NONE;
-                                if (const char* pm = std::getenv("PATTERN_MODE")) {
-                                    if      (std::strcmp(pm, "GRID") == 0) glPat = PATTERN_GRID;
-                                    else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
-                                }
-                                const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
-                                std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
-                                if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
-                                    std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
-                                    cleanupAndExit(1);
-                                    return;
-                                }
-                                glApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
-                                if (!glApp || !glApp->init(waylandDisp)) {
-                                    std::cerr << "Aborting: GlApp failed to initialize." << std::endl;
-                                    cleanupAndExit(1);
-                                    return;
-                                }
-                            } else {
-                                SetMenuInputBridgeEnabled(false);
-                            }
-                        }
-
-                        if (change.oldState == Firebolt::Lifecycle::LifecycleState::ACTIVE ||
-                            change.oldState == Firebolt::Lifecycle::LifecycleState::SUSPENDED) {
-                            if (glApp) {
-                                glApp->shutdown();
-                            }
-                            if (glThread.joinable()) {
-                                glThread.join();
-                            }
-                        }
+                        std::cout << "[LifecycleCB] State PAUSED" << std::endl;
+                        schedulePausedStateWork(change.oldState);
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::ACTIVE: {
-                        std::cout << "[Lifecycle] Active. Starting test menu or auto-run mode..." << std::endl;
-                        if (glApp && !glThread.joinable()) {
-                            glThread = std::thread([glApp]() {
-                                glApp->run();
-                            });
-                        }
-
-                        bool expected = false;
-                        if (testThreadStarted.compare_exchange_strong(expected, true)) {
-                            testThread = std::thread([&]() {
-                                if (appConfig.autoRun) {
-                                    runAutoMode(gModules);
-                                } else if (!ISATTY(STDIN_FD)) {
-                                    runPipedMode(gModules);
-                                } else {
-                                    runInteractiveMode(gModules);
-                                }
-                                cleanupAndExit(0);
-                            });
-                        }
+                        std::cout << "[LifecycleCB] Active. Starting test menu or auto-run mode..." << std::endl;
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::SUSPENDED: {
-                        std::cout << "[Lifecycle] Suspended. Releasing W-EGL resources..." << std::endl;
-                        if (glApp) {
-                            glApp->shutdown();
-                        }
-                        if (glThread.joinable()) {
-                            glThread.join();
-                        }
+                        std::cout << "[LifecycleCB] Suspended. Releasing W-EGL resources..." << std::endl;
+                        stopGlThread();
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::HIBERNATED:
-                        std::cout << "[Lifecycle] Hibernated." << std::endl;
+                        std::cout << "[LifecycleCB] Hibernated." << std::endl;
                         break;
                     case Firebolt::Lifecycle::LifecycleState::TERMINATING:
-                        std::cout << "[Lifecycle] Terminating." << std::endl;
+                        std::cout << "[LifecycleCB] Terminating." << std::endl;
                         cleanupAndExit(0);
                         break;
                     default:
-                        std::cout << "[Lifecycle] Unhandled state: " << static_cast<int>(change.newState) << std::endl;
+                        std::cout << "[LifecycleCB] Unhandled state: " << static_cast<int>(change.newState) << std::endl;
                         break;
                 }
             }
         });
 
+    // Store subscription ID and check for success
+    if (subResult) {
+        lifecycleSubId = *subResult;
+        std::cout << "[LifecycleCB] Subscribed to state changes (ID: " << lifecycleSubId << ")" << std::endl;
+    } else {
+        std::cerr << "[LifecycleCB] Failed to subscribe to state changes" << std::endl;
+        return 1;
+    }
 
     const int exitCode = exitCodePromise.get_future().get();
-    std::cout << "Disconnected. Exiting." << std::endl;
+    std::cout << "[LifecycleCB] Disconnected. Exiting." << std::endl;
 
     return exitCode;
 }

@@ -86,34 +86,26 @@ target_link_libraries(${APP_TARGET}
 
 # ---------------------------------------------------------------------------
 # GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
+# Westeros simple-shell is now the mandatory window management protocol.
 # ---------------------------------------------------------------------------
 find_package(PkgConfig REQUIRED)
 
-option(REQUIRE_WESTEROS_SIMPLESHELL "Require Westeros simple-shell client backend" ON)
-set(USE_WESTEROS_SIMPLESHELL OFF)
 set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS "")
 set(WESTEROS_SIMPLESHELL_LINK_LIBS "")
 
-if(REQUIRE_WESTEROS_SIMPLESHELL)
-    # Prefer pkg-config when the client .pc file is available.
-    pkg_check_modules(WESTEROS_SIMPLESHELL QUIET westeros-simpleshell-client)
-    if(WESTEROS_SIMPLESHELL_FOUND)
-        set(USE_WESTEROS_SIMPLESHELL ON)
-        set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
-        set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WESTEROS_SIMPLESHELL_LIBRARIES})
-        message(STATUS "Using Westeros simple-shell protocol backend (pkg-config)")
-    else()
-        find_package(WesterosSimpleShell QUIET)
-    endif()
-
-    if((NOT USE_WESTEROS_SIMPLESHELL) AND WesterosSimpleShell_FOUND)
-        set(USE_WESTEROS_SIMPLESHELL ON)
+# Prefer pkg-config when the client .pc file is available.
+pkg_check_modules(WESTEROS_SIMPLESHELL QUIET westeros-simpleshell-client)
+if(WESTEROS_SIMPLESHELL_FOUND)
+    set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
+    set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WESTEROS_SIMPLESHELL_LIBRARIES})
+    message(STATUS "Using Westeros simple-shell protocol backend (pkg-config)")
+else()
+    find_package(WesterosSimpleShell QUIET)
+    if(WesterosSimpleShell_FOUND)
         set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WesterosSimpleShell_INCLUDE_DIRS})
         set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WesterosSimpleShell_LIBRARIES})
         message(STATUS "Using Westeros simple-shell protocol backend (find_package)")
-    endif()
-
-    if(NOT USE_WESTEROS_SIMPLESHELL)
+    else()
         message(FATAL_ERROR "Westeros simple-shell client is required but was not found. Install westeros-simpleshell-client or provide a sysroot/CMAKE_PREFIX_PATH with simpleshell-client-protocol.h and libwesteros_simpleshell_client.")
     endif()
 endif()
@@ -217,7 +209,7 @@ message("Application font directory: ${APP_FONT_DIR}")
 
 target_compile_definitions(${APP_TARGET}
     PRIVATE
-        $<$<BOOL:${USE_WESTEROS_SIMPLESHELL}>:USE_WESTEROS_SIMPLESHELL>
+        USE_WESTEROS_SIMPLESHELL
         APP_FONT_DIR=\"${APP_FONT_DIR}\"
 )
 
