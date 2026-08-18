@@ -955,3 +955,10 @@ void GlApp::run()
     }
     log_gl_debug("run", "Wayland dispatch loop exited");
 }
+
+void GlApp::shutdown()
+{
+    if (m_ctx) {
+        m_ctx->running = false;
+    }
+}

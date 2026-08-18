@@ -61,6 +61,7 @@
 #include "gl.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdio>
@@ -421,72 +422,157 @@ int main(int argc, char** argv)
 
     std::cout << "Connected to Firebolt." << std::endl;
 
-    // ---------------------------------------------------------------------------
-    // Start GL/Wayland display window on a background thread when a Wayland
-    // display is available.  The window runs independently alongside the tests.
-    // Width, height, and pattern can be overridden via WIDTH / HEIGHT /
-    // PATTERN_MODE environment variables.
-    // ---------------------------------------------------------------------------
-    if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
-        SetMenuInputBridgeEnabled(true);
-        int glW = 1920, glH = 1080;
-        if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
-        if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
-        BackgroundPatternMode glPat = PATTERN_NONE;
-        if (const char* pm = std::getenv("PATTERN_MODE")) {
-            if      (std::strcmp(pm, "GRID") == 0) glPat = PATTERN_GRID;
-            else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
+    // --------------------------- App Lifecycle ---------------------------------
+    std::vector<std::unique_ptr<TestModuleBase>> gModules;
+    std::shared_ptr<GlApp> glApp = nullptr;
+    std::thread glThread;
+    std::thread testThread;
+    std::atomic<bool> testThreadStarted{ false };
+    std::promise<int> exitCodePromise;
+    std::once_flag exitCodeOnce;
+    std::once_flag cleanupOnce;
+
+    auto signalExit = [&](int code) {
+        std::call_once(exitCodeOnce, [&] {
+            exitCodePromise.set_value(code);
+        });
+    };
+
+    auto cleanupAndExit = [&](int code) {
+        std::call_once(cleanupOnce, [&] {
+            if (glApp) {
+                glApp->shutdown();
+            }
+            if (testThread.joinable() && testThread.get_id() != std::this_thread::get_id()) {
+                testThread.join();
+            }
+            if (glThread.joinable()) {
+                glThread.join();
+            }
+            SetMenuInputBridgeEnabled(false);
+            Firebolt::IFireboltAccessor::Instance().Lifecycle().close(Firebolt::Lifecycle::Closetype::UNLOAD);
+            Firebolt::IFireboltAccessor::Instance().Disconnect();
+            signalExit(code);
+        });
+    };
+
+    // Register for Lifecycle.listen() events so the test app can exit gracefully when the Firebolt endpoint requests it.
+    Firebolt::IFireboltAccessor::Instance().Lifecycle().listen([&](const Firebolt::LifecycleEvent& event) {
+        std::cout << "[Lifecycle] Received event: " << static_cast<int>(event.state) << std::endl;
+        switch (event.state) {
+            case Firebolt::LifecycleEvent::INITIALIZING: {
+                    std::cout << "[Lifecycle] State INITIALIZING" << std::endl;
+                    switch (appConfig.fireboltVersion) {
+                        case FIREBOLT_VERSION_8:
+                            std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
+                            break;
+                        case FIREBOLT_VERSION_9:
+                            std::cout << "[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
+                            break;
+                        default:
+                            std::cout << "[Mode] Firebolt All - All modules across all Firebolt versions enabled." << std::endl;
+                            break;
+                    }
+                }
+                break;
+            case Firebolt::LifecycleEvent::PAUSED: {
+                    std::cout << "[Lifecycle] State PAUSED" << std::endl;
+                    if (event.previous == Firebolt::LifecycleEvent::INITIALIZING) {
+                        gModules = buildModuleList(appConfig.fireboltVersion);
+                        if (gModules.empty()) {
+                            std::cerr << "[Lifecycle] No modules registered for the selected Firebolt version." << std::endl;
+                            cleanupAndExit(1);
+                            break;
+                        }
+
+                        if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
+                            SetMenuInputBridgeEnabled(true);
+                            int glW = 1920, glH = 1080;
+                            if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
+                            if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
+                            BackgroundPatternMode glPat = PATTERN_NONE;
+                            if (const char* pm = std::getenv("PATTERN_MODE")) {
+                                if      (std::strcmp(pm, "GRID") == 0) glPat = PATTERN_GRID;
+                                else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
+                            }
+                            const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
+                            std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
+                            if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
+                                std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
+                                cleanupAndExit(1);
+                                break;
+                            }
+                            glApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
+                            if (!glApp || !glApp->init(waylandDisp)) {
+                                std::cerr << "Aborting: GlApp failed to initialize." << std::endl;
+                                cleanupAndExit(1);
+                                break;
+                            }
+                        } else {
+                            SetMenuInputBridgeEnabled(false);
+                        }
+                    }
+
+                    if (event.previous == Firebolt::LifecycleEvent::ACTIVE || event.previous == Firebolt::LifecycleEvent::SUSPEND) {
+                        if (glApp) {
+                            glApp->shutdown();
+                        }
+                        if (glThread.joinable()) {
+                            glThread.join();
+                        }
+                    }
+                }
+                break;
+            case Firebolt::LifecycleEvent::ACTIVE: {
+                    std::cout << "[Lifecycle] Active. Starting test menu or auto-run mode..." << std::endl;
+                    if (glApp && !glThread.joinable()) {
+                        glThread = std::thread([glApp]() {
+                            glApp->run();
+                        });
+                    }
+
+                    bool expected = false;
+                    if (testThreadStarted.compare_exchange_strong(expected, true)) {
+                        testThread = std::thread([&]() {
+                            if (appConfig.autoRun) {
+                                runAutoMode(gModules);
+                            } else if (!ISATTY(STDIN_FD)) {
+                                runPipedMode(gModules);
+                            } else {
+                                runInteractiveMode(gModules);
+                            }
+                            cleanupAndExit(0);
+                        });
+                    }
+                }
+                break;
+            case Firebolt::LifecycleEvent::SUSPEND: {
+                    std::cout << "[Lifecycle] Suspending. Releasing W-EGL resources..." << std::endl;
+                    if (glApp) {
+                        glApp->shutdown();
+                    }
+                    if (glThread.joinable()) {
+                        glThread.join();
+                    }
+                }
+                break;
+            case Firebolt::LifecycleEvent::HIBERNATED:
+                std::cout << "[Lifecycle] Hibernated." << std::endl;
+                break;
+            case Firebolt::LifecycleEvent::TERMINATING:
+                std::cout << "[Lifecycle] Terminating." << std::endl;
+                cleanupAndExit(0);
+                break;
+            default:
+                std::cout << "[Lifecycle] Unhandled event: " << static_cast<int>(event.state) << std::endl;
+                break;
         }
-        const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
-        std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
-        std::cout << "[GlApp] Using font file: " << fontFile << std::endl;
-        if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
-            std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
-            std::exit(EXIT_FAILURE);
-        }
-        std::cout << "[GlApp] Starting background GL window: width=" << glW << ", height=" << glH
-                  << ", display=" << (waylandDisp ? waylandDisp : "<default>")
-                  << ", pattern=" << glPat << std::endl;
-        auto glApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
-        std::thread([glApp, waylandDisp]() {
-            if (glApp->init(waylandDisp)) glApp->run();
-        }).detach();
-    } else {
-        SetMenuInputBridgeEnabled(false);
-    }
+    });
+    // Say app is ready with Lifecycle.ready()
+    Firebolt::IFireboltAccessor::Instance().Lifecycle().ready();
 
-    // Display active version mode
-    switch (appConfig.fireboltVersion)
-    {
-        case FIREBOLT_VERSION_8:
-            std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
-            break;
-        case FIREBOLT_VERSION_9:
-            std::cout << "[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
-            break;
-        default:
-            std::cout << "[Mode] Firebolt All - All modules across all Firebolt versions enabled." << std::endl;
-            break;
-    }
-
-    auto modules = buildModuleList(appConfig.fireboltVersion);
-
-    if (appConfig.autoRun)
-    {
-        runAutoMode(modules);
-    }
-    else if (!ISATTY(STDIN_FD))
-    {
-        // stdin is a pipe and --auto was not requested – treat as piped mode
-        runPipedMode(modules);
-    }
-    else
-    {
-        runInteractiveMode(modules);
-    }
-
-    Firebolt::IFireboltAccessor::Instance().Disconnect();
+    const int exitCode = exitCodePromise.get_future().get();
     std::cout << "Disconnected. Exiting." << std::endl;
 
-    return 0;
+    return exitCode;
 }

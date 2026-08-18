@@ -53,6 +53,9 @@ class GlApp {
         // Blocks in the Wayland event-dispatch loop until the window is closed.
         void run();
 
+        // Release EGL and Wayland resources and stop rendering.
+        void shutdown();
+
     private:
         AppContext* m_ctx = nullptr;
 };
