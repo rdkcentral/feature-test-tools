@@ -32,7 +32,7 @@
 #include <sstream>
 #include <thread>
 
-static std::string current_thread_string()
+std::string current_thread_string()
 {
     std::ostringstream oss;
     oss << std::this_thread::get_id();

@@ -84,7 +84,7 @@ inline const char* fireboltErrorCodeToString(int errorCode)
     }
 }
 
-static std::string current_thread_string();
+std::string current_thread_string();
 
 // ---------------------------------------------------------------------------
 // Global test-run configuration
