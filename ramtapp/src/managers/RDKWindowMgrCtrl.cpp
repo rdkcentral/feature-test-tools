@@ -115,11 +115,18 @@ void RDKWindowMgrCtrl::displayMenu()
 void RDKWindowMgrCtrl::handleGetClientsRequest()
 {
     assert(windowMgrCtrl != nullptr && "IRDKWindowManager interface is not initialized.");
-    std::string clients;
-    Core::hresult result = windowMgrCtrl->GetApps(clients);
+    using IStringIterator = WPEFramework::RPC::IIteratorType<string, WPEFramework::RPC::ID_STRINGITERATOR>;
+    IStringIterator* clientsIterator = nullptr;
+    Core::hresult result = windowMgrCtrl->GetApps(clientsIterator);
     if (result == Core::ERROR_NONE)
     {
-        std::cout << "Connected Clients: " << clients << std::endl;
+        std::cout << "Connected Clients: ";
+        std::string client;
+        while(clientsIterator->Next(client))
+        {
+            std::cout << client << " ";
+        }
+        std::cout << std::endl;
     }
     else
     {
