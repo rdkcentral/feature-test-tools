@@ -122,6 +122,8 @@ struct MenuInputEvent
 void SetMenuInputBridgeEnabled(bool enabled);
 bool IsMenuInputBridgeEnabled();
 void PushMenuInputEvent(const MenuInputEvent& event);
+void RequestEscExit();
+bool ConsumeEscExitRequest();
 
 // ---------------------------------------------------------------------------
 // Console helpers

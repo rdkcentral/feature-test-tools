@@ -43,12 +43,18 @@
 #include FT_FREETYPE_H
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
+
 #if __has_include(<GLES3/gl3.h>)
 #include <GLES3/gl3.h>
 #else
 #include <GLES2/gl2.h>
 #endif
 #include <GLES2/gl2ext.h>
+
+#ifndef EGL_PLATFORM_WAYLAND_KHR
+#define EGL_PLATFORM_WAYLAND_KHR 0x31D8
+#endif
 
 #ifndef EGL_OPENGL_ES3_BIT_KHR
 #define EGL_OPENGL_ES3_BIT_KHR 0x00000040
@@ -75,6 +81,7 @@
 #define KEY_DOWN 108
 #define KEY_BACK 158
 #define KEY_OK 352
+#define KEY_ESCAPE 1
 #endif
 
 // FIX: Universal macro fallback to protect compilations across strict embedded ARM toolchains
@@ -210,7 +217,7 @@ struct FontResourceBundle {
     FT_Face face = nullptr;
 };
 
-static void apply_simple_shell_state(AppContext* app, const char* reason)
+static void apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
 {
     if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface) {
         log_gl_debug("wayland", std::string("Skipping simple-shell reapply (") + (reason ? reason : "unknown") + "): missing shell/surface/id");
@@ -220,7 +227,9 @@ static void apply_simple_shell_state(AppContext* app, const char* reason)
     wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
     wl_simple_shell_set_visible(app->simple_shell_ptr, app->simple_shell_surface_id, 1);
     wl_simple_shell_set_geometry(app->simple_shell_ptr, app->simple_shell_surface_id, 0, 0, app->width, app->height);
-    wl_simple_shell_set_focus(app->simple_shell_ptr, app->simple_shell_surface_id);
+    if (setFocus) {
+        wl_simple_shell_set_focus(app->simple_shell_ptr, app->simple_shell_surface_id);
+    }
     wl_surface_commit(app->surface);
     wl_display_flush(app->display);
 
@@ -292,6 +301,12 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
     });
     if (status != CAIRO_STATUS_SUCCESS) {
         log_gl_debug("font", "cairo_font_face_set_user_data() status=" + std::string(cairo_status_to_string(status)));
+        cairo_font_face_destroy(app->embedded_font);
+        app->embedded_font = nullptr;
+        FT_Done_Face(bundle->face);
+        FT_Done_FreeType(bundle->library);
+        delete bundle;
+        return false;
     } else {
         log_gl_debug("font", "Embedded font loaded successfully: " + font_path);
     }
@@ -439,10 +454,76 @@ bool init_gles_pipeline(AppContext* app)
     return true;
 }
 
+
+//---------------------------------------------------------------------------
+// New logic
+static EGLDisplay get_wayland_egl_display(wl_display* display)
+{
+	using PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL =
+	EGLDisplay (*)(EGLenum platform, void* native_display, const EGLint* attrib_list);
+
+	auto getPlatformDisplayEXT = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
+
+	if (getPlatformDisplayEXT) {
+		log_gl_debug("egl", "Using eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR)");
+		return getPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR, static_cast<void*>(display), nullptr);
+	}
+
+	log_gl_debug("egl", "eglGetPlatformDisplayEXT unavailable; using eglGetDisplay fallback");
+	return eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display));
+}
+
+static EGLSurface create_wayland_egl_surface(EGLDisplay display, EGLConfig config, wl_egl_window* egl_window)
+{
+	using PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL = EGLSurface (*)(EGLDisplay dpy,
+				EGLConfig config, void* native_window, const EGLint* attrib_list);
+
+	auto createPlatformWindowSurfaceEXT = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
+
+	if (createPlatformWindowSurfaceEXT) {
+		log_gl_debug("egl", "Using eglCreatePlatformWindowSurfaceEXT");
+		return createPlatformWindowSurfaceEXT(display, config, static_cast<void*>(egl_window), nullptr);
+	}
+
+	log_gl_debug("egl", "eglCreatePlatformWindowSurfaceEXT unavailable; using eglCreateWindowSurface fallback");
+	return eglCreateWindowSurface(display, config, reinterpret_cast<EGLNativeWindowType>(egl_window), nullptr);
+}
+
+static bool ensure_egl_current(AppContext* app)
+{
+	if (!app ||
+		app->egl_display == EGL_NO_DISPLAY ||
+		app->egl_context == EGL_NO_CONTEXT ||
+		app->egl_surface == EGL_NO_SURFACE) {
+		return false;
+	}
+
+	if (eglGetCurrentContext() == app->egl_context &&
+		eglGetCurrentSurface(EGL_DRAW) == app->egl_surface &&
+		eglGetCurrentSurface(EGL_READ) == app->egl_surface) {
+		return true;
+	}
+
+	if (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) != EGL_TRUE) {
+		log_gl_debug("egl", "eglMakeCurrent failed in ensure_egl_current(): " + std::string(egl_error_string(eglGetError())));
+		return false;
+	}
+
+	return true;
+}
+//---------------------------------------------------------------------------
+
 void render_cairo_frame(AppContext* app)
 {
     static int frame_count = 0;
     frame_count++;
+
+	if (!ensure_egl_current(app)) {
+		log_gl_debug("render", "Skipping frame because EGL context/surface is not current");
+		app->running = false;
+		return;
+	}
+
     log_gl_debug("render", "[Frame " + std::to_string(frame_count) + "] Rendering frame: size=" + std::to_string(app->width) + "x" + std::to_string(app->height) + ", keycode=" + std::to_string(app->current_keycode));
 
     GLenum gl_error = glGetError();
@@ -613,6 +694,20 @@ void render_cairo_frame(AppContext* app)
         log_gl_debug("egl", "Pre-swap EGL error: " + egl_error_string(pre_swap_error));
     }
     log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Calling eglSwapBuffers...");
+
+	log_gl_debug("egl",
+		"[Frame " + std::to_string(frame_count) +
+		"] Before swap: currentDraw=" +
+		std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
+		", currentRead=" +
+		std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
+		", appSurface=" +
+		std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
+		", currentCtx=" +
+		std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
+		", appCtx=" +
+		std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
+
     EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
     log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] eglSwapBuffers returned: " + std::string(swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE"));
     if (swap_result == EGL_TRUE) {
@@ -622,90 +717,21 @@ void render_cairo_frame(AppContext* app)
     if (post_swap_error != EGL_SUCCESS) {
         log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Post-swap EGL error: " + egl_error_string(post_swap_error));
         if (post_swap_error == EGL_BAD_SURFACE) {
-            // Mesa/V3D may report BAD_SURFACE on the very first swap if the
-            // compositor has not fully latched the new surface yet.
-            // Try one synchronized redraw+swap on the same EGL surface first.
-            log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Attempting same-surface sync retry...");
-            wl_surface_commit(app->surface);
-            wl_display_flush(app->display);
-            wl_display_roundtrip(app->display);
+			log_gl_debug("egl", "[Frame " + std::to_string(frame_count) +"] EGL_BAD_SURFACE detected.");
 
-            glClear(GL_COLOR_BUFFER_BIT);
-            glUseProgram(app->program_id);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, app->texture_id);
-            GLint s_loc = glGetUniformLocation(app->program_id, "s_texture");
-            if (s_loc >= 0) glUniform1i(s_loc, 0);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-            glTexImage2D(
-                GL_TEXTURE_2D,
-                0,
-                GL_RGBA,
-                app->width,
-                app->height,
-                0,
-                GL_RGBA,
-                GL_UNSIGNED_BYTE,
-                rgba_pixels.data());
-            glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
-            glEnableVertexAttribArray(app->positionAttribLocation);
-            glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
-            glEnableVertexAttribArray(app->texCoordAttribLocation);
-            glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
-            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+			log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Current draw surface=" +
+			std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
+			", current read surface=" +
+			std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
+			", app egl_surface=" +
+			std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
+			", current context=" +
+			std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
+			", app context=" +
+			std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
 
-            swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
-            log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Same-surface retry eglSwapBuffers returned: " + std::string(swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE"));
-            if (swap_result == EGL_TRUE) {
-                app->hasPresentedFrame = true;
-            }
-            post_swap_error = eglGetError();
-            if (post_swap_error != EGL_SUCCESS) {
-                log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Same-surface retry post-swap EGL error: " + egl_error_string(post_swap_error));
-            }
-
-            if (swap_result != EGL_TRUE) {
-                log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Attempting surface recreate and single retry...");
-                if (recreate_egl_window_surface(app)) {
-                    // Re-draw onto the new surface before swapping, otherwise the
-                    // new surface is blank and the swap would show a black frame.
-                    log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Re-rendering onto recreated surface...");
-                    glClear(GL_COLOR_BUFFER_BIT);
-                    glUseProgram(app->program_id);
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, app->texture_id);
-                    s_loc = glGetUniformLocation(app->program_id, "s_texture");
-                    if (s_loc >= 0) glUniform1i(s_loc, 0);
-                    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-                    glTexImage2D(
-                        GL_TEXTURE_2D,
-                        0,
-                        GL_RGBA,
-                        app->width,
-                        app->height,
-                        0,
-                        GL_RGBA,
-                        GL_UNSIGNED_BYTE,
-                        rgba_pixels.data());
-                    glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
-                    glEnableVertexAttribArray(app->positionAttribLocation);
-                    glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
-                    glEnableVertexAttribArray(app->texCoordAttribLocation);
-                    glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
-                    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-                    swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
-                    log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Retry eglSwapBuffers returned: " + std::string(swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE"));
-                    if (swap_result == EGL_TRUE) {
-                        app->hasPresentedFrame = true;
-                    }
-                    post_swap_error = eglGetError();
-                    if (post_swap_error != EGL_SUCCESS) {
-                        log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Retry post-swap EGL error: " + egl_error_string(post_swap_error));
-                    }
-                }
-            }
-        }
+			app->running = false;
+		}
     }
 
     cairo_destroy(cr);
@@ -743,6 +769,11 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
     AppContext* app = static_cast<AppContext*>(data);
     log_gl_debug("input", "keyboard key event state=" + std::to_string(state) + ", key=" + std::to_string(key) + ", serial=" + std::to_string(serial));
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        if (key == KEY_ESC) {
+            log_gl_debug("input", "ESC key received; requesting application exit");
+            RequestEscExit();
+        }
+
         app->current_keycode = key;
         log_gl_debug("input", "key pressed, code=" + std::to_string(key));
         render_cairo_frame(app);
@@ -822,12 +853,27 @@ static const wl_simple_shell_listener simple_shell_listener = {
 
 static bool recreate_egl_window_surface(AppContext* app)
 {
-    if (!app || !app->display || !app->surface || app->egl_display == EGL_NO_DISPLAY || app->egl_config == nullptr) {
+    if (!app ||
+        !app->display ||
+        !app->surface ||
+        app->egl_display == EGL_NO_DISPLAY ||
+        app->egl_config == nullptr ||
+        app->egl_context == EGL_NO_CONTEXT) {
         return false;
     }
 
-    if (app->egl_display != EGL_NO_DISPLAY) {
-        eglMakeCurrent(app->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    /*
+     * Step 1: Unbind the old surface/context before destroying the old surface.
+     * Do NOT try to make the old surface current here.
+     */
+    if (eglMakeCurrent(app->egl_display,
+                       EGL_NO_SURFACE,
+                       EGL_NO_SURFACE,
+                       EGL_NO_CONTEXT) != EGL_TRUE) {
+        log_gl_debug("egl",
+                     "Failed to unbind old EGL context before surface recreate: " +
+                     egl_error_string(eglGetError()));
+        return false;
     }
 
     if (app->egl_surface != EGL_NO_SURFACE) {
@@ -842,42 +888,53 @@ static bool recreate_egl_window_surface(AppContext* app)
 
     app->egl_window = wl_egl_window_create(app->surface, app->width, app->height);
     if (!app->egl_window) {
-        log_gl_debug("egl", "Failed to recreate wl_egl_window after EGL_BAD_SURFACE");
+        log_gl_debug("egl", "Failed to recreate wl_egl_window");
         return false;
     }
 
-    app->egl_surface = eglCreateWindowSurface(app->egl_display, app->egl_config, (EGLNativeWindowType)app->egl_window, nullptr);
+    wl_egl_window_resize(app->egl_window, app->width, app->height, 0, 0);
+
+    app->egl_surface = create_wayland_egl_surface(
+        app->egl_display,
+        app->egl_config,
+        app->egl_window);
+
     if (app->egl_surface == EGL_NO_SURFACE) {
-        log_gl_debug("egl", std::string("Failed to recreate EGL window surface: ") + egl_error_string(eglGetError()));
+        log_gl_debug("egl",
+                     "Failed to recreate EGL window surface: " +
+                     egl_error_string(eglGetError()));
+
+        wl_egl_window_destroy(app->egl_window);
+        app->egl_window = nullptr;
+
         return false;
     }
 
-    wl_surface_commit(app->surface);
-    wl_display_flush(app->display);
-    wl_display_roundtrip(app->display);
+    /*
+     * Step 6: Bind the new EGL surface.
+     */
+    if (eglMakeCurrent(app->egl_display,
+                       app->egl_surface,
+                       app->egl_surface,
+                       app->egl_context) != EGL_TRUE) {
+        log_gl_debug("egl",
+                     "Failed to make recreated EGL surface current: " +
+                     egl_error_string(eglGetError()));
 
-    if (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) != EGL_TRUE) {
-        const EGLint make_current_error = eglGetError();
-        log_gl_debug("egl", std::string("Failed to make recreated EGL surface current (first attempt): ") + egl_error_string(make_current_error));
-
-        if (make_current_error == EGL_BAD_ACCESS) {
-            // Some Mesa stacks need an extra commit/dispatch cycle before
-            // the new wl_egl_window can become current.
-            wl_surface_commit(app->surface);
-            wl_display_flush(app->display);
-            wl_display_roundtrip(app->display);
-            if (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) != EGL_TRUE) {
-                log_gl_debug("egl", std::string("Failed to make recreated EGL surface current (retry): ") + egl_error_string(eglGetError()));
-                return false;
-            }
-        } else {
-            return false;
+        if (app->egl_surface != EGL_NO_SURFACE) {
+            eglDestroySurface(app->egl_display, app->egl_surface);
+            app->egl_surface = EGL_NO_SURFACE;
         }
+
+        if (app->egl_window) {
+            wl_egl_window_destroy(app->egl_window);
+            app->egl_window = nullptr;
+        }
+
+        return false;
     }
 
-    apply_simple_shell_state(app, "recreate-after-bad-surface");
-
-    log_gl_debug("egl", "Recreated EGL window surface after EGL_BAD_SURFACE");
+    log_gl_debug("egl", "Recreated EGL window surface successfully");
     return true;
 }
 
@@ -984,7 +1041,7 @@ bool GlApp::init(const char* waylandDisplay)
     }
 
     log_gl_debug("egl", "Initializing EGL display");
-    m_ctx->egl_display = eglGetDisplay((EGLNativeDisplayType)m_ctx->display);
+    m_ctx->egl_display = get_wayland_egl_display(m_ctx->display);
     if (m_ctx->egl_display == EGL_NO_DISPLAY) {
         std::cerr << "CRITICAL ERROR: eglGetDisplay() returned EGL_NO_DISPLAY: " << egl_error_string(eglGetError()) << "\n";
         return false;
@@ -1075,6 +1132,15 @@ bool GlApp::init(const char* waylandDisplay)
     log_gl_debug("wayland", "wl_surface created");
     wl_surface_commit(m_ctx->surface);
     wl_display_roundtrip(m_ctx->display);
+    for (int attempt = 0; m_ctx->simple_shell_surface_id == 0 && attempt < 20; ++attempt) {
+        wl_display_dispatch_pending(m_ctx->display);
+        wl_display_flush(m_ctx->display);
+        wl_display_roundtrip(m_ctx->display);
+        if (m_ctx->simple_shell_surface_id != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     if (m_ctx->simple_shell_surface_id == 0) {
         std::cerr << "CRITICAL ERROR: Failed to acquire simple-shell surface id!\n";
         return false;
@@ -1088,7 +1154,8 @@ bool GlApp::init(const char* waylandDisplay)
     }
     log_gl_debug("egl", "wl_egl_window created: size=" + std::to_string(m_ctx->width) + "x" + std::to_string(m_ctx->height));
 
-    m_ctx->egl_surface = eglCreateWindowSurface(m_ctx->egl_display, m_ctx->egl_config, (EGLNativeWindowType)m_ctx->egl_window, nullptr);
+    wl_egl_window_resize(m_ctx->egl_window, m_ctx->width, m_ctx->height, 0, 0);
+    m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE) {
         std::cerr << "CRITICAL ERROR: eglCreateWindowSurface() failed: " << egl_error_string(eglGetError()) << "\n";
         return false;
@@ -1161,7 +1228,7 @@ void GlApp::run()
         dispatch_count++;
 
         if (dispatch_count % 120 == 0) {
-            apply_simple_shell_state(m_ctx, "periodic");
+            apply_simple_shell_state(m_ctx, "periodic", false);
         }
 
         if (dispatch_count % 60 == 0) {

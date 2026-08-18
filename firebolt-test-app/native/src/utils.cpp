@@ -34,6 +34,7 @@ static AppConfig gAppConfig;
 static bool gMenuInputBridgeEnabled = false;
 static std::mutex gMenuInputMutex;
 static std::deque<MenuInputEvent> gMenuInputQueue;
+static bool gEscExitRequested = false;
 
 AppConfig& GetAppConfig()
 {
@@ -64,6 +65,20 @@ void PushMenuInputEvent(const MenuInputEvent& event)
         return;
     }
     gMenuInputQueue.push_back(event);
+}
+
+void RequestEscExit()
+{
+    std::lock_guard<std::mutex> lock(gMenuInputMutex);
+    gEscExitRequested = true;
+}
+
+bool ConsumeEscExitRequest()
+{
+    std::lock_guard<std::mutex> lock(gMenuInputMutex);
+    const bool requested = gEscExitRequested;
+    gEscExitRequested = false;
+    return requested;
 }
 
 static bool tryPopMenuInputEvent(MenuInputEvent& event)

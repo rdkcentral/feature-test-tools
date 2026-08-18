@@ -428,8 +428,10 @@ int main(int argc, char** argv)
     std::shared_ptr<GlApp> glApp = nullptr;
     std::thread glThread;
     std::thread testThread;
+    std::thread escWatcherThread;
     std::atomic<bool> testThreadStarted{ false };
     std::atomic<bool> glThreadStarted{ false };
+    std::atomic<bool> escWatcherRunning{ true };
     std::condition_variable glStartCv;
     std::mutex glStartMutex;
     bool glRunRequested = false;
@@ -561,12 +563,28 @@ int main(int argc, char** argv)
                 testThread.join();
             }
 
+            escWatcherRunning = false;
+            if (escWatcherThread.joinable() && escWatcherThread.get_id() != std::this_thread::get_id()) {
+                escWatcherThread.join();
+            }
+
             // Disable input bridge and disconnect
             SetMenuInputBridgeEnabled(false);
             Firebolt::IFireboltAccessor::Instance().Disconnect();
             signalExit(code);
         });
     };
+
+    escWatcherThread = std::thread([&]() {
+        while (escWatcherRunning.load()) {
+            if (ConsumeEscExitRequest()) {
+                std::cout << "[ESC] Exit requested from keyboard input. Cleaning up and exiting." << std::endl;
+                cleanupAndExit(0);
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    });
 
     /**
       * @brief Schedule work to be done when the app is in PAUSED state.
@@ -692,6 +710,10 @@ int main(int argc, char** argv)
         lifecycleSubId = *subResult;
         std::cout << "[LifecycleCB] Subscribed to state changes (ID: " << lifecycleSubId << ")" << std::endl;
     } else {
+        escWatcherRunning = false;
+        if (escWatcherThread.joinable()) {
+            escWatcherThread.join();
+        }
         std::cerr << "[LifecycleCB] Failed to subscribe to state changes" << std::endl;
         return 1;
     }
