@@ -459,70 +459,84 @@ bool init_gles_pipeline(AppContext* app)
 // New logic
 static EGLDisplay get_wayland_egl_display(wl_display* display)
 {
-	using PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL =
-	EGLDisplay (*)(EGLenum platform, void* native_display, const EGLint* attrib_list);
+    using PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL =
+    EGLDisplay (*)(EGLenum platform, void* native_display, const EGLint* attrib_list);
 
-	auto getPlatformDisplayEXT = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
+    auto getPlatformDisplayEXT = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
 
-	if (getPlatformDisplayEXT) {
-		log_gl_debug("egl", "Using eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR)");
-		return getPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR, static_cast<void*>(display), nullptr);
-	}
+    if (getPlatformDisplayEXT) {
+        log_gl_debug("egl", "Using eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR)");
+        return getPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR, static_cast<void*>(display), nullptr);
+    }
 
-	log_gl_debug("egl", "eglGetPlatformDisplayEXT unavailable; using eglGetDisplay fallback");
-	return eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display));
+    log_gl_debug("egl", "eglGetPlatformDisplayEXT unavailable; using eglGetDisplay fallback");
+    return eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display));
 }
 
 static EGLSurface create_wayland_egl_surface(EGLDisplay display, EGLConfig config, wl_egl_window* egl_window)
 {
-	using PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL = EGLSurface (*)(EGLDisplay dpy,
-				EGLConfig config, void* native_window, const EGLint* attrib_list);
+    using PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL = EGLSurface (*)(EGLDisplay dpy,
+                EGLConfig config, void* native_window, const EGLint* attrib_list);
 
-	auto createPlatformWindowSurfaceEXT = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
+    auto createPlatformWindowSurfaceEXT = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
 
-	if (createPlatformWindowSurfaceEXT) {
-		log_gl_debug("egl", "Using eglCreatePlatformWindowSurfaceEXT");
-		return createPlatformWindowSurfaceEXT(display, config, static_cast<void*>(egl_window), nullptr);
-	}
+    if (createPlatformWindowSurfaceEXT) {
+        log_gl_debug("egl", "Using eglCreatePlatformWindowSurfaceEXT");
+        return createPlatformWindowSurfaceEXT(display, config, static_cast<void*>(egl_window), nullptr);
+    }
 
-	log_gl_debug("egl", "eglCreatePlatformWindowSurfaceEXT unavailable; using eglCreateWindowSurface fallback");
-	return eglCreateWindowSurface(display, config, reinterpret_cast<EGLNativeWindowType>(egl_window), nullptr);
+    log_gl_debug("egl", "eglCreatePlatformWindowSurfaceEXT unavailable; using eglCreateWindowSurface fallback");
+    return eglCreateWindowSurface(display, config, reinterpret_cast<EGLNativeWindowType>(egl_window), nullptr);
 }
 
 static bool ensure_egl_current(AppContext* app)
 {
-	if (!app ||
-		app->egl_display == EGL_NO_DISPLAY ||
-		app->egl_context == EGL_NO_CONTEXT ||
-		app->egl_surface == EGL_NO_SURFACE) {
-		return false;
-	}
+    if (!app || app->egl_display == EGL_NO_DISPLAY || app->egl_context == EGL_NO_CONTEXT
+        || app->egl_surface == EGL_NO_SURFACE) {
+        log_gl_debug("egl", "ensure_egl_current: invalid EGL handles");
+        return false;
+    }
 
-	if (eglGetCurrentContext() == app->egl_context &&
-		eglGetCurrentSurface(EGL_DRAW) == app->egl_surface &&
-		eglGetCurrentSurface(EGL_READ) == app->egl_surface) {
-		return true;
-	}
+    EGLContext currentCtx = eglGetCurrentContext();
+    EGLSurface currentDraw = eglGetCurrentSurface(EGL_DRAW);
+    EGLSurface currentRead = eglGetCurrentSurface(EGL_READ);
+    log_gl_debug("egl",
+                "ensure_egl_current: currentCtx=" +
+                std::to_string(reinterpret_cast<uintptr_t>(currentCtx)) +
+                ", appCtx=" +
+                std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)) +
+                ", currentDraw=" +
+                std::to_string(reinterpret_cast<uintptr_t>(currentDraw)) +
+                ", currentRead=" +
+                std::to_string(reinterpret_cast<uintptr_t>(currentRead)) +
+                ", appSurface=" +
+                std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)));
 
-	if (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) != EGL_TRUE) {
-		log_gl_debug("egl", "eglMakeCurrent failed in ensure_egl_current(): " + std::string(egl_error_string(eglGetError())));
-		return false;
-	}
+    if (currentCtx == app->egl_context && currentDraw == app->egl_surface && currentRead == app->egl_surface) {
+        return true;
+    }
 
-	return true;
+    if (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) != EGL_TRUE) {
+        log_gl_debug("egl", "eglMakeCurrent failed in ensure_egl_current(): " + std::string(egl_error_string(eglGetError())));
+        return false;
+    }
+
+    return true;
 }
+
 //---------------------------------------------------------------------------
 
 void render_cairo_frame(AppContext* app)
 {
+    log_gl_debug("thread", "render_cairo_frame thread=" + current_thread_string());
     static int frame_count = 0;
     frame_count++;
 
-	if (!ensure_egl_current(app)) {
-		log_gl_debug("render", "Skipping frame because EGL context/surface is not current");
-		app->running = false;
-		return;
-	}
+    if (!ensure_egl_current(app)) {
+        log_gl_debug("render", "Skipping frame because EGL context/surface is not current");
+        app->running = false;
+        return;
+    }
 
     log_gl_debug("render", "[Frame " + std::to_string(frame_count) + "] Rendering frame: size=" + std::to_string(app->width) + "x" + std::to_string(app->height) + ", keycode=" + std::to_string(app->current_keycode));
 
@@ -695,18 +709,18 @@ void render_cairo_frame(AppContext* app)
     }
     log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Calling eglSwapBuffers...");
 
-	log_gl_debug("egl",
-		"[Frame " + std::to_string(frame_count) +
-		"] Before swap: currentDraw=" +
-		std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
-		", currentRead=" +
-		std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
-		", appSurface=" +
-		std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
-		", currentCtx=" +
-		std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
-		", appCtx=" +
-		std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
+    log_gl_debug("egl",
+                "[Frame " + std::to_string(frame_count) +
+                "] Before swap: currentDraw=" +
+                std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
+                ", currentRead=" +
+                std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
+                ", appSurface=" +
+                std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
+                ", currentCtx=" +
+                std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
+                ", appCtx=" +
+                std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
 
     EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
     log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] eglSwapBuffers returned: " + std::string(swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE"));
@@ -717,21 +731,21 @@ void render_cairo_frame(AppContext* app)
     if (post_swap_error != EGL_SUCCESS) {
         log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Post-swap EGL error: " + egl_error_string(post_swap_error));
         if (post_swap_error == EGL_BAD_SURFACE) {
-			log_gl_debug("egl", "[Frame " + std::to_string(frame_count) +"] EGL_BAD_SURFACE detected.");
+            log_gl_debug("egl", "[Frame " + std::to_string(frame_count) +"] EGL_BAD_SURFACE detected.");
 
-			log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Current draw surface=" +
-			std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
-			", current read surface=" +
-			std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
-			", app egl_surface=" +
-			std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
-			", current context=" +
-			std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
-			", app context=" +
-			std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
+            log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Current draw surface=" +
+                        std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
+                        ", current read surface=" +
+                        std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
+                        ", app egl_surface=" +
+                        std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
+                        ", current context=" +
+                        std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
+                        ", app context=" +
+                        std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
 
-			app->running = false;
-		}
+            app->running = false;
+        }
     }
 
     cairo_destroy(cr);
@@ -1003,6 +1017,7 @@ GlApp::~GlApp()
 
 bool GlApp::init(const char* waylandDisplay)
 {
+    log_gl_debug("thread", "GlApp::init thread=" + current_thread_string());
     if (!waylandDisplay) waylandDisplay = DEFAULT_DISPLAY;
 
     const char* xdgRuntimeDir = std::getenv("XDG_RUNTIME_DIR");
@@ -1178,7 +1193,20 @@ bool GlApp::init(const char* waylandDisplay)
                   << m_ctx->glesClientVersion << ".x\n";
         return false;
     }
-    log_gl_debug("init", "GlApp init complete; waiting for surface configuration");
+
+    /*
+    * IMPORTANT for Mesa/RPI:
+    * init() may run on a different thread than run()/render_cairo_frame().
+    * EGL contexts are thread-current. If we leave the context current here,
+    * Mesa will reject eglMakeCurrent() from the render thread with EGL_BAD_ACCESS.
+    */
+    glFinish();
+    if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
+        std::cerr << "WARN: Failed to release EGL context from init:" << egl_error_string(eglGetError()) << std::endl;
+    } else {
+        log_gl_debug("init", "GlApp init complete, Released EGL context after GLES init");
+    }
+
     return true;
 }
 
@@ -1244,6 +1272,15 @@ void GlApp::run()
 
         // Tiny backoff prevents tight-loop CPU spikes when compositor is chatty.
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (m_ctx->egl_display != EGL_NO_DISPLAY) {
+        glFinish();
+        if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
+            log_gl_debug("egl", "Failed to release *GL context from run/render:" +
+                        egl_error_string(eglGetError()));
+        } else {
+            log_gl_debug("egl", "Released EGL context from run/render.");
+        }
     }
     log_gl_debug("run", "Wayland dispatch loop exited");
 }

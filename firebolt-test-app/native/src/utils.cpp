@@ -29,6 +29,15 @@
 #include <poll.h>
 #include <stdexcept>
 #include <strings.h>
+#include <sstream>
+#include <thread>
+
+static std::string current_thread_string()
+{
+    std::ostringstream oss;
+    oss << std::this_thread::get_id();
+    return oss.str();
+}
 
 static AppConfig gAppConfig;
 static bool gMenuInputBridgeEnabled = false;

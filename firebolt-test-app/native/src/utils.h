@@ -84,14 +84,16 @@ inline const char* fireboltErrorCodeToString(int errorCode)
     }
 }
 
+static std::string current_thread_string();
+
 // ---------------------------------------------------------------------------
 // Global test-run configuration
 // ---------------------------------------------------------------------------
 typedef enum fireboltVersion
 {
-	FIREBOLT_VERSION_8 = 8,
-	FIREBOLT_VERSION_9 = 9,
-	FIREBOLT_VERSION_ALL = 9 // Need to increment when new versions are added.
+    FIREBOLT_VERSION_8 = 8,
+    FIREBOLT_VERSION_9 = 9,
+    FIREBOLT_VERSION_ALL = 9 // Need to increment when new versions are added.
 } fireboltVersion_t;
 
 struct AppConfig
