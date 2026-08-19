@@ -448,6 +448,7 @@ int main(int argc, char** argv)
     std::promise<int> exitCodePromise;
     std::once_flag exitCodeOnce;
     std::once_flag cleanupOnce;
+    std::atomic<bool> shutdownRequested{ false };
 
     auto signalExit = [&](int code) {
         std::call_once(exitCodeOnce, [&] {
@@ -456,6 +457,7 @@ int main(int argc, char** argv)
     };
 
     auto startGlThread = [&]() {
+        log_dbg("[startGlThread] Starting GlApp thread...refCount={}", glApp ? glApp.use_count() : 0);
         if (!glApp) {
             log_fatal("[startGlThread] Cannot start GlApp thread: GlApp not initialized.");
             return;
@@ -473,8 +475,8 @@ int main(int argc, char** argv)
         }
 
         log_info("[startGlThread] Starting GlApp thread...");
-        std::shared_ptr<GlApp> glAppCopy = glApp;
-        glThread = std::thread([&, glAppCopy]() {
+        glThread = std::thread([glAppCopy = glApp]() {
+            log_dbg("[startGlThread] GlApp thread started: refCount={}", glAppCopy ? glAppCopy.use_count() : 0);
             std::unique_lock<std::mutex> lock(glStartMutex);
             glStartCv.wait(lock, [&] {
                 return glRunRequested || glStopRequested;
@@ -483,7 +485,7 @@ int main(int argc, char** argv)
             const bool shouldStop = glStopRequested;
             lock.unlock();
 
-            if (!shouldStop) {
+            if (!shouldStop && glAppCopy) {
                 log_info("[startGlThread] GlApp start run().");
                 glAppCopy->run();
             } else {
@@ -494,8 +496,7 @@ int main(int argc, char** argv)
 
     auto stopGlThread = [&]() {
         std::lock_guard<std::mutex> lifecycleLock(glLifecycleMutex);
-
-        std::shared_ptr<GlApp> glAppCopy = glApp;
+        log_info("[stopGlThread] Stopping GlApp thread...refCount={}", glApp ? glApp.use_count() : 0);
 
         {
             std::lock_guard<std::mutex> lock(glStartMutex);
@@ -504,9 +505,9 @@ int main(int argc, char** argv)
         }
         glStartCv.notify_all();
 
-        if (glAppCopy) {
+        if (glApp) {
             log_info("[stopGlThread] GlApp shutdown requested.");
-            glAppCopy->shutdown();
+            glApp->shutdown();
         } else {
             log_info("[stopGlThread] GlApp shutdown skipped (not initialized).");
         }
@@ -520,8 +521,11 @@ int main(int argc, char** argv)
             glThread.detach();
         }
 
-        log_dbg("[stopGlThread] Resetting GlApp and thread state...");
-        glApp.reset();
+        log_dbg("[stopGlThread] Resetting GlApp... refCount={}", glApp ? glApp.use_count() : 0);
+        if (glApp) {
+            glApp.reset();
+        }
+        log_dbg("[stopGlThread] Resetted GlApp state...refCount={}", glApp ? glApp.use_count() : 0);
         glThreadStarted = false;
 
         {
@@ -532,6 +536,7 @@ int main(int argc, char** argv)
     };
 
     auto initializeGlApp = [&]() -> bool {
+        log_info("[initializeGlApp] Initializing GlApp...refCount={}", glApp ? glApp.use_count() : 0);
         std::lock_guard<std::mutex> lifecycleLock(glLifecycleMutex);
 
         SetMenuInputBridgeEnabled(true);
@@ -560,7 +565,7 @@ int main(int argc, char** argv)
         }
 
         glApp = std::move(nextGlApp);
-        log_warn("[Lifecycle] GlApp initialized successfully.");
+        log_warn("[Lifecycle] GlApp initialized successfully - refCount {}.", glApp ? glApp.use_count() : 0);
         startGlThread();
         return true;
     };
@@ -571,6 +576,8 @@ int main(int argc, char** argv)
       */
     auto cleanupAndExit = [&](int code) {
         std::call_once(cleanupOnce, [&] {
+            shutdownRequested.store(true);
+
             // Shutdown GL app and thread
             log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
             stopGlThread();
@@ -586,11 +593,15 @@ int main(int argc, char** argv)
         });
     };
 
+    /**
+     * @brief: Start a background thread to watch for ESC exit requests.
+     */
     escWatcherThread = std::thread([&]() {
         while (escWatcherRunning.load()) {
             if (ConsumeEscExitRequest()) {
                 log_warn("[ESCWatcher] ESC exit request received. Cleaning up and exiting...");
                 cleanupAndExit(0);
+                return;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
@@ -612,6 +623,11 @@ int main(int argc, char** argv)
       * @brief Schedule work to be done when the app is in PAUSED state.
       */
     auto schedulePausedStateWork = [&](Firebolt::Lifecycle::LifecycleState oldState) {
+        if (shutdownRequested.load()) {
+            log_info("[schedulePausedStateWork] Shutdown in progress. Skipping PAUSED work scheduling.");
+            return;
+        }
+
         bool expected = false;
         if (!pausedStateWorkScheduled.compare_exchange_strong(expected, true)) {
             log_info("[schedulePausedStateWork] PAUSED handling already scheduled. Skipping duplicate work.");
@@ -626,6 +642,12 @@ int main(int argc, char** argv)
           * @brief Thread function to handle state transitions.
           */
         pausedStateThread = std::thread([&, oldState]() {
+            if (shutdownRequested.load()) {
+                pausedStateWorkScheduled = false;
+                log_info("[schedulePausedStateWork] Shutdown in progress. Exiting PAUSED worker early.");
+                return;
+            }
+
             std::lock_guard<std::mutex> stateLock(pausedStateMutex);
 
             if (oldState == Firebolt::Lifecycle::LifecycleState::INITIALIZING) {
@@ -641,6 +663,12 @@ int main(int argc, char** argv)
             if (oldState == Firebolt::Lifecycle::LifecycleState::ACTIVE ||
                 oldState == Firebolt::Lifecycle::LifecycleState::SUSPENDED) {
                 stopGlThread();
+            }
+
+            if (shutdownRequested.load()) {
+                pausedStateWorkScheduled = false;
+                log_info("[schedulePausedStateWork] Shutdown requested after stop. Skipping init/start.");
+                return;
             }
 
             if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
@@ -688,6 +716,12 @@ int main(int argc, char** argv)
     auto subResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().subscribeOnStateChanged(
         [&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
             for (const auto& change : changes) {
+                if (shutdownRequested.load()) {
+                    log_info("[LifecycleCB] Shutdown in progress. Ignoring {} -> {} transition.",
+                             static_cast<int>(change.oldState), static_cast<int>(change.newState));
+                    continue;
+                }
+
                 log_fatal("[LifecycleCB] State change: {} -> {}" , static_cast<int>(change.oldState), static_cast<int>(change.newState));
                 log_fatal("[LifecycleCB] State change: {} -> {}" , lifecycleStateToString(change.oldState), lifecycleStateToString(change.newState));
                 log_info("[LifecycleCB] State transition begins: {}", timepointToString());
@@ -755,7 +789,7 @@ int main(int argc, char** argv)
     }
 
     const int exitCode = exitCodePromise.get_future().get();
-
+    log_dbg("[Main] Exit processing begins: refCount={}", glApp ? glApp.use_count() : 0);
     if (testThread.joinable()) {
         log_warn("[Main] Waiting for test thread to finish...");
         testThread.join();
