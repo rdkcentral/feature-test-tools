@@ -38,7 +38,9 @@
 //   echo "Device.uid" | firebolt-test-app --url ws://127.0.0.1:9998
 // ---------------------------------------------------------------------------
 
+#include "gl.h"
 #include "utils.h"
+#include "logger.hpp"
 
 #include "tests/accessibilityTest.h"
 #include "tests/actionsTest.h"
@@ -57,8 +59,6 @@
 #include "tests/VideoOutputTest.h"
 
 #include <firebolt/firebolt.h>
-
-#include "gl.h"
 
 #include <algorithm>
 #include <atomic>
@@ -84,6 +84,9 @@
 #ifndef APP_FONT_DIR
 #define APP_FONT_DIR "/usr/share/fonts/ttf/"
 #endif
+
+// Initialize logger for the application with environment variable "APPLOGLEVEL" and module tag "[APP]".
+using LocalLogger = RuntimeLogger<"APPLOGLEVEL", "[APP]">;
 
 // ---------------------------------------------------------------------------
 // printUsage
@@ -307,7 +310,7 @@ int main(int argc, char** argv)
         {
             if (i + 1 >= argc)
             {
-                std::cerr << "Error: --url requires a URL argument.\n";
+                log_fatal("Missing argument for --url option");
                 return 1;
             }
             url = argv[++i];
@@ -344,8 +347,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            std::cerr << "Unknown option: " << arg
-                      << "  (use --help for usage)\n";
+            log_fatal("Unknown option: {} (use --help for usage)", arg);
             return 1;
         }
     }
@@ -360,8 +362,7 @@ int main(int argc, char** argv)
     }
     if (url.empty())
     {
-        std::cerr << "Error: No Firebolt endpoint URL specified."
-                  << " Use --url, or set FIREBOLT_ENDPOINT environment variable.\n";
+        log_fatal("No Firebolt endpoint URL specified. Use --url, or set FIREBOLT_ENDPOINT environment variable.");
         return 1;
     }
     std::cout << "Using Firebolt endpoint: " << url << std::endl;
@@ -402,26 +403,25 @@ int main(int argc, char** argv)
 
     if (connectErr != Firebolt::Error::None)
     {
-        std::cerr << "Connect() call failed with error: "
-                  << static_cast<int>(connectErr) << std::endl;
+        log_fatal("Failed to initiate Firebolt connection: error code {}", static_cast<int>(connectErr));
         return 1;
     }
 
     if (connFuture.wait_for(std::chrono::seconds(2)) == std::future_status::timeout)
     {
-        std::cerr << "Timed out waiting for Firebolt connection." << std::endl;
+        log_fatal("Timed out waiting for Firebolt connection.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
     if (!connFuture.get())
     {
-        std::cerr << "Failed to connect to Firebolt endpoint." << std::endl;
+        log_fatal("Failed to connect to Firebolt endpoint.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
-    std::cout << "Connected to Firebolt." << std::endl;
+    log_info("Connected to Firebolt.");
 
     // --------------------------- App Lifecycle ---------------------------------
     std::vector<std::unique_ptr<TestModuleBase>> gModules;
@@ -451,7 +451,7 @@ int main(int argc, char** argv)
 
     auto startGlThread = [&]() {
         if (!glApp) {
-            std::cerr << "[startGlThread] Cannot start GlApp thread: GlApp not initialized." << std::endl;
+            log_fatal("[startGlThread] Cannot start GlApp thread: GlApp not initialized.");
             return;
         }
 
@@ -466,7 +466,7 @@ int main(int argc, char** argv)
             glStopRequested = false;
         }
 
-        std::cout << "[startGlThread] Starting GlApp thread..." << std::endl;
+        log_info("[startGlThread] Starting GlApp thread...");
         std::shared_ptr<GlApp> glAppCopy = glApp;
         glThread = std::thread([&, glAppCopy]() {
             std::unique_lock<std::mutex> lock(glStartMutex);
@@ -478,10 +478,10 @@ int main(int argc, char** argv)
             lock.unlock();
 
             if (!shouldStop) {
-                std::cout << "[startGlThread] GlApp start run()." << std::endl;
+                log_info("[startGlThread] GlApp start run().");
                 glAppCopy->run();
             } else {
-                std::cout << "[startGlThread] GlApp run() skipped due to stop request." << std::endl;
+                log_info("[startGlThread] GlApp run() skipped due to stop request.");
             }
         });
     };
@@ -495,10 +495,10 @@ int main(int argc, char** argv)
         glStartCv.notify_all();
 
         if (glApp) {
-            std::cout << "[stopGlThread] GlApp shutdown requested." << std::endl;
+            log_info("[stopGlThread] GlApp shutdown requested.");
             glApp->shutdown();
         } else {
-            std::cout << "[stopGlThread] GlApp shutdown skipped (not initialized)." << std::endl;
+            log_info("[stopGlThread] GlApp shutdown skipped (not initialized).");
         }
 
         if (glThread.joinable() && glThread.get_id() != std::this_thread::get_id()) {
@@ -531,18 +531,18 @@ int main(int argc, char** argv)
         const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
         std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
         if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
-            std::cerr << "Aborting: Font file not found or not readable at " << fontFile << std::endl;
+            log_fatal("Font file not found or not readable at " + fontFile);
             return false;
         }
 
         auto nextGlApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
         if (!nextGlApp || !nextGlApp->init(waylandDisp)) {
-            std::cerr << "Aborting: GlApp failed to initialize." << std::endl;
+            log_fatal("Aborting: GlApp failed to initialize.");
             return false;
         }
 
         glApp = std::move(nextGlApp);
-        std::cout << "[Lifecycle] GlApp initialized successfully." << std::endl;
+        log_warn("[Lifecycle] GlApp initialized successfully.");
         startGlThread();
         return true;
     };
@@ -555,7 +555,7 @@ int main(int argc, char** argv)
             }
 
             // Shutdown GL app and thread
-            std::cout << "[cleanupAndExit] Cleaning up GL app and thread..." << std::endl;
+            log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
             stopGlThread();
 
             // Wait for test thread to complete
@@ -578,7 +578,7 @@ int main(int argc, char** argv)
     escWatcherThread = std::thread([&]() {
         while (escWatcherRunning.load()) {
             if (ConsumeEscExitRequest()) {
-                std::cout << "[ESC] Exit requested from keyboard input. Cleaning up and exiting." << std::endl;
+                log_warn("[ESCWatcher] ESC exit request received. Cleaning up and exiting...");
                 cleanupAndExit(0);
                 return;
             }
@@ -592,7 +592,7 @@ int main(int argc, char** argv)
     auto schedulePausedStateWork = [&](Firebolt::Lifecycle::LifecycleState oldState) {
         bool expected = false;
         if (!pausedStateWorkScheduled.compare_exchange_strong(expected, true)) {
-            std::cout << "[schedulePausedStateWork] PAUSED handling already scheduled. Skipping duplicate work." << std::endl;
+            log_info("[schedulePausedStateWork] PAUSED handling already scheduled. Skipping duplicate work.");
             return;
         }
 
@@ -602,7 +602,7 @@ int main(int argc, char** argv)
             if (oldState == Firebolt::Lifecycle::LifecycleState::INITIALIZING) {
                 gModules = buildModuleList(appConfig.fireboltVersion);
                 if (gModules.empty()) {
-                    std::cerr << "[schedulePausedStateWork] No modules registered for the selected Firebolt version." << std::endl;
+                    log_warn("[schedulePausedStateWork] No modules registered for the selected Firebolt version.");
                     pausedStateWorkScheduled = false;
                     cleanupAndExit(1);
                     return;
@@ -628,13 +628,13 @@ int main(int argc, char** argv)
                         glRunRequested = true;
                     }
                     glStartCv.notify_one();
-                    std::cout << "[schedulePausedStateWork] GlApp run() requested." << std::endl;
+                    log_info("[schedulePausedStateWork] GlApp run() requested.");
                 }
 #if 0
                 bool testExpected = false;
                 if (testThreadStarted.compare_exchange_strong(testExpected, true)) {
                     testThread = std::thread([&]() {
-                        std::cout << "[schedulePausedStateWork] Test mode loader thread started." << std::endl;
+                        log_info("[schedulePausedStateWork] Test mode loader thread started.");
                         if (appConfig.autoRun) {
                             runAutoMode(gModules);
                         } else if (!ISATTY(STDIN_FD)) {
@@ -658,48 +658,47 @@ int main(int argc, char** argv)
     auto subResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().subscribeOnStateChanged(
         [&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
             for (const auto& change : changes) {
-                std::cout << "[LifecycleCB] State change: " << static_cast<int>(change.oldState)
-                          << " -> " << static_cast<int>(change.newState) << std::endl;
+                log_fatal("[LifecycleCB] State change: {} -> {}" , static_cast<int>(change.oldState), static_cast<int>(change.newState));
 
                 switch (change.newState) {
                     case Firebolt::Lifecycle::LifecycleState::INITIALIZING: {
-                        std::cout << "[LifecycleCB] State INITIALIZING" << std::endl;
+                        log_info("[LifecycleCB] State INITIALIZING");
                         switch (appConfig.fireboltVersion) {
                             case FIREBOLT_VERSION_8:
-                                std::cout << "[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded)." << std::endl;
+                                log_info("[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded).");
                                 break;
                             case FIREBOLT_VERSION_9:
-                                std::cout << "[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled." << std::endl;
+                                log_info("[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled.");
                                 break;
                             default:
-                                std::cout << "[Mode] Firebolt All - All modules across all Firebolt versions enabled." << std::endl;
+                                log_info("[Mode] Firebolt All - All modules across all Firebolt versions enabled.");
                                 break;
                         }
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::PAUSED: {
-                        std::cout << "[LifecycleCB] State PAUSED" << std::endl;
+                        log_info("[LifecycleCB] State PAUSED");
                         schedulePausedStateWork(change.oldState);
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::ACTIVE: {
-                        std::cout << "[LifecycleCB] Active. Starting test menu or auto-run mode..." << std::endl;
+                        log_info("[LifecycleCB] State ACTIVE");
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::SUSPENDED: {
-                        std::cout << "[LifecycleCB] Suspended. Releasing W-EGL resources..." << std::endl;
+                        log_warn("[LifecycleCB] State SUSPENDED. Releasing W-EGL resources...");
                         stopGlThread();
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::HIBERNATED:
-                        std::cout << "[LifecycleCB] Hibernated." << std::endl;
+                        log_warn("[LifecycleCB] State HIBERNATED");
                         break;
                     case Firebolt::Lifecycle::LifecycleState::TERMINATING:
-                        std::cout << "[LifecycleCB] Terminating." << std::endl;
+                        log_fatal("[LifecycleCB] State TERMINATING");
                         cleanupAndExit(0);
                         break;
                     default:
-                        std::cout << "[LifecycleCB] Unhandled state: " << static_cast<int>(change.newState) << std::endl;
+                        log_warn("[LifecycleCB] Unhandled state: {}", static_cast<int>(change.newState));
                         break;
                 }
             }
@@ -708,18 +707,18 @@ int main(int argc, char** argv)
     // Store subscription ID and check for success
     if (subResult) {
         lifecycleSubId = *subResult;
-        std::cout << "[LifecycleCB] Subscribed to state changes (ID: " << lifecycleSubId << ")" << std::endl;
+        log_info("[LifecycleCB] Subscribed to state changes (ID: {})", lifecycleSubId);
     } else {
         escWatcherRunning = false;
         if (escWatcherThread.joinable()) {
             escWatcherThread.join();
         }
-        std::cerr << "[LifecycleCB] Failed to subscribe to state changes" << std::endl;
+        log_fatal("[LifecycleCB] Failed to subscribe to state changes");
         return 1;
     }
 
     const int exitCode = exitCodePromise.get_future().get();
-    std::cout << "[LifecycleCB] Disconnected. Exiting." << std::endl;
+    log_warn("[LifecycleCB] Disconnected. Exiting.");
 
     return exitCode;
 }

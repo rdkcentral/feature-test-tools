@@ -56,6 +56,7 @@ add_executable(${APP_TARGET}
     src/main.cpp
     src/utils.cpp
     src/gl.cpp
+    src/logger.hpp
     ${TEST_SOURCES}
 )
 

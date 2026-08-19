@@ -22,7 +22,7 @@
  */
 
 #include "gl.h"
-
+#include "logger.hpp"
 #include "utils.h"
 
 #include <cassert>
@@ -89,16 +89,8 @@
 #define GL_BGRA_EXT 0x80E1
 #endif
 
-static void log_gl_debug(const std::string& stage, const std::string& message)
-{
-    static const bool verbose = [] {
-        const char* v = std::getenv("FBT_GL_DEBUG");
-        return v && std::strcmp(v, "0") != 0;
-    }();
-    if (verbose) {
-        std::cout << "[GlApp][" << stage << "] " << message << std::endl;
-    }
-}
+// Initialize logger for the graphics module with environment variable "GLLOGLEVEL" and module tag "[GL]".
+using LocalLogger = RuntimeLogger<"GLLOGLEVEL", "[GL]">;
 
 static std::string egl_error_string(EGLint error)
 {
@@ -220,7 +212,7 @@ struct FontResourceBundle {
 static void apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
 {
     if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface) {
-        log_gl_debug("wayland", std::string("Skipping simple-shell reapply (") + (reason ? reason : "unknown") + "): missing shell/surface/id");
+        log_dbg("Skipping simple-shell reapply ({}): missing shell/surface/id", reason ? reason : "unknown");
         return;
     }
 
@@ -233,11 +225,9 @@ static void apply_simple_shell_state(AppContext* app, const char* reason, bool s
     wl_surface_commit(app->surface);
     wl_display_flush(app->display);
 
-    log_gl_debug(
-        "wayland",
-        std::string("Reapplied simple-shell state (") + (reason ? reason : "unknown") +
-        "): id=" + std::to_string(app->simple_shell_surface_id) +
-        ", size=" + std::to_string(app->width) + "x" + std::to_string(app->height));
+    log_dbg(
+        "Reapplied simple-shell state ({}): id={}, size={}x{}", reason ? reason : "unknown",
+        app->simple_shell_surface_id, app->width, app->height);
 }
 
 static void update_simple_shell_configured_state(AppContext* app, const char* reason)
@@ -250,44 +240,38 @@ static void update_simple_shell_configured_state(AppContext* app, const char* re
         app->simple_shell_created_id == app->simple_shell_surface_id) {
         if (!app->configured) {
             app->configured = true;
-            log_gl_debug(
-                "wayland",
-                std::string("simple-shell ready: id=") + std::to_string(app->simple_shell_surface_id) +
-                " (" + (reason ? reason : "unknown") + ")");
+            log_info("simple-shell ready: id={}, reason={}", app->simple_shell_surface_id, reason ? reason : "unknown");
         }
     } else {
-        log_gl_debug(
-            "wayland",
-            std::string("simple-shell not ready yet (") + (reason ? reason : "unknown") +
-            "): id=" + std::to_string(app->simple_shell_surface_id) +
-            ", created_id=" + std::to_string(app->simple_shell_created_id));
+        log_warn("simple-shell not ready yet ({}): id={}, created_id={}", reason ? reason : "unknown",
+            app->simple_shell_surface_id, app->simple_shell_created_id);
     }
 }
 
 bool init_custom_font(AppContext* app, const std::string& font_path)
 {
-    log_gl_debug("font", "Trying to load font: " + font_path);
+    log_dbg("Trying to load font: {}", font_path);
     if (font_path.empty()) {
-        log_gl_debug("font", "font path is empty.");
+        log_err("font path is empty.");
         return false;
     }
     if (access(font_path.c_str(), F_OK | R_OK) != 0) {
-        log_gl_debug("font", "font file missing or unreadable: " + font_path);
+        log_err("font file missing or unreadable: {}", font_path);
         return false;
     }
 
     FontResourceBundle* bundle = new FontResourceBundle();
     if (FT_Init_FreeType(&bundle->library)) {
-        log_gl_debug("font", "FT_Init_FreeType() failed for: " + font_path);
+        log_err("FT_Init_FreeType() failed for: {}", font_path);
         delete bundle; return false;
     }
     if (FT_New_Face(bundle->library, font_path.c_str(), 0, &bundle->face)) {
-        log_gl_debug("font", "FT_New_Face() failed for: " + font_path);
+        log_err("FT_New_Face() failed for: {}", font_path);
         FT_Done_FreeType(bundle->library); delete bundle; return false;
     }
     app->embedded_font = cairo_ft_font_face_create_for_ft_face(bundle->face, 0);
     if (!app->embedded_font) {
-        log_gl_debug("font", "cairo_ft_font_face_create_for_ft_face() returned null.");
+        log_err("cairo_ft_font_face_create_for_ft_face() returned null.");
         FT_Done_Face(bundle->face); FT_Done_FreeType(bundle->library); delete bundle; return false;
     }
     static const cairo_user_data_key_t key = {0};
@@ -300,7 +284,7 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
         }
     });
     if (status != CAIRO_STATUS_SUCCESS) {
-        log_gl_debug("font", "cairo_font_face_set_user_data() status=" + std::string(cairo_status_to_string(status)));
+        log_err("cairo_font_face_set_user_data() status=" + std::string(cairo_status_to_string(status)));
         cairo_font_face_destroy(app->embedded_font);
         app->embedded_font = nullptr;
         FT_Done_Face(bundle->face);
@@ -308,7 +292,7 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
         delete bundle;
         return false;
     } else {
-        log_gl_debug("font", "Embedded font loaded successfully: " + font_path);
+        log_info("Embedded font loaded successfully: {}", font_path);
     }
     return true;
 }
@@ -326,7 +310,7 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLen);
         std::vector<char> log(static_cast<size_t>(logLen > 0 ? logLen : 1), '\0');
         glGetShaderInfoLog(shader, logLen, nullptr, log.data());
-        log_gl_debug("gles", std::string("shader compile failed: ") + log.data());
+        log_err("shader compile failed: {}", std::string(log.data()));
         glDeleteShader(shader);
         return 0;
     }
@@ -335,16 +319,16 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
 
 bool init_gles_pipeline(AppContext* app)
 {
-    log_gl_debug("gles", "Initializing GLES pipeline");
+    log_info("Initializing GLES pipeline");
 
     // Log GL capabilities
     const GLubyte* vendor = glGetString(GL_VENDOR);
     const GLubyte* renderer = glGetString(GL_RENDERER);
     const GLubyte* version = glGetString(GL_VERSION);
     const GLubyte* extensions = glGetString(GL_EXTENSIONS);
-    log_gl_debug("gles", "GL Vendor: " + std::string(reinterpret_cast<const char*>(vendor ? vendor : (const GLubyte*)"<unknown>")));
-    log_gl_debug("gles", "GL Renderer: " + std::string(reinterpret_cast<const char*>(renderer ? renderer : (const GLubyte*)"<unknown>")));
-    log_gl_debug("gles", "GL Version: " + std::string(reinterpret_cast<const char*>(version ? version : (const GLubyte*)"<unknown>")));
+    log_dbg("GL Vendor: {}", reinterpret_cast<const char*>(vendor ? vendor : (const GLubyte*)"<unknown>"));
+    log_dbg("GL Renderer: {}", reinterpret_cast<const char*>(renderer ? renderer : (const GLubyte*)"<unknown>"));
+    log_dbg("GL Version: {}", reinterpret_cast<const char*>(version ? version : (const GLubyte*)"<unknown>"));
     const char* vertex_shader_src = nullptr;
     const char* fragment_shader_src = nullptr;
 
@@ -393,7 +377,7 @@ bool init_gles_pipeline(AppContext* app)
     GLuint vs = compile_hardware_shader(GL_VERTEX_SHADER, vertex_shader_src);
     GLuint fs = compile_hardware_shader(GL_FRAGMENT_SHADER, fragment_shader_src);
     if (!vs || !fs) {
-        log_gl_debug("gles", "Shader compilation failed; aborting GLES init.");
+        log_err("Shader compilation failed; aborting GLES init.");
         if (vs) glDeleteShader(vs);
         if (fs) glDeleteShader(fs);
         return false;
@@ -413,7 +397,7 @@ bool init_gles_pipeline(AppContext* app)
         glGetProgramiv(app->program_id, GL_INFO_LOG_LENGTH, &logLen);
         std::vector<char> log(static_cast<size_t>(logLen > 0 ? logLen : 1), '\0');
         glGetProgramInfoLog(app->program_id, logLen, nullptr, log.data());
-        log_gl_debug("gles", std::string("program link failed: ") + log.data());
+        log_err("program link failed: {}", std::string(log.data()));
         glDeleteShader(vs);
         glDeleteShader(fs);
         glDeleteProgram(app->program_id);
@@ -425,14 +409,14 @@ bool init_gles_pipeline(AppContext* app)
 
     GLenum program_error = glGetError();
     if (program_error != GL_NO_ERROR) {
-        log_gl_debug("gles", "GL error after program link: 0x" + std::to_string(program_error));
+        log_err("GL error after program link: 0x{}", program_error);
     }
 
     // Validate program
     glValidateProgram(app->program_id);
     GLint valid = 0;
     glGetProgramiv(app->program_id, GL_VALIDATE_STATUS, &valid);
-    log_gl_debug("gles", "Program validates: " + std::string(valid ? "yes" : "no"));
+    log_dbg("Program validates: {}", valid ? "yes" : "no");
 
     glGenTextures(1, &app->texture_id);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
@@ -450,7 +434,7 @@ bool init_gles_pipeline(AppContext* app)
     glGenBuffers(1, &app->vbo_id);
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    log_gl_debug("gles", "GLES pipeline initialized successfully");
+    log_info("GLES pipeline initialized successfully");
     return true;
 }
 
@@ -465,11 +449,11 @@ static EGLDisplay get_wayland_egl_display(wl_display* display)
     auto getPlatformDisplayEXT = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
 
     if (getPlatformDisplayEXT) {
-        log_gl_debug("egl", "Using eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR)");
+        log_dbg("Using eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR)");
         return getPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_KHR, static_cast<void*>(display), nullptr);
     }
 
-    log_gl_debug("egl", "eglGetPlatformDisplayEXT unavailable; using eglGetDisplay fallback");
+    log_dbg("eglGetPlatformDisplayEXT unavailable; using eglGetDisplay fallback");
     return eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display));
 }
 
@@ -481,11 +465,11 @@ static EGLSurface create_wayland_egl_surface(EGLDisplay display, EGLConfig confi
     auto createPlatformWindowSurfaceEXT = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
 
     if (createPlatformWindowSurfaceEXT) {
-        log_gl_debug("egl", "Using eglCreatePlatformWindowSurfaceEXT");
+        log_dbg("Using eglCreatePlatformWindowSurfaceEXT");
         return createPlatformWindowSurfaceEXT(display, config, static_cast<void*>(egl_window), nullptr);
     }
 
-    log_gl_debug("egl", "eglCreatePlatformWindowSurfaceEXT unavailable; using eglCreateWindowSurface fallback");
+    log_dbg("eglCreatePlatformWindowSurfaceEXT unavailable; using eglCreateWindowSurface fallback");
     return eglCreateWindowSurface(display, config, reinterpret_cast<EGLNativeWindowType>(egl_window), nullptr);
 }
 
@@ -493,31 +477,27 @@ static bool ensure_egl_current(AppContext* app)
 {
     if (!app || app->egl_display == EGL_NO_DISPLAY || app->egl_context == EGL_NO_CONTEXT
         || app->egl_surface == EGL_NO_SURFACE) {
-        log_gl_debug("egl", "ensure_egl_current: invalid EGL handles");
+        log_err("ensure_egl_current: invalid EGL handles");
         return false;
     }
 
     EGLContext currentCtx = eglGetCurrentContext();
     EGLSurface currentDraw = eglGetCurrentSurface(EGL_DRAW);
     EGLSurface currentRead = eglGetCurrentSurface(EGL_READ);
-    log_gl_debug("egl",
-                "ensure_egl_current: currentCtx=" +
-                std::to_string(reinterpret_cast<uintptr_t>(currentCtx)) +
-                ", appCtx=" +
-                std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)) +
-                ", currentDraw=" +
-                std::to_string(reinterpret_cast<uintptr_t>(currentDraw)) +
-                ", currentRead=" +
-                std::to_string(reinterpret_cast<uintptr_t>(currentRead)) +
-                ", appSurface=" +
-                std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)));
+    log_dbg("ensure_egl_current: currentCtx={}, appCtx={}, currentDraw={}, currentRead={}, appSurface={}",
+        reinterpret_cast<uintptr_t>(currentCtx),
+        reinterpret_cast<uintptr_t>(app->egl_context),
+        reinterpret_cast<uintptr_t>(currentDraw),
+        reinterpret_cast<uintptr_t>(currentRead),
+        reinterpret_cast<uintptr_t>(app->egl_surface));
+
 
     if (currentCtx == app->egl_context && currentDraw == app->egl_surface && currentRead == app->egl_surface) {
         return true;
     }
 
     if (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) != EGL_TRUE) {
-        log_gl_debug("egl", "eglMakeCurrent failed in ensure_egl_current(): " + std::string(egl_error_string(eglGetError())));
+        log_err("eglMakeCurrent failed in ensure_egl_current(): {}", egl_error_string(eglGetError()));
         return false;
     }
 
@@ -528,21 +508,21 @@ static bool ensure_egl_current(AppContext* app)
 
 void render_cairo_frame(AppContext* app)
 {
-    log_gl_debug("thread", "render_cairo_frame thread=" + current_thread_string());
+    log_dbg("render_cairo_frame thread={}", current_thread_string());
     static int frame_count = 0;
     frame_count++;
 
     if (!ensure_egl_current(app)) {
-        log_gl_debug("render", "Skipping frame because EGL context/surface is not current");
+        log_dbg("Skipping frame because EGL context/surface is not current");
         app->running = false;
         return;
     }
 
-    log_gl_debug("render", "[Frame " + std::to_string(frame_count) + "] Rendering frame: size=" + std::to_string(app->width) + "x" + std::to_string(app->height) + ", keycode=" + std::to_string(app->current_keycode));
+    log_dbg("[Frame {}] Rendering frame: size={}x{}, keycode={}", frame_count, app->width, app->height, app->current_keycode);
 
     GLenum gl_error = glGetError();
     if (gl_error != GL_NO_ERROR) {
-        log_gl_debug("render", "Pre-render GL error: 0x" + std::to_string(gl_error));
+        log_dbg("Pre-render GL error: 0x{}", gl_error);
     }
 
     int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
@@ -643,20 +623,20 @@ void render_cairo_frame(AppContext* app)
     }
 
     glViewport(0, 0, app->width, app->height);
-    log_gl_debug("render", "glViewport(0, 0, " + std::to_string(app->width) + ", " + std::to_string(app->height) + ")");
+    log_dbg("glViewport(0, 0, " + std::to_string(app->width) + ", " + std::to_string(app->height) + ")");
 
     // CRITICAL: Set clear color before clearing (reference code pattern)
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
-    log_gl_debug("render", "glClearColor(0.05, 0.07, 0.12, 1.0)");
+    log_dbg("glClearColor(0.05, 0.07, 0.12, 1.0)");
 
     glClear(GL_COLOR_BUFFER_BIT);
     GLenum clear_error = glGetError();
-    log_gl_debug("render", "glClear(GL_COLOR_BUFFER_BIT) complete; GL error=0x" + std::to_string(clear_error));
+    log_dbg("glClear(GL_COLOR_BUFFER_BIT) complete; GL error=0x{}", clear_error);
 
     glUseProgram(app->program_id);
     GLenum use_program_error = glGetError();
     if (use_program_error != GL_NO_ERROR) {
-        log_gl_debug("render", "glUseProgram error: 0x" + std::to_string(use_program_error));
+        log_dbg("glUseProgram error: 0x{}", use_program_error);
     }
 
     // Bind the Cairo texture to unit 0 and tell the sampler which unit to use.
@@ -668,81 +648,77 @@ void render_cairo_frame(AppContext* app)
     }
     GLenum bind_tex_error = glGetError();
     if (bind_tex_error != GL_NO_ERROR) {
-        log_gl_debug("render", "glBindTexture/glUniform1i error: 0x" + std::to_string(bind_tex_error));
+        log_dbg("glBindTexture/glUniform1i error: 0x{}", bind_tex_error);
     }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    log_gl_debug("render", "glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, " + std::to_string(app->width) + ", " + std::to_string(app->height) + ", 0, GL_RGBA, GL_UNSIGNED_BYTE, ...)");
+    log_dbg("glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, {}, {}, 0, GL_RGBA, GL_UNSIGNED_BYTE, ...)", app->width, app->height);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, app->width, app->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_pixels.data());
     GLenum tex_error = glGetError();
     if (tex_error != GL_NO_ERROR) {
-        log_gl_debug("render", "glTexImage2D error: 0x" + std::to_string(tex_error));
+        log_dbg("glTexImage2D error: 0x{}", tex_error);
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     GLint pos_loc = app->positionAttribLocation;
-    log_gl_debug("render", "Position attribute location: " + std::to_string(pos_loc));
+    log_dbg("Position attribute location: {}", pos_loc);
     glEnableVertexAttribArray(pos_loc);
     glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
     GLenum pos_error = glGetError();
-    if (pos_error != GL_NO_ERROR) log_gl_debug("render", "Position setup error: 0x" + std::to_string(pos_error));
+    if (pos_error != GL_NO_ERROR) log_dbg("Position setup error: 0x{}", pos_error);
 
     GLint tex_loc = app->texCoordAttribLocation;
-    log_gl_debug("render", "TexCoord attribute location: " + std::to_string(tex_loc));
+    log_dbg("TexCoord attribute location: {}", tex_loc);
     glEnableVertexAttribArray(tex_loc);
     glVertexAttribPointer(tex_loc, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
     GLenum tex_loc_error = glGetError();
-    if (tex_loc_error != GL_NO_ERROR) log_gl_debug("render", "TexCoord setup error: 0x" + std::to_string(tex_loc_error));
+    if (tex_loc_error != GL_NO_ERROR) log_dbg("TexCoord setup error: 0x{}", tex_loc_error);
 
-    log_gl_debug("render", "glDrawArrays(GL_TRIANGLE_FAN, 0, 4) about to call");
+    log_dbg("glDrawArrays(GL_TRIANGLE_FAN, 0, 4) about to call");
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     GLenum draw_error = glGetError();
     if (draw_error != GL_NO_ERROR) {
-        log_gl_debug("render", "glDrawArrays FAILED with error: 0x" + std::to_string(draw_error));
+        log_dbg("glDrawArrays FAILED with error: 0x{}", draw_error);
     } else {
-        log_gl_debug("render", "glDrawArrays complete; success");
+        log_dbg("glDrawArrays complete; success");
     }
 
     EGLint pre_swap_error = eglGetError();
     if (pre_swap_error != EGL_SUCCESS) {
-        log_gl_debug("egl", "Pre-swap EGL error: " + egl_error_string(pre_swap_error));
+        log_dbg("Pre-swap EGL error: {}", egl_error_string(pre_swap_error));
     }
-    log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Calling eglSwapBuffers...");
+    log_dbg("[Frame {}] Calling eglSwapBuffers...", frame_count);
 
-    log_gl_debug("egl",
-                "[Frame " + std::to_string(frame_count) +
-                "] Before swap: currentDraw=" +
-                std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
-                ", currentRead=" +
-                std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
-                ", appSurface=" +
-                std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
-                ", currentCtx=" +
-                std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
-                ", appCtx=" +
-                std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
+    log_dbg("[Frame {}] Before swap: currentDraw={}, currentRead={}, appSurface=] Before swap: currentDraw={}, \
+            currentRead={}, appSurface={}, currentCtx={}, appCtx={}",
+            frame_count,
+            eglGetCurrentSurface(EGL_DRAW),
+            eglGetCurrentSurface(EGL_READ),
+            eglGetCurrentSurface(EGL_DRAW),
+            eglGetCurrentSurface(EGL_READ),
+            app->egl_surface,
+            eglGetCurrentContext(),
+            app->egl_context);
+
 
     EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
-    log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] eglSwapBuffers returned: " + std::string(swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE"));
+    log_dbg("[Frame {}] eglSwapBuffers returned: {}", frame_count, swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE");
     if (swap_result == EGL_TRUE) {
         app->hasPresentedFrame = true;
     }
     EGLint post_swap_error = eglGetError();
     if (post_swap_error != EGL_SUCCESS) {
-        log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Post-swap EGL error: " + egl_error_string(post_swap_error));
+        log_dbg("[Frame {}] Post-swap EGL error: {}", frame_count, egl_error_string(post_swap_error));
         if (post_swap_error == EGL_BAD_SURFACE) {
-            log_gl_debug("egl", "[Frame " + std::to_string(frame_count) +"] EGL_BAD_SURFACE detected.");
+            log_dbg("[Frame {}] EGL_BAD_SURFACE detected.", frame_count);
 
-            log_gl_debug("egl", "[Frame " + std::to_string(frame_count) + "] Current draw surface=" +
-                        std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_DRAW))) +
-                        ", current read surface=" +
-                        std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentSurface(EGL_READ))) +
-                        ", app egl_surface=" +
-                        std::to_string(reinterpret_cast<uintptr_t>(app->egl_surface)) +
-                        ", current context=" +
-                        std::to_string(reinterpret_cast<uintptr_t>(eglGetCurrentContext())) +
-                        ", app context=" +
-                        std::to_string(reinterpret_cast<uintptr_t>(app->egl_context)));
+            log_dbg("[Frame {}] Current draw surface={}, current read surface={}, app egl_surface={}, current context={}, app context={}",
+                    frame_count,
+                    eglGetCurrentSurface(EGL_DRAW),
+                    eglGetCurrentSurface(EGL_READ),
+                    app->egl_surface,
+                    eglGetCurrentContext(),
+                    app->egl_context);
 
             app->running = false;
         }
@@ -754,42 +730,42 @@ void render_cairo_frame(AppContext* app)
 
 static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s)
 {
-    log_gl_debug("input", "keyboard keymap received");
+    log_info("keyboard keymap received");
     close(fd);
 }
 
 static void keyboard_handle_enter(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf, wl_array* k)
 {
-    log_gl_debug("input", "keyboard enter surface=" + std::to_string(reinterpret_cast<uintptr_t>(surf)));
+    log_info("keyboard enter surface={}", reinterpret_cast<uintptr_t>(surf));
 }
 
 static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf)
 {
-    log_gl_debug("input", "keyboard leave surface=" + std::to_string(reinterpret_cast<uintptr_t>(surf)));
+    log_info("keyboard leave surface={}", reinterpret_cast<uintptr_t>(surf));
 }
 
 static void keyboard_handle_modifiers(void* d, wl_keyboard* kb, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lck, uint32_t g)
 {
-    log_gl_debug("input", "keyboard modifiers dep=" + std::to_string(dep) + ", lat=" + std::to_string(lat) + ", lck=" + std::to_string(lck) + ", grp=" + std::to_string(g));
+    log_info("keyboard modifiers dep={}, lat={}, lck={}, grp={}", dep, lat, lck, g);
 }
 
 static void keyboard_handle_repeat_info(void* d, wl_keyboard* kb, int32_t r, int32_t dly)
 {
-    log_gl_debug("input", "keyboard repeat rate=" + std::to_string(r) + ", delay=" + std::to_string(dly));
+    log_info("keyboard repeat rate={}, delay={}", r, dly);
 }
 
 static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
     AppContext* app = static_cast<AppContext*>(data);
-    log_gl_debug("input", "keyboard key event state=" + std::to_string(state) + ", key=" + std::to_string(key) + ", serial=" + std::to_string(serial));
+    log_info("keyboard key event state={}, key={}, serial={}", state, key, serial);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-        if (key == KEY_ESC) {
-            log_gl_debug("input", "ESC key received; requesting application exit");
+        if (key == KEY_ESC || key == KEY_BACKSPACE) {
+            log_info("ESC or BACKSPACE key received; requesting application exit");
             RequestEscExit();
         }
 
         app->current_keycode = key;
-        log_gl_debug("input", "key pressed, code=" + std::to_string(key));
+        log_dbg("key pressed, code={}", key);
         render_cairo_frame(app);
 
         MenuInputEvent event;
@@ -811,10 +787,10 @@ static const wl_keyboard_listener keyboard_listener = {
 static void seat_handle_capabilities(void* data, wl_seat* seat, uint32_t caps)
 {
     AppContext* app = static_cast<AppContext*>(data);
-    log_gl_debug("wayland", "Seat capabilities changed: caps=0x" + std::to_string(caps));
+    log_info("Seat capabilities changed: caps=0x{}", caps);
     if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !app->keyboard) {
         app->keyboard = wl_seat_get_keyboard(seat);
-        log_gl_debug("wayland", "wl_seat_get_keyboard() acquired");
+        log_info("wl_seat_get_keyboard() acquired");
         wl_keyboard_add_listener(app->keyboard, &keyboard_listener, app);
     }
 }
@@ -826,9 +802,9 @@ static const wl_seat_listener seat_listener = {
 static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surface* surface, uint32_t surface_id)
 {
     AppContext* app = static_cast<AppContext*>(data);
-    log_gl_debug("wayland", "simple-shell surface id callback: shell=" + std::to_string(reinterpret_cast<uintptr_t>(shell)) + ", surface=" + std::to_string(reinterpret_cast<uintptr_t>(surface)) + ", id=" + std::to_string(surface_id));
+    log_info("simple-shell surface id callback: shell={}, surface={}, id={}", reinterpret_cast<uintptr_t>(shell), reinterpret_cast<uintptr_t>(surface), surface_id);
     if (surface != app->surface) {
-        log_gl_debug("wayland", "Ignoring simple-shell surface event for different surface object");
+        log_info("Ignoring simple-shell surface event for different surface object");
         return;
     }
 
@@ -841,7 +817,7 @@ static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surfa
     wl_surface_commit(app->surface);
     wl_display_flush(app->display);
     update_simple_shell_configured_state(app, "surface-id");
-    log_gl_debug("wayland", "simple-shell surface configured, visible and focused: id=" + std::to_string(surface_id));
+    log_info("simple-shell surface configured, visible and focused: id={}", surface_id);
 }
 
 static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name)
@@ -851,11 +827,23 @@ static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uin
         app->simple_shell_created_id = surface_id;
         update_simple_shell_configured_state(app, "surface-created");
     }
-    log_gl_debug("wayland", "simple_shell_surface_created: id=" + std::to_string(surface_id) + ", name=" + std::string(name ? name : "<null>"));
+    log_info("simple_shell_surface_created: id={}, name={}", surface_id, name ? name : "<null>");
 }
-static void simple_shell_surface_destroyed(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name) { log_gl_debug("wayland", "simple_shell_surface_destroyed: id=" + std::to_string(surface_id) + ", name=" + std::string(name ? name : "<null>")); }
-static void simple_shell_surface_status(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name, uint32_t visible, int32_t x, int32_t y, int32_t width, int32_t height, wl_fixed_t opacity, wl_fixed_t zorder) { log_gl_debug("wayland", "simple_shell_surface_status: id=" + std::to_string(surface_id) + ", visible=" + std::to_string(visible) + ", geom=" + std::to_string(width) + "x" + std::to_string(height)); }
-static void simple_shell_get_surfaces_done(void* data, wl_simple_shell* shell) { log_gl_debug("wayland", "simple_shell_get_surfaces_done"); }
+
+static void simple_shell_surface_destroyed(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name)
+{
+    log_warn("simple_shell_surface_destroyed: id={}, name={}", surface_id, name ? name : "<null>");
+}
+
+static void simple_shell_surface_status(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name, uint32_t visible, int32_t x, int32_t y, int32_t width, int32_t height, wl_fixed_t opacity, wl_fixed_t zorder)
+{
+    log_dbg("wayland", "simple_shell_surface_status: id={}, visible={}, geom={}x{}", surface_id, visible, width, height);
+}
+
+static void simple_shell_get_surfaces_done(void* data, wl_simple_shell* shell)
+{
+    log_dbg("wayland", "simple_shell_get_surfaces_done");
+}
 
 static const wl_simple_shell_listener simple_shell_listener = {
     simple_shell_surface_id,
@@ -884,9 +872,7 @@ static bool recreate_egl_window_surface(AppContext* app)
                        EGL_NO_SURFACE,
                        EGL_NO_SURFACE,
                        EGL_NO_CONTEXT) != EGL_TRUE) {
-        log_gl_debug("egl",
-                     "Failed to unbind old EGL context before surface recreate: " +
-                     egl_error_string(eglGetError()));
+        log_dbg("Failed to unbind old EGL context before surface recreate: {}", egl_error_string(eglGetError()));
         return false;
     }
 
@@ -902,7 +888,7 @@ static bool recreate_egl_window_surface(AppContext* app)
 
     app->egl_window = wl_egl_window_create(app->surface, app->width, app->height);
     if (!app->egl_window) {
-        log_gl_debug("egl", "Failed to recreate wl_egl_window");
+        log_dbg("Failed to recreate wl_egl_window");
         return false;
     }
 
@@ -914,9 +900,7 @@ static bool recreate_egl_window_surface(AppContext* app)
         app->egl_window);
 
     if (app->egl_surface == EGL_NO_SURFACE) {
-        log_gl_debug("egl",
-                     "Failed to recreate EGL window surface: " +
-                     egl_error_string(eglGetError()));
+        log_warn("Failed to recreate EGL window surface: {}", egl_error_string(eglGetError()));
 
         wl_egl_window_destroy(app->egl_window);
         app->egl_window = nullptr;
@@ -931,9 +915,7 @@ static bool recreate_egl_window_surface(AppContext* app)
                        app->egl_surface,
                        app->egl_surface,
                        app->egl_context) != EGL_TRUE) {
-        log_gl_debug("egl",
-                     "Failed to make recreated EGL surface current: " +
-                     egl_error_string(eglGetError()));
+        log_warn("Failed to make recreated EGL surface current: {}", egl_error_string(eglGetError()));
 
         if (app->egl_surface != EGL_NO_SURFACE) {
             eglDestroySurface(app->egl_display, app->egl_surface);
@@ -948,30 +930,30 @@ static bool recreate_egl_window_surface(AppContext* app)
         return false;
     }
 
-    log_gl_debug("egl", "Recreated EGL window surface successfully");
+    log_dbg("Recreated EGL window surface successfully");
     return true;
 }
 
 static void global_registry_handler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
 {
     AppContext* app = static_cast<AppContext*>(data);
-    log_gl_debug("wayland", "Registry event: id=" + std::to_string(id) + ", interface=" + std::string(interface ? interface : "<null>") + ", version=" + std::to_string(version));
+    log_dbg("Registry event: id={}, interface={}, version={}", id, interface ? interface : "<null>", version);
     if (std::strcmp(interface, "wl_compositor") == 0) {
         app->compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, id, &wl_compositor_interface, 1));
-        log_gl_debug("wayland", "Bound wl_compositor");
+        log_dbg("Bound wl_compositor");
     } else if (std::strcmp(interface, "wl_simple_shell") == 0) {
         app->simple_shell_ptr = static_cast<wl_simple_shell*>(wl_registry_bind(registry, id, &wl_simple_shell_interface, 1));
-        log_gl_debug("wayland", "Bound wl_simple_shell");
+        log_dbg("Bound wl_simple_shell");
         wl_simple_shell_add_listener(app->simple_shell_ptr, &simple_shell_listener, app);
     } else if (std::strcmp(interface, "wl_seat") == 0) {
         app->seat = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface, 1));
-        log_gl_debug("wayland", "Bound wl_seat");
+        log_dbg("Bound wl_seat");
         wl_seat_add_listener(app->seat, &seat_listener, app);
     }
 }
 
 static const wl_registry_listener registry_listener = {
-    global_registry_handler, [](void* d, wl_registry* r, uint32_t id){ log_gl_debug("wayland", "wl_registry_remove_id: id=" + std::to_string(id)); }
+    global_registry_handler, [](void* d, wl_registry* r, uint32_t id){ log_dbg("wl_registry_remove_id: id={}", id); }
 };
 
 // ---------------------------------------------------------------------------
@@ -985,11 +967,12 @@ GlApp::GlApp(int width, int height, const std::string& fontPath, BackgroundPatte
     m_ctx->height             = height;
     m_ctx->fontPath           = fontPath;
     m_ctx->background_pattern = pattern;
-    log_gl_debug("ctor", "GlApp created: size=" + std::to_string(width) + "x" + std::to_string(height) + ", font=" + fontPath + ", pattern=" + std::to_string(pattern));
+    log_info("GlApp created: size={}x{}, font={}, pattern={}", width, height, fontPath, pattern);
 }
 
 GlApp::~GlApp()
 {
+    log_info("GlApp destructor called");
     if (!m_ctx) return;
 
     if (m_ctx->texture_id) glDeleteTextures(1, &m_ctx->texture_id);
@@ -1017,56 +1000,53 @@ GlApp::~GlApp()
 
 bool GlApp::init(const char* waylandDisplay)
 {
-    log_gl_debug("thread", "GlApp::init thread=" + current_thread_string());
+    log_dbg("GlApp::init thread={}", current_thread_string());
     if (!waylandDisplay) waylandDisplay = DEFAULT_DISPLAY;
 
     const char* xdgRuntimeDir = std::getenv("XDG_RUNTIME_DIR");
     if (!xdgRuntimeDir) {
-        std::cerr << "CRITICAL ERROR: XDG_RUNTIME_DIR environment variable is not set!\n";
+        log_fatal("XDG_RUNTIME_DIR environment variable is not set");
         return false;
     }
-    std::cout << "INFO: Using XDG_RUNTIME_DIR=" << xdgRuntimeDir << "\n";
-    std::cout << "INFO: Using Wayland display socket at " << waylandDisplay << "\n";
-    log_gl_debug("init", "Requested font path=" + m_ctx->fontPath);
+    log_info("Using XDG_RUNTIME_DIR={}", xdgRuntimeDir);
+    log_info("Using Wayland display socket at {}", waylandDisplay);
+    log_gl_debug("init", "Requested font path={}", m_ctx->fontPath);
 
     if (!init_custom_font(m_ctx, m_ctx->fontPath)) {
-        std::cerr << "CRITICAL ERROR: Failed to initialize custom font: " << m_ctx->fontPath << "\n";
+        log_fatal("Failed to initialize custom font: {}", m_ctx->fontPath);
         return false;
     }
 
     m_ctx->display = wl_display_connect(waylandDisplay);
     if (!m_ctx->display) {
-        std::cerr << "CRITICAL ERROR: Failed to connect to Wayland display socket at " << waylandDisplay << "\n";
+        log_fatal("Failed to connect to Wayland display socket at {}", waylandDisplay);
         return false;
     }
-    log_gl_debug("wayland", "Connected to Wayland display " + std::string(waylandDisplay));
+    log_gl_debug("wayland", "Connected to Wayland display {}", waylandDisplay);
 
     m_ctx->registry = wl_display_get_registry(m_ctx->display);
     wl_registry_add_listener(m_ctx->registry, &registry_listener, m_ctx);
     wl_display_roundtrip(m_ctx->display);
     log_gl_debug("wayland", "Roundtrip complete after registry discovery");
 
-    std::cout << "INFO: Using Westeros simple-shell protocol for window management.\n";
+    log_info("Using Westeros simple-shell protocol for window management.");
     if (!m_ctx->compositor || !m_ctx->simple_shell_ptr) {
-        std::cerr << "CRITICAL ERROR: Missing core Wayland protocol interfaces!\n";
-        std::cerr << "  compositor=" << (m_ctx->compositor ? "yes" : "no") << ", shell="
-                  << (m_ctx->simple_shell_ptr ? "yes" : "no")
-                  << "\n";
+        log_fatal("Missing core Wayland protocol interfaces! compositor={}, shell={}", m_ctx->compositor ? "yes" : "no", m_ctx->simple_shell_ptr ? "yes" : "no");
         return false;
     }
 
     log_gl_debug("egl", "Initializing EGL display");
     m_ctx->egl_display = get_wayland_egl_display(m_ctx->display);
     if (m_ctx->egl_display == EGL_NO_DISPLAY) {
-        std::cerr << "CRITICAL ERROR: eglGetDisplay() returned EGL_NO_DISPLAY: " << egl_error_string(eglGetError()) << "\n";
+        log_fatal("eglGetDisplay() returned EGL_NO_DISPLAY: {}", egl_error_string(eglGetError()));
         return false;
     }
     EGLint major = 0, minor = 0;
     if (eglInitialize(m_ctx->egl_display, &major, &minor) != EGL_TRUE) {
-        std::cerr << "CRITICAL ERROR: eglInitialize() failed: " << egl_error_string(eglGetError()) << "\n";
+        log_fatal("eglInitialize() failed: {}", egl_error_string(eglGetError()));
         return false;
     }
-    log_gl_debug("egl", "EGL initialized: version=" + std::to_string(major) + "." + std::to_string(minor));
+    log_info("EGL initialized: version={}.{}", major, minor);
 
     // Try ES3-capable config first; fall back to ES2-only config so this works
     // on devices that only support OpenGL ES 2.0 or earlier.
@@ -1086,12 +1066,12 @@ bool GlApp::init(const char* waylandDisplay)
     EGLBoolean config_ok = eglChooseConfig(m_ctx->egl_display, config_attribs_es3, &m_ctx->egl_config, 1, &num_configs);
     if (config_ok == EGL_TRUE && num_configs > 0) {
         es3ConfigAvailable = true;
-        log_gl_debug("egl", "EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES3");
+        log_info("EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES3");
     } else {
         eglGetError(); // clear stale error from failed ES3 config attempt
-        log_gl_debug("egl", "ES3 EGL config unavailable; retrying with ES2 config.");
+        log_info("ES3 EGL config unavailable; retrying with ES2 config.");
         config_ok = eglChooseConfig(m_ctx->egl_display, config_attribs_es2, &m_ctx->egl_config, 1, &num_configs);
-        log_gl_debug("egl", "EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES2");
+        log_info("EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES2");
     }
     if (num_configs > 0 && m_ctx->egl_config) {
         EGLint red, green, blue, alpha, depth, stencil;
@@ -1101,11 +1081,11 @@ bool GlApp::init(const char* waylandDisplay)
         eglGetConfigAttrib(m_ctx->egl_display, m_ctx->egl_config, EGL_ALPHA_SIZE, &alpha);
         eglGetConfigAttrib(m_ctx->egl_display, m_ctx->egl_config, EGL_DEPTH_SIZE, &depth);
         eglGetConfigAttrib(m_ctx->egl_display, m_ctx->egl_config, EGL_STENCIL_SIZE, &stencil);
-        log_gl_debug("egl", "Chosen config: R=" + std::to_string(red) + ", G=" + std::to_string(green) + ", B=" + std::to_string(blue) + ", A=" + std::to_string(alpha) + ", D=" + std::to_string(depth) + ", S=" + std::to_string(stencil));
+        log_info("Chosen config: R={}, G={}, B={}, A={}, D={}, S={}", red, green, blue, alpha, depth, stencil);
     }
-    log_gl_debug("egl", "eglChooseConfig: ok=" + std::string(config_ok == EGL_TRUE ? "true" : "false") + ", configs=" + std::to_string(num_configs));
+    log_info("eglChooseConfig: ok={}, configs={}", config_ok == EGL_TRUE ? "true" : "false", num_configs);
     if (config_ok != EGL_TRUE || num_configs == 0) {
-        std::cerr << "CRITICAL ERROR: eglChooseConfig() failed: " << egl_error_string(eglGetError()) << "\n";
+        log_fatal("eglChooseConfig() failed: {}", egl_error_string(eglGetError()));
         return false;
     }
 
@@ -1123,28 +1103,26 @@ bool GlApp::init(const char* waylandDisplay)
 
     // Only attempt ES3 context when the config supports it.
     if (es3ConfigAvailable && try_create_context(3)) {
-        log_gl_debug("egl", "EGL context created for OpenGL ES 3.x");
+        log_info("EGL context created for OpenGL ES 3.x");
     } else {
         if (es3ConfigAvailable) {
-            std::cerr << "WARN: OpenGL ES 3.x context creation failed despite ES3 config: "
-                      << egl_error_string(eglGetError()) << ". Falling back to ES 2.0.\n";
+            log_warn("OpenGL ES 3.x context creation failed despite ES3 config: {}. Falling back to ES 2.0.", egl_error_string(eglGetError()));
             eglGetError(); // clear
         }
         if (!try_create_context(2)) {
-            std::cerr << "CRITICAL ERROR: eglCreateContext() for OpenGL ES 2.0 failed: "
-                      << egl_error_string(eglGetError()) << "\n";
+            log_fatal("eglCreateContext() for OpenGL ES 2.0 failed: {}", egl_error_string(eglGetError()));
             return false;
         }
-        log_gl_debug("egl", "EGL context created for OpenGL ES 2.x");
+        log_info("EGL context created for OpenGL ES 2.x");
     }
-    log_gl_debug("egl", "Selected OpenGL ES version: " + std::to_string(m_ctx->glesClientVersion));
+    log_info("Selected OpenGL ES version: {}", m_ctx->glesClientVersion);
 
     m_ctx->surface = wl_compositor_create_surface(m_ctx->compositor);
     if (!m_ctx->surface) {
-        std::cerr << "CRITICAL ERROR: wl_compositor_create_surface() returned null\n";
+        log_fatal("wl_compositor_create_surface() returned null");
         return false;
     }
-    log_gl_debug("wayland", "wl_surface created");
+    log_info("wl_surface created");
     wl_surface_commit(m_ctx->surface);
     wl_display_roundtrip(m_ctx->display);
     for (int attempt = 0; m_ctx->simple_shell_surface_id == 0 && attempt < 20; ++attempt) {
@@ -1157,40 +1135,39 @@ bool GlApp::init(const char* waylandDisplay)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     if (m_ctx->simple_shell_surface_id == 0) {
-        std::cerr << "CRITICAL ERROR: Failed to acquire simple-shell surface id!\n";
+        log_fatal("Failed to acquire simple-shell surface id!");
         return false;
     }
-    log_gl_debug("wayland", "Simple-shell surface id acquired: " + std::to_string(m_ctx->simple_shell_surface_id));
+    log_info("Simple-shell surface id acquired: {}", m_ctx->simple_shell_surface_id);
 
     m_ctx->egl_window = wl_egl_window_create(m_ctx->surface, m_ctx->width, m_ctx->height);
     if (!m_ctx->egl_window) {
-        std::cerr << "CRITICAL ERROR: wl_egl_window_create() returned null\n";
+        log_fatal("wl_egl_window_create() returned null");
         return false;
     }
-    log_gl_debug("egl", "wl_egl_window created: size=" + std::to_string(m_ctx->width) + "x" + std::to_string(m_ctx->height));
+    log_info("wl_egl_window created: size={}x{}", m_ctx->width, m_ctx->height);
 
     wl_egl_window_resize(m_ctx->egl_window, m_ctx->width, m_ctx->height, 0, 0);
     m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE) {
-        std::cerr << "CRITICAL ERROR: eglCreateWindowSurface() failed: " << egl_error_string(eglGetError()) << "\n";
+        log_fatal("eglCreateWindowSurface() failed: {}", egl_error_string(eglGetError()));
         return false;
     }
-    log_gl_debug("egl", "EGL window surface created");
+    log_info("EGL window surface created");
 
     EGLBoolean make_current_ok = eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context);
     if (make_current_ok != EGL_TRUE) {
-        std::cerr << "CRITICAL ERROR: eglMakeCurrent() failed: " << egl_error_string(eglGetError()) << "\n";
+        log_fatal("eglMakeCurrent() failed: {}", egl_error_string(eglGetError()));
         return false;
     }
-    log_gl_debug("egl", "EGL context made current");
+    log_info("EGL context made current");
 
     // Re-assert visibility and geometry after EGL objects exist; some simple-shell
     // compositors do not map until this state is applied post-EGL setup.
     apply_simple_shell_state(m_ctx, "post-egl-setup");
 
     if (!init_gles_pipeline(m_ctx)) {
-        std::cerr << "CRITICAL ERROR: GLES pipeline initialization failed for OpenGL ES "
-                  << m_ctx->glesClientVersion << ".x\n";
+        log_fatal("GLES pipeline initialization failed for OpenGL ES {}.x", m_ctx->glesClientVersion);
         return false;
     }
 
@@ -1202,9 +1179,9 @@ bool GlApp::init(const char* waylandDisplay)
     */
     glFinish();
     if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
-        std::cerr << "WARN: Failed to release EGL context from init:" << egl_error_string(eglGetError()) << std::endl;
+        log_warn("Failed to release EGL context from init: {}", egl_error_string(eglGetError()));
     } else {
-        log_gl_debug("init", "GlApp init complete, Released EGL context after GLES init");
+        log_info("GlApp init complete, Released EGL context after GLES init");
     }
 
     return true;
@@ -1212,23 +1189,23 @@ bool GlApp::init(const char* waylandDisplay)
 
 void GlApp::run()
 {
-    log_gl_debug("run", "Starting Wayland dispatch loop");
+    log_info("Starting Wayland dispatch loop");
     while (m_ctx->running && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
-            log_gl_debug("run", "wl_display_dispatch failed while waiting for initial configure");
+            log_warn("wl_display_dispatch failed while waiting for initial configure");
             m_ctx->running = false;
             break;
         }
     }
     if (!m_ctx->running) {
-        log_gl_debug("run", "Exiting before first frame due to dispatch failure");
+        log_warn("Exiting before first frame due to dispatch failure");
         return;
     }
-    log_gl_debug("run", "Surface configured, drawing first frame");
+    log_info("Surface configured, drawing first frame");
     render_cairo_frame(m_ctx);
 
     if (!m_ctx->hasPresentedFrame) {
-        log_gl_debug("run", "First frame not presented yet; starting short warm-up retries");
+        log_info("First frame not presented yet; starting short warm-up retries");
         for (int i = 0; m_ctx->running && !m_ctx->hasPresentedFrame && i < 20; ++i) {
             wl_surface_commit(m_ctx->surface);
             wl_display_flush(m_ctx->display);
@@ -1238,18 +1215,18 @@ void GlApp::run()
         }
 
         if (m_ctx->hasPresentedFrame) {
-            log_gl_debug("run", "Warm-up retries succeeded; first frame is now presented");
+            log_info("Warm-up retries succeeded; first frame is now presented");
         } else {
-            log_gl_debug("run", "Warm-up retries ended without a confirmed presented frame");
+            log_warn("Warm-up retries ended without a confirmed presented frame");
         }
     }
 
-    log_gl_debug("run", "Entering event-driven loop (low CPU mode)");
+    log_info("Entering event-driven loop (low CPU mode)");
     int dispatch_count = 0;
     auto last_heartbeat = std::chrono::steady_clock::now();
     while (m_ctx->running) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
-            log_gl_debug("run", "wl_display_dispatch returned < 0, stopping loop");
+            log_warn("wl_display_dispatch returned < 0, stopping loop");
             m_ctx->running = false;
             break;
         }
@@ -1260,7 +1237,7 @@ void GlApp::run()
         }
 
         if (dispatch_count % 60 == 0) {
-            log_gl_debug("run", "Dispatch iteration " + std::to_string(dispatch_count));
+            log_info("Dispatch iteration {}", dispatch_count);
         }
 
         // Keep one low-frequency redraw in case compositor requires occasional commits.
@@ -1276,17 +1253,17 @@ void GlApp::run()
     if (m_ctx->egl_display != EGL_NO_DISPLAY) {
         glFinish();
         if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
-            log_gl_debug("egl", "Failed to release *GL context from run/render:" +
-                        egl_error_string(eglGetError()));
+            log_warn("Failed to release *GL context from run/render: {}", egl_error_string(eglGetError()));
         } else {
-            log_gl_debug("egl", "Released EGL context from run/render.");
+            log_info("Released EGL context from run/render.");
         }
     }
-    log_gl_debug("run", "Wayland dispatch loop exited");
+    log_warn("Wayland dispatch loop exited");
 }
 
 void GlApp::shutdown()
 {
+    log_info("Shutting down GlApp");
     if (m_ctx) {
         m_ctx->running = false;
     }
