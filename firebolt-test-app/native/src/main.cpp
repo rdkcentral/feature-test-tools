@@ -450,6 +450,7 @@ int main(int argc, char** argv)
     std::once_flag cleanupOnce;
     std::once_flag fireboltCleanupOnce;
     std::atomic<bool> shutdownRequested{ false };
+    std::atomic<bool> appInitiatedTeardown{ false };
 
     auto signalExit = [&](int code) {
         std::call_once(exitCodeOnce, [&] {
@@ -575,9 +576,10 @@ int main(int argc, char** argv)
       * @brief Cleanup and signal application exit with the specified exit code.
       * @param code Exit code to return from main().
       */
-    auto cleanupAndExit = [&](int code) {
+    auto cleanupAndExit = [&](int code, bool initiatedByApp) {
         std::call_once(cleanupOnce, [&] {
             shutdownRequested.store(true);
+            appInitiatedTeardown.store(initiatedByApp);
 
             // Shutdown GL app and thread
             log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
@@ -598,7 +600,7 @@ int main(int argc, char** argv)
         while (escWatcherRunning.load()) {
             if (ConsumeEscExitRequest()) {
                 log_warn("[ESCWatcher] ESC exit request received. Cleaning up and exiting...");
-                cleanupAndExit(0);
+                cleanupAndExit(0, true);
                 return;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -653,7 +655,7 @@ int main(int argc, char** argv)
                 if (gModules.empty()) {
                     log_warn("[schedulePausedStateWork] No modules registered for the selected Firebolt version.");
                     pausedStateWorkScheduled = false;
-                    cleanupAndExit(1);
+                    cleanupAndExit(1, true);
                     return;
                 }
             }
@@ -672,7 +674,7 @@ int main(int argc, char** argv)
             if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
                 if (!initializeGlApp()) {
                     pausedStateWorkScheduled = false;
-                    cleanupAndExit(1);
+                    cleanupAndExit(1, true);
                     return;
                 }
 
@@ -697,7 +699,7 @@ int main(int argc, char** argv)
                         } else {
                             runInteractiveMode(gModules);
                         }
-                        cleanupAndExit(0);
+                        cleanupAndExit(0, true);
                     });
                 }
 #endif
@@ -763,7 +765,7 @@ int main(int argc, char** argv)
                         break;
                     case Firebolt::Lifecycle::LifecycleState::TERMINATING:
                         log_fatal("[LifecycleCB] State TERMINATING");
-                        cleanupAndExit(0);
+                        cleanupAndExit(0, false);
                         log_info("[LifecycleCB] State transition ends: {}", timepointToString());
                         break;
                     default:
@@ -788,13 +790,6 @@ int main(int argc, char** argv)
 
     const int exitCode = exitCodePromise.get_future().get();
     log_dbg("[Main] Exit processing begins: refCount={}", glApp ? glApp.use_count() : 0);
-
-    // Keep Firebolt transport teardown on the main thread to avoid callback-thread races.
-    std::call_once(fireboltCleanupOnce, [&] {
-        Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
-        Firebolt::IFireboltAccessor::Instance().Disconnect();
-    });
-
     if (testThread.joinable()) {
         log_warn("[Main] Waiting for test thread to finish...");
         testThread.join();
@@ -809,6 +804,38 @@ int main(int argc, char** argv)
         log_warn("[Main] Waiting for ESC watcher thread to finish...");
         escWatcherThread.join();
     }
+
+    // Keep Firebolt transport teardown on the main thread after worker joins.
+    std::call_once(fireboltCleanupOnce, [&] {
+        if (appInitiatedTeardown.load()) {
+            log_info("[Main] App-initiated teardown: calling Lifecycle.close(UNLOAD)...");
+            auto closeResult = Firebolt::IFireboltAccessor::Instance()
+                                   .LifecycleInterface()
+                                   .close(Firebolt::Lifecycle::CloseType::UNLOAD);
+            if (closeResult != Firebolt::Error::None) {
+                log_warn("[Main] Lifecycle.close(UNLOAD) failed: {}", static_cast<int>(closeResult));
+            }
+        } else {
+            log_info("[Main] System-initiated teardown: skipping Lifecycle.close(UNLOAD)");
+        }
+
+        log_info("[Main] Disconnecting Firebolt transport...");
+        // For runtime debugging, skip Disconnect() if "/tmp/.fbttestnodisconnect" file exists.
+        if (access("/tmp/.fbttestnodisconnect", F_OK) == 0) {
+            log_warn("[Main] Skipping Firebolt transport disconnect due to /tmp/.fbttestnodisconnect");
+            // unsubscribe from lifecycle state changes to avoid dangling subscription
+            if (lifecycleSubId != 0) {
+                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
+                log_info("[Main] Unsubscribed from lifecycle state changes (ID: {})", lifecycleSubId);
+            }
+        } else {
+            log_info("[Main] Calling Firebolt::IFireboltAccessor::Instance().Disconnect()...");
+            Firebolt::IFireboltAccessor::Instance().Disconnect();
+            log_info("[Main] Firebolt transport disconnected.");
+        }
+        lifecycleSubId = 0;
+        log_info("[Main] Firebolt transport disconnected");
+    });
 
     log_warn("[Main] Disconnected @ {}, Exiting.", timepointToString());
 
