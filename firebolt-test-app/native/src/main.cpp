@@ -512,16 +512,20 @@ int main(int argc, char** argv)
         }
 
         if (glThread.joinable() && glThread.get_id() != std::this_thread::get_id()) {
+            log_dbg("[stopGlThread] Joining GlApp thread...");
             glThread.join();
         } else if (glThread.joinable()) {
             // Avoid std::terminate when stop is invoked from the GL worker itself.
+            log_dbg("[stopGlThread] Detaching GlApp thread...");
             glThread.detach();
         }
 
         if (glAppCopy) {
+            log_dbg("[stopGlThread] Deinitializing GlApp...");
             glAppCopy->deinit();
         }
 
+        log_dbg("[stopGlThread] Resetting GlApp and thread state...");
         glApp.reset();
         glThreadStarted = false;
 
@@ -566,27 +570,23 @@ int main(int argc, char** argv)
         return true;
     };
 
-        /**
-            * @brief Cleanup and signal application exit with the specified exit code.
-            * @param code Exit code to return from main().
-            */
-        auto cleanupAndExit = [&](int code) {
+    /**
+      * @brief Cleanup and signal application exit with the specified exit code.
+      * @param code Exit code to return from main().
+      */
+    auto cleanupAndExit = [&](int code) {
         std::call_once(cleanupOnce, [&] {
             // Shutdown GL app and thread
             log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
             stopGlThread();
 
             Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
-            // Unsubscribe from lifecycle events FIRST to prevent race conditions
-            if (lifecycleSubId != 0) {
-                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
-            }
             Firebolt::IFireboltAccessor::Instance().Disconnect();
 
             escWatcherRunning = false;
 
             // Disable input bridge and disconnect
-            SetMenuInputBridgeEnabled(false);
+            //SetMenuInputBridgeEnabled(false);
             signalExit(code);
         });
     };
@@ -596,9 +596,8 @@ int main(int argc, char** argv)
             if (ConsumeEscExitRequest()) {
                 log_warn("[ESCWatcher] ESC exit request received. Cleaning up and exiting...");
                 cleanupAndExit(0);
-                return;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     });
 
@@ -624,13 +623,13 @@ int main(int argc, char** argv)
             return;
         }
 
-        /**
-          * @brief Thread function to handle state transitions.
-          */
         if (pausedStateThread.joinable()) {
             pausedStateThread.join();
         }
 
+        /**
+          * @brief Thread function to handle state transitions.
+          */
         pausedStateThread = std::thread([&, oldState]() {
             std::lock_guard<std::mutex> stateLock(pausedStateMutex);
 
