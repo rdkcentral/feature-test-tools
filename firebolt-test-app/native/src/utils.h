@@ -28,6 +28,7 @@
 #include <firebolt/common_types.h>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -57,6 +58,9 @@ inline bool termSupportsColor()
     }();
     return supportsColor;
 }
+
+std::string timepointToString(
+    const std::chrono::system_clock::time_point& tp = std::chrono::system_clock::now());
 
 namespace Color
 {

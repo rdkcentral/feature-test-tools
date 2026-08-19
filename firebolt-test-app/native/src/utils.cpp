@@ -25,12 +25,32 @@
 
 #include <cctype>
 #include <deque>
+#include <ctime>
+#include <iomanip>
 #include <mutex>
 #include <poll.h>
+#include <sstream>
 #include <stdexcept>
 #include <strings.h>
-#include <sstream>
 #include <thread>
+
+std::string timepointToString(const std::chrono::system_clock::time_point& tp)
+{
+    const std::time_t timeValue = std::chrono::system_clock::to_time_t(tp);
+    const auto microsRemainder = std::chrono::duration_cast<std::chrono::microseconds>(
+        tp.time_since_epoch()) % std::chrono::seconds(1);
+    std::tm tmValue{};
+#if defined(_WIN32)
+    localtime_s(&tmValue, &timeValue);
+#else
+    localtime_r(&timeValue, &tmValue);
+#endif
+
+    std::ostringstream oss;
+    oss << std::put_time(&tmValue, "%Y-%m-%d %H:%M:%S")
+        << '.' << std::setw(6) << std::setfill('0') << microsRemainder.count();
+    return oss.str();
+}
 
 std::string current_thread_string()
 {

@@ -686,7 +686,7 @@ int main(int argc, char** argv)
             }
 
             pausedStateWorkScheduled = false;
-            log_info("[schedulePausedStateWork] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+            log_info("[schedulePausedStateWork] State transition ends: {}", timepointToString());
         });
     };
 
@@ -696,7 +696,7 @@ int main(int argc, char** argv)
             for (const auto& change : changes) {
                 log_fatal("[LifecycleCB] State change: {} -> {}" , static_cast<int>(change.oldState), static_cast<int>(change.newState));
                 log_fatal("[LifecycleCB] State change: {} -> {}" , lifecycleStateToString(change.oldState), lifecycleStateToString(change.newState));
-                log_info("[LifecycleCB] State transition begins: {}", timepointToString(std::chrono::system_clock::now()));
+                log_info("[LifecycleCB] State transition begins: {}", timepointToString());
 
                 switch (change.newState) {
                     case Firebolt::Lifecycle::LifecycleState::INITIALIZING: {
@@ -712,7 +712,7 @@ int main(int argc, char** argv)
                                 log_info("[Mode] Firebolt All - All modules across all Firebolt versions enabled.");
                                 break;
                         }
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::PAUSED: {
@@ -722,23 +722,23 @@ int main(int argc, char** argv)
                     break;
                     case Firebolt::Lifecycle::LifecycleState::ACTIVE: {
                         log_info("[LifecycleCB] State ACTIVE");
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::SUSPENDED: {
                         log_warn("[LifecycleCB] State SUSPENDED. Releasing W-EGL resources...");
                         stopGlThread();
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::HIBERNATED:
                         log_warn("[LifecycleCB] State HIBERNATED");
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
                         break;
                     case Firebolt::Lifecycle::LifecycleState::TERMINATING:
                         log_fatal("[LifecycleCB] State TERMINATING");
                         cleanupAndExit(0);
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
                         break;
                     default:
                         log_warn("[LifecycleCB] Unhandled state: {}", static_cast<int>(change.newState));
@@ -777,7 +777,7 @@ int main(int argc, char** argv)
         escWatcherThread.join();
     }
 
-    log_warn("[Main] Disconnected @ {}, Exiting.", timepointToString(std::chrono::system_clock::now()));
+    log_warn("[Main] Disconnected @ {}, Exiting.", timepointToString());
 
     return exitCode;
 }
