@@ -1014,7 +1014,7 @@ bool GlApp::init(const char* waylandDisplay)
     }
     log_info("Using XDG_RUNTIME_DIR={}", xdgRuntimeDir);
     log_info("Using Wayland display socket at {}", waylandDisplay);
-    log_gl_debug("init", "Requested font path={}", m_ctx->fontPath);
+    log_info("Requested font path={}", m_ctx->fontPath);
 
     if (!init_custom_font(m_ctx, m_ctx->fontPath)) {
         log_fatal("Failed to initialize custom font: {}", m_ctx->fontPath);
@@ -1026,12 +1026,12 @@ bool GlApp::init(const char* waylandDisplay)
         log_fatal("Failed to connect to Wayland display socket at {}", waylandDisplay);
         return false;
     }
-    log_gl_debug("wayland", "Connected to Wayland display {}", waylandDisplay);
+    log_info("Connected to Wayland display {}", waylandDisplay);
 
     m_ctx->registry = wl_display_get_registry(m_ctx->display);
     wl_registry_add_listener(m_ctx->registry, &registry_listener, m_ctx);
     wl_display_roundtrip(m_ctx->display);
-    log_gl_debug("wayland", "Roundtrip complete after registry discovery");
+    log_info("Roundtrip complete after registry discovery");
 
     log_info("Using Westeros simple-shell protocol for window management.");
     if (!m_ctx->compositor || !m_ctx->simple_shell_ptr) {
@@ -1039,7 +1039,7 @@ bool GlApp::init(const char* waylandDisplay)
         return false;
     }
 
-    log_gl_debug("egl", "Initializing EGL display");
+    log_info("Initializing EGL display");
     m_ctx->egl_display = get_wayland_egl_display(m_ctx->display);
     if (m_ctx->egl_display == EGL_NO_DISPLAY) {
         log_fatal("eglGetDisplay() returned EGL_NO_DISPLAY: {}", egl_error_string(eglGetError()));
