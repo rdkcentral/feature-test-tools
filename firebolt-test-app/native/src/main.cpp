@@ -520,11 +520,6 @@ int main(int argc, char** argv)
             glThread.detach();
         }
 
-        if (glAppCopy) {
-            log_dbg("[stopGlThread] Deinitializing GlApp...");
-            glAppCopy->deinit();
-        }
-
         log_dbg("[stopGlThread] Resetting GlApp and thread state...");
         glApp.reset();
         glThreadStarted = false;

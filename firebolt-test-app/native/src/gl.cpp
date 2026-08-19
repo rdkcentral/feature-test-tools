@@ -207,6 +207,9 @@ struct AppContext {
     int width = DEFAULT_WIDTH;
     int height = DEFAULT_HEIGHT;
     std::string fontPath = "/usr/share/fonts/ttf/LiberationSans-Bold.ttf";
+
+    // Lifetime management
+    std::atomic<bool> deinitialized { false };
 };
 
 static bool recreate_egl_window_surface(AppContext* app);
@@ -519,6 +522,11 @@ void render_cairo_frame(AppContext* app)
     static int frame_count = 0;
     frame_count++;
 
+    if (!app || !app->running.load()) {
+        log_dbg("render_cairo_frame: render skipped during shutdown");
+        return;
+    }
+
     if (!ensure_egl_current(app)) {
         log_dbg("Skipping frame because EGL context/surface is not current");
         app->running.store(false);
@@ -767,18 +775,21 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
     log_dbg("keyboard key event state={}, key={}, serial={}", state, key, serial);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         if (key == KEY_ESC || key == KEY_BACKSPACE) {
+            // Prevent GL event loop from scheduling another frame after EXIT trigger KEYCODE.
+            app->running.store(false);
+            app->keyFrameDirty = false;
             log_info("ESC or BACKSPACE key received; requesting application exit without rendering it.");
             RequestEscExit();
-        } else {
-            app->current_keycode = key;
-            app->keyFrameDirty = true;
-            log_dbg("key pressed, code={}", key);
-
-            MenuInputEvent event;
-            if (translate_menu_input_event(key, event)) {
-                PushMenuInputEvent(event);
-            }
+            return;
         }
+        app->current_keycode = key;
+        app->keyFrameDirty = true;
+
+        // TODO: remove this.
+        // MenuInputEvent event;
+        // if (translate_menu_input_event(key, event)) {
+        // 	PushMenuInputEvent(event);
+        // }
     }
 }
 
@@ -980,31 +991,7 @@ GlApp::GlApp(int width, int height, const std::string& fontPath, BackgroundPatte
 GlApp::~GlApp()
 {
     log_info("GlApp destructor called");
-    if (!m_ctx) return;
-
-    // GL object cleanup is performed in deinit() while a valid EGL surface/context
-    // can still be made current. Keep destructor resilient if deinit() was skipped.
-    if (m_ctx->embedded_font) {
-        cairo_font_face_destroy(m_ctx->embedded_font);
-        m_ctx->embedded_font = nullptr;
-    }
-
-    if (m_ctx->egl_surface != EGL_NO_SURFACE)
-        eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
-    if (m_ctx->egl_window)
-        wl_egl_window_destroy(m_ctx->egl_window);
-    if (m_ctx->simple_shell_ptr)  wl_simple_shell_destroy(m_ctx->simple_shell_ptr);
-    if (m_ctx->surface)          wl_surface_destroy(m_ctx->surface);
-    if (m_ctx->egl_context != EGL_NO_CONTEXT)
-        eglDestroyContext(m_ctx->egl_display, m_ctx->egl_context);
-    if (m_ctx->egl_display != EGL_NO_DISPLAY)
-        eglTerminate(m_ctx->egl_display);
-
-    if (m_ctx->display)
-        wl_display_disconnect(m_ctx->display);
-
-    delete m_ctx;
-    m_ctx = nullptr;
+    deinit();
 }
 
 bool GlApp::init(const char* waylandDisplay)
@@ -1199,13 +1186,30 @@ bool GlApp::init(const char* waylandDisplay)
 void GlApp::deinit()
 {
     log_info("GlApp::deinit called");
-    if (!m_ctx) return;
+    if (!m_ctx) {
+        log_dbg("GlApp::deinit called but m_ctx is null; nothing to clean up");
+        return;
+    }
+
+    bool expected = false;
+    if (!m_ctx->deinitialized.compare_exchange_strong(expected, true)) {
+        log_dbg("GlApp::deinit: cleanup already completed or in progress");
+        return;
+    }
+
+    m_ctx->running.store(false);
+
+    // GL objects must be deleted while the EGL context is current.
+    // The run thread released this context before exiting, so the cleanup thread can now acquire it.
+    bool contextCurrent = false;
 
     // Ensure GL object destruction runs with a valid current context.
     if (m_ctx->egl_display != EGL_NO_DISPLAY &&
         m_ctx->egl_context != EGL_NO_CONTEXT &&
         m_ctx->egl_surface != EGL_NO_SURFACE) {
         if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
+            contextCurrent = true;
+            // Only call glDelete* when a valid context is current.
             if (m_ctx->texture_id) {
                 glDeleteTextures(1, &m_ctx->texture_id);
                 m_ctx->texture_id = 0;
@@ -1219,11 +1223,22 @@ void GlApp::deinit()
                 m_ctx->program_id = 0;
             }
 
+            glFinish();
+
             if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
-                log_warn("Failed to release EGL context from deinit: {}", egl_error_string(eglGetError()));
+                log_warn("GlApp::deinit: Failed to release EGL context from deinit: {}", egl_error_string(eglGetError()));
+            } else {
+                log_info("GlApp::deinit: Released EGL context after GL object cleanup");
             }
         } else {
-            log_warn("Failed to make EGL context current in deinit: {}", egl_error_string(eglGetError()));
+            log_warn("GlApp::deinit: Failed to make EGL context current in deinit: {}", egl_error_string(eglGetError()));
+            /*
+            * EGL context destruction will release driver-side GL resources.
+            * Do not call glDelete* without a current context.
+            */
+            m_ctx->texture_id = 0;
+            m_ctx->vbo_id = 0;
+            m_ctx->program_id = 0;
         }
     }
 
@@ -1232,24 +1247,71 @@ void GlApp::deinit()
         m_ctx->embedded_font = nullptr;
     }
 
-    if (m_ctx->egl_surface != EGL_NO_SURFACE) {
+    if (m_ctx->egl_surface != EGL_NO_SURFACE && m_ctx->egl_display != EGL_NO_DISPLAY) {
         eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
         m_ctx->egl_surface = EGL_NO_SURFACE;
     }
+
     if (m_ctx->egl_window) {
         wl_egl_window_destroy(m_ctx->egl_window);
         m_ctx->egl_window = nullptr;
+    }
+
+    if (m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_display != EGL_NO_DISPLAY) {
+        eglDestroyContext(m_ctx->egl_display, m_ctx->egl_context);
+        m_ctx->egl_context = EGL_NO_CONTEXT;
+    }
+
+    if (m_ctx->egl_display != EGL_NO_DISPLAY) {
+        eglTerminate(m_ctx->egl_display);
+        m_ctx->egl_display = EGL_NO_DISPLAY;
+    }
+
+    // Destroy Wayland child objects before the display connection.
+    if (m_ctx->keyboard) {
+        wl_keyboard_destroy(m_ctx->keyboard);
+        m_ctx->keyboard = nullptr;
+    }
+
+    if (m_ctx->seat) {
+        wl_seat_destroy(m_ctx->seat);
+        m_ctx->seat = nullptr;
+    }
+
+    if (app->simple_shell_ptr) {
+        wl_simple_shell_destroy(app->simple_shell_ptr);
+        app->simple_shell_ptr = nullptr;
     }
 
     if (m_ctx->surface) {
         wl_surface_destroy(m_ctx->surface);
         m_ctx->surface = nullptr;
     }
+
+    if (m_ctx->compositor) {
+        wl_compositor_destroy(m_ctx->compositor);
+        m_ctx->compositor = nullptr;
+    }
+
+    if (m_ctx->registry) {
+        wl_registry_destroy(m_ctx->registry);
+        m_ctx->registry = nullptr;
+    }
+
+    if (m_ctx->display) {
+        wl_display_disconnect(m_ctx->display);
+        m_ctx->display = nullptr;
+    }
+
+    delete m_ctx;
+    m_ctx = nullptr;
+    log_info("GlApp::deinit completed");
 }
 
 void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
+
     while (m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch failed while waiting for initial configure");
@@ -1257,10 +1319,12 @@ void GlApp::run()
             break;
         }
     }
+
     if (!m_ctx->running.load()) {
         log_warn("Exiting before first frame due to dispatch failure");
         return;
     }
+
     log_info("Surface configured, drawing first frame");
     render_cairo_frame(m_ctx);
 
@@ -1304,7 +1368,7 @@ void GlApp::run()
 
         // Coalesce bursty key events and cap key-driven redraw frequency.
         const auto now = std::chrono::steady_clock::now();
-        if (m_ctx->keyFrameDirty &&
+        if (m_ctx->running.load() && m_ctx->keyFrameDirty &&
             (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
              now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
             render_cairo_frame(m_ctx);
@@ -1314,7 +1378,7 @@ void GlApp::run()
         }
 
         // Keep one low-frequency redraw in case compositor requires occasional commits.
-        if (now - last_heartbeat >= std::chrono::seconds(1)) {
+        if (m_ctx->running.load() && (now - last_heartbeat >= std::chrono::seconds(1))) {
             render_cairo_frame(m_ctx);
             last_heartbeat = now;
         }

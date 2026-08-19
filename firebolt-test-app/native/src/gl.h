@@ -57,6 +57,6 @@ class GlApp {
         void shutdown();
         void deinit();
 
-       private:
+    private:
         AppContext* m_ctx = nullptr;
 };
