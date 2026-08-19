@@ -982,10 +982,12 @@ GlApp::~GlApp()
     log_info("GlApp destructor called");
     if (!m_ctx) return;
 
-    if (m_ctx->texture_id) glDeleteTextures(1, &m_ctx->texture_id);
-    if (m_ctx->vbo_id)     glDeleteBuffers(1,  &m_ctx->vbo_id);
-    if (m_ctx->program_id) glDeleteProgram(m_ctx->program_id);
-    if (m_ctx->embedded_font) cairo_font_face_destroy(m_ctx->embedded_font);
+    // GL object cleanup is performed in deinit() while a valid EGL surface/context
+    // can still be made current. Keep destructor resilient if deinit() was skipped.
+    if (m_ctx->embedded_font) {
+        cairo_font_face_destroy(m_ctx->embedded_font);
+        m_ctx->embedded_font = nullptr;
+    }
 
     if (m_ctx->egl_surface != EGL_NO_SURFACE)
         eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
@@ -1198,6 +1200,37 @@ void GlApp::deinit()
 {
     log_info("GlApp::deinit called");
     if (!m_ctx) return;
+
+    // Ensure GL object destruction runs with a valid current context.
+    if (m_ctx->egl_display != EGL_NO_DISPLAY &&
+        m_ctx->egl_context != EGL_NO_CONTEXT &&
+        m_ctx->egl_surface != EGL_NO_SURFACE) {
+        if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
+            if (m_ctx->texture_id) {
+                glDeleteTextures(1, &m_ctx->texture_id);
+                m_ctx->texture_id = 0;
+            }
+            if (m_ctx->vbo_id) {
+                glDeleteBuffers(1, &m_ctx->vbo_id);
+                m_ctx->vbo_id = 0;
+            }
+            if (m_ctx->program_id) {
+                glDeleteProgram(m_ctx->program_id);
+                m_ctx->program_id = 0;
+            }
+
+            if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
+                log_warn("Failed to release EGL context from deinit: {}", egl_error_string(eglGetError()));
+            }
+        } else {
+            log_warn("Failed to make EGL context current in deinit: {}", egl_error_string(eglGetError()));
+        }
+    }
+
+    if (m_ctx->embedded_font) {
+        cairo_font_face_destroy(m_ctx->embedded_font);
+        m_ctx->embedded_font = nullptr;
+    }
 
     if (m_ctx->egl_surface != EGL_NO_SURFACE) {
         eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
