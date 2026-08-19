@@ -194,7 +194,9 @@ struct AppContext {
     bool running = true;
     bool configured = false;
     bool hasPresentedFrame = false;
+    bool keyFrameDirty = false;
     uint32_t current_keycode = 0;
+    std::chrono::steady_clock::time_point lastInputRenderTime{};
     EGLint glesClientVersion = 2;
     GLint positionAttribLocation = 0;
     GLint texCoordAttribLocation = 1;
@@ -761,20 +763,20 @@ static void keyboard_handle_repeat_info(void* d, wl_keyboard* kb, int32_t r, int
 static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
     AppContext* app = static_cast<AppContext*>(data);
-    log_info("keyboard key event state={}, key={}, serial={}", state, key, serial);
+    log_dbg("keyboard key event state={}, key={}, serial={}", state, key, serial);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         if (key == KEY_ESC || key == KEY_BACKSPACE) {
-            log_info("ESC or BACKSPACE key received; requesting application exit");
+            log_info("ESC or BACKSPACE key received; requesting application exit without rendering it.");
             RequestEscExit();
-        }
+        } else {
+            app->current_keycode = key;
+            app->keyFrameDirty = true;
+            log_dbg("key pressed, code={}", key);
 
-        app->current_keycode = key;
-        log_dbg("key pressed, code={}", key);
-        render_cairo_frame(app);
-
-        MenuInputEvent event;
-        if (translate_menu_input_event(key, event)) {
-            PushMenuInputEvent(event);
+            MenuInputEvent event;
+            if (translate_menu_input_event(key, event)) {
+                PushMenuInputEvent(event);
+            }
         }
     }
 }
@@ -1228,6 +1230,8 @@ void GlApp::run()
     log_info("Entering event-driven loop (low CPU mode)");
     int dispatch_count = 0;
     auto last_heartbeat = std::chrono::steady_clock::now();
+    static constexpr auto kInputRenderMinInterval = std::chrono::milliseconds(20);
+
     while (m_ctx->running) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch returned < 0, stopping loop");
@@ -1244,8 +1248,18 @@ void GlApp::run()
             log_info("Dispatch iteration {}", dispatch_count);
         }
 
-        // Keep one low-frequency redraw in case compositor requires occasional commits.
+        // Coalesce bursty key events and cap key-driven redraw frequency.
         const auto now = std::chrono::steady_clock::now();
+        if (m_ctx->keyFrameDirty &&
+            (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
+             now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
+            render_cairo_frame(m_ctx);
+            m_ctx->keyFrameDirty = false;
+            m_ctx->lastInputRenderTime = now;
+            last_heartbeat = now;
+        }
+
+        // Keep one low-frequency redraw in case compositor requires occasional commits.
         if (now - last_heartbeat >= std::chrono::seconds(1)) {
             render_cairo_frame(m_ctx);
             last_heartbeat = now;
