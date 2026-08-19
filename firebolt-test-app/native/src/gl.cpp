@@ -90,7 +90,11 @@
 #endif
 
 // Initialize logger for the graphics module with environment variable "GLLOGLEVEL" and module tag "[GL]".
-using LocalLogger = RuntimeLogger<"GLLOGLEVEL", "[GL]">;
+struct GlLoggerConfig {
+    static constexpr const char* kEnvVar = "GLLOGLEVEL";
+    static constexpr const char* kTag = "[GL]";
+};
+using LocalLogger = RuntimeLogger<GlLoggerConfig>;
 
 static std::string egl_error_string(EGLint error)
 {

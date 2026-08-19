@@ -86,7 +86,11 @@
 #endif
 
 // Initialize logger for the application with environment variable "APPLOGLEVEL" and module tag "[APP]".
-using LocalLogger = RuntimeLogger<"APPLOGLEVEL", "[APP]">;
+struct AppLoggerConfig {
+    static constexpr const char* kEnvVar = "APPLOGLEVEL";
+    static constexpr const char* kTag = "[APP]";
+};
+using LocalLogger = RuntimeLogger<AppLoggerConfig>;
 
 // ---------------------------------------------------------------------------
 // printUsage
