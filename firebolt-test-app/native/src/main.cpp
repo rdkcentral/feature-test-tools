@@ -591,6 +591,18 @@ int main(int argc, char** argv)
         }
     });
 
+    auto lifecycleStateToString = [](Firebolt::Lifecycle::LifecycleState state) {
+        switch (state) {
+            case Firebolt::Lifecycle::LifecycleState::INITIALIZING: return "INITIALIZING";
+            case Firebolt::Lifecycle::LifecycleState::PAUSED:       return "PAUSED";
+            case Firebolt::Lifecycle::LifecycleState::ACTIVE:       return "ACTIVE";
+            case Firebolt::Lifecycle::LifecycleState::SUSPENDED:    return "SUSPENDED";
+            case Firebolt::Lifecycle::LifecycleState::HIBERNATED:   return "HIBERNATED";
+            case Firebolt::Lifecycle::LifecycleState::TERMINATING:  return "TERMINATING";
+            default:                                                return "UNKNOWN";
+        }
+    };
+
     /**
       * @brief Schedule work to be done when the app is in PAUSED state.
       */
@@ -664,6 +676,7 @@ int main(int argc, char** argv)
         [&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
             for (const auto& change : changes) {
                 log_fatal("[LifecycleCB] State change: {} -> {}" , static_cast<int>(change.oldState), static_cast<int>(change.newState));
+                log_fatal("[LifecycleCB] State change: {} -> {}" , lifecycleStateToString(change.oldState), lifecycleStateToString(change.newState));
 
                 switch (change.newState) {
                     case Firebolt::Lifecycle::LifecycleState::INITIALIZING: {
