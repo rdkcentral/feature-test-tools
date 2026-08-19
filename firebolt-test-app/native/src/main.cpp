@@ -448,6 +448,7 @@ int main(int argc, char** argv)
     std::promise<int> exitCodePromise;
     std::once_flag exitCodeOnce;
     std::once_flag cleanupOnce;
+    std::once_flag fireboltCleanupOnce;
     std::atomic<bool> shutdownRequested{ false };
 
     auto signalExit = [&](int code) {
@@ -475,7 +476,7 @@ int main(int argc, char** argv)
         }
 
         log_info("[startGlThread] Starting GlApp thread...");
-        glThread = std::thread([glAppCopy = glApp]() {
+        glThread = std::thread([&, glAppCopy = glApp]() {
             log_dbg("[startGlThread] GlApp thread started: refCount={}", glAppCopy ? glAppCopy.use_count() : 0);
             std::unique_lock<std::mutex> lock(glStartMutex);
             glStartCv.wait(lock, [&] {
@@ -581,9 +582,6 @@ int main(int argc, char** argv)
             // Shutdown GL app and thread
             log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
             stopGlThread();
-
-            Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
-            Firebolt::IFireboltAccessor::Instance().Disconnect();
 
             escWatcherRunning = false;
 
@@ -790,6 +788,13 @@ int main(int argc, char** argv)
 
     const int exitCode = exitCodePromise.get_future().get();
     log_dbg("[Main] Exit processing begins: refCount={}", glApp ? glApp.use_count() : 0);
+
+    // Keep Firebolt transport teardown on the main thread to avoid callback-thread races.
+    std::call_once(fireboltCleanupOnce, [&] {
+        Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
+        Firebolt::IFireboltAccessor::Instance().Disconnect();
+    });
+
     if (testThread.joinable()) {
         log_warn("[Main] Waiting for test thread to finish...");
         testThread.join();
