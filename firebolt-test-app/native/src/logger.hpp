@@ -1,3 +1,26 @@
+/*
+ * If not stated otherwise in this file or this component's LICENSE file the
+ * following copyright and licenses apply:
+ *
+ * Copyright 2026 RDK Management
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * @author Arun Madhavan
+ */
+
 #pragma once
 
 #include <iostream>
@@ -95,39 +118,39 @@ struct RuntimeLogger {
 #define log_dbg(fmt, ...) \
     do { \
         if (LocalLogger::get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Debug) { \
-            if constexpr (sizeof...(__VA_ARGS__) == 0) ::LocalLogger::write_log(std::cout, "[DBG] ", fmt); \
-            else ::LocalLogger::write_log_fmt(std::cout, "[DBG] ", fmt, __VA_ARGS__); \
+            if constexpr (sizeof...(__VA_ARGS__) == 0) LocalLogger::write_log(std::cout, "[DBG] ", fmt); \
+            else LocalLogger::write_log_fmt(std::cout, "[DBG] ", fmt, __VA_ARGS__); \
         } \
     } while(0)
 
 #define log_info(fmt, ...) \
     do { \
         if (LocalLogger::get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Info) { \
-            if constexpr (sizeof...(__VA_ARGS__) == 0) ::LocalLogger::write_log(std::cout, "[INF] ", fmt); \
-            else ::LocalLogger::write_log_fmt(std::cout, "[INF] ", fmt, __VA_ARGS__); \
+            if constexpr (sizeof...(__VA_ARGS__) == 0) LocalLogger::write_log(std::cout, "[INF] ", fmt); \
+            else LocalLogger::write_log_fmt(std::cout, "[INF] ", fmt, __VA_ARGS__); \
         } \
     } while(0)
 
 #define log_warn(fmt, ...) \
     do { \
         if (LocalLogger::get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Warn) { \
-            if constexpr (sizeof...(__VA_ARGS__) == 0) ::LocalLogger::write_log(std::cout, "[WRN] ", fmt); \
-            else ::LocalLogger::write_log_fmt(std::cout, "[WRN] ", fmt, __VA_ARGS__); \
+            if constexpr (sizeof...(__VA_ARGS__) == 0) LocalLogger::write_log(std::cout, "[WRN] ", fmt); \
+            else LocalLogger::write_log_fmt(std::cout, "[WRN] ", fmt, __VA_ARGS__); \
         } \
     } while(0)
 
 #define log_err(fmt, ...) \
     do { \
         if (LocalLogger::get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Error) { \
-            if constexpr (sizeof...(__VA_ARGS__) == 0) ::LocalLogger::write_log(std::cerr, "[ERR] ", fmt); \
-            else ::LocalLogger::write_log_fmt(std::cerr, "[ERR] ", fmt, __VA_ARGS__); \
+            if constexpr (sizeof...(__VA_ARGS__) == 0) LocalLogger::write_log(std::cerr, "[ERR] ", fmt); \
+            else LocalLogger::write_log_fmt(std::cerr, "[ERR] ", fmt, __VA_ARGS__); \
         } \
     } while(0)
 
 #define log_fatal(fmt, ...) \
     do { \
         if (LocalLogger::get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Fatal) { \
-            if constexpr (sizeof...(__VA_ARGS__) == 0) ::LocalLogger::write_log(std::cerr, "[FTL] ", fmt); \
-            else ::LocalLogger::write_log_fmt(std::cerr, "[FTL] ", fmt, __VA_ARGS__); \
+            if constexpr (sizeof...(__VA_ARGS__) == 0) LocalLogger::write_log(std::cerr, "[FTL] ", fmt); \
+            else LocalLogger::write_log_fmt(std::cerr, "[FTL] ", fmt, __VA_ARGS__); \
         } \
     } while(0)
