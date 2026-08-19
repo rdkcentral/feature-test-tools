@@ -25,6 +25,7 @@
 #include "logger.hpp"
 #include "utils.h"
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -191,7 +192,7 @@ struct AppContext {
     GLuint vbo_id = 0;
 
     BackgroundPatternMode background_pattern = PATTERN_NONE;
-    bool running = true;
+    std::atomic<bool> running{true};
     bool configured = false;
     bool hasPresentedFrame = false;
     bool keyFrameDirty = false;
@@ -520,7 +521,7 @@ void render_cairo_frame(AppContext* app)
 
     if (!ensure_egl_current(app)) {
         log_dbg("Skipping frame because EGL context/surface is not current");
-        app->running = false;
+        app->running.store(false);
         return;
     }
 
@@ -726,7 +727,7 @@ void render_cairo_frame(AppContext* app)
                     eglGetCurrentContext(),
                     app->egl_context);
 
-            app->running = false;
+            app->running.store(false);
         }
     }
 
@@ -1216,14 +1217,14 @@ void GlApp::deinit()
 void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
-    while (m_ctx->running && !m_ctx->configured) {
+    while (m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch failed while waiting for initial configure");
-            m_ctx->running = false;
+            m_ctx->running.store(false);
             break;
         }
     }
-    if (!m_ctx->running) {
+    if (!m_ctx->running.load()) {
         log_warn("Exiting before first frame due to dispatch failure");
         return;
     }
@@ -1232,7 +1233,7 @@ void GlApp::run()
 
     if (!m_ctx->hasPresentedFrame) {
         log_info("First frame not presented yet; starting short warm-up retries");
-        for (int i = 0; m_ctx->running && !m_ctx->hasPresentedFrame && i < 20; ++i) {
+        for (int i = 0; m_ctx->running.load() && !m_ctx->hasPresentedFrame && i < 20; ++i) {
             wl_surface_commit(m_ctx->surface);
             wl_display_flush(m_ctx->display);
             wl_display_roundtrip(m_ctx->display);
@@ -1252,10 +1253,10 @@ void GlApp::run()
     auto last_heartbeat = std::chrono::steady_clock::now();
     static constexpr auto kInputRenderMinInterval = std::chrono::milliseconds(20);
 
-    while (m_ctx->running) {
+    while (m_ctx->running.load()) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch returned < 0, stopping loop");
-            m_ctx->running = false;
+            m_ctx->running.store(false);
             break;
         }
         dispatch_count++;
@@ -1303,6 +1304,6 @@ void GlApp::shutdown()
 {
     log_info("Shutting down GlApp");
     if (m_ctx) {
-        m_ctx->running = false;
+        m_ctx->running.store(false);
     }
 }

@@ -433,11 +433,13 @@ int main(int argc, char** argv)
     std::thread glThread;
     std::thread testThread;
     std::thread escWatcherThread;
+    std::thread pausedStateThread;
     std::atomic<bool> testThreadStarted{ false };
     std::atomic<bool> glThreadStarted{ false };
     std::atomic<bool> escWatcherRunning{ true };
     std::condition_variable glStartCv;
     std::mutex glStartMutex;
+    std::mutex glLifecycleMutex;
     bool glRunRequested = false;
     bool glStopRequested = false;
     std::mutex pausedStateMutex;
@@ -491,6 +493,10 @@ int main(int argc, char** argv)
     };
 
     auto stopGlThread = [&]() {
+        std::lock_guard<std::mutex> lifecycleLock(glLifecycleMutex);
+
+        std::shared_ptr<GlApp> glAppCopy = glApp;
+
         {
             std::lock_guard<std::mutex> lock(glStartMutex);
             glStopRequested = true;
@@ -498,16 +504,22 @@ int main(int argc, char** argv)
         }
         glStartCv.notify_all();
 
-        if (glApp) {
+        if (glAppCopy) {
             log_info("[stopGlThread] GlApp shutdown requested.");
-            glApp->shutdown();
-            glApp->deinit();
+            glAppCopy->shutdown();
         } else {
             log_info("[stopGlThread] GlApp shutdown skipped (not initialized).");
         }
 
         if (glThread.joinable() && glThread.get_id() != std::this_thread::get_id()) {
             glThread.join();
+        } else if (glThread.joinable()) {
+            // Avoid std::terminate when stop is invoked from the GL worker itself.
+            glThread.detach();
+        }
+
+        if (glAppCopy) {
+            glAppCopy->deinit();
         }
 
         glApp.reset();
@@ -521,6 +533,8 @@ int main(int argc, char** argv)
     };
 
     auto initializeGlApp = [&]() -> bool {
+        std::lock_guard<std::mutex> lifecycleLock(glLifecycleMutex);
+
         SetMenuInputBridgeEnabled(true);
 
         int glW = 1920, glH = 1080;
@@ -552,30 +566,27 @@ int main(int argc, char** argv)
         return true;
     };
 
-    auto cleanupAndExit = [&](int code) {
+        /**
+            * @brief Cleanup and signal application exit with the specified exit code.
+            * @param code Exit code to return from main().
+            */
+        auto cleanupAndExit = [&](int code) {
         std::call_once(cleanupOnce, [&] {
-            // Unsubscribe from lifecycle events FIRST to prevent race conditions
-            if (lifecycleSubId != 0) {
-                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
-            }
-
             // Shutdown GL app and thread
             log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
             stopGlThread();
 
-            // Wait for test thread to complete
-            if (testThread.joinable() && testThread.get_id() != std::this_thread::get_id()) {
-                testThread.join();
+            Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
+            // Unsubscribe from lifecycle events FIRST to prevent race conditions
+            if (lifecycleSubId != 0) {
+                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
             }
+            Firebolt::IFireboltAccessor::Instance().Disconnect();
 
             escWatcherRunning = false;
-            if (escWatcherThread.joinable() && escWatcherThread.get_id() != std::this_thread::get_id()) {
-                escWatcherThread.join();
-            }
 
             // Disable input bridge and disconnect
             SetMenuInputBridgeEnabled(false);
-            Firebolt::IFireboltAccessor::Instance().Disconnect();
             signalExit(code);
         });
     };
@@ -613,7 +624,14 @@ int main(int argc, char** argv)
             return;
         }
 
-        std::thread([&, oldState]() {
+        /**
+          * @brief Thread function to handle state transitions.
+          */
+        if (pausedStateThread.joinable()) {
+            pausedStateThread.join();
+        }
+
+        pausedStateThread = std::thread([&, oldState]() {
             std::lock_guard<std::mutex> stateLock(pausedStateMutex);
 
             if (oldState == Firebolt::Lifecycle::LifecycleState::INITIALIZING) {
@@ -668,7 +686,8 @@ int main(int argc, char** argv)
             }
 
             pausedStateWorkScheduled = false;
-        }).detach();
+            log_info("[schedulePausedStateWork] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
+        });
     };
 
     // Register for Lifecycle state changes
@@ -677,6 +696,7 @@ int main(int argc, char** argv)
             for (const auto& change : changes) {
                 log_fatal("[LifecycleCB] State change: {} -> {}" , static_cast<int>(change.oldState), static_cast<int>(change.newState));
                 log_fatal("[LifecycleCB] State change: {} -> {}" , lifecycleStateToString(change.oldState), lifecycleStateToString(change.newState));
+                log_info("[LifecycleCB] State transition begins: {}", timepointToString(std::chrono::system_clock::now()));
 
                 switch (change.newState) {
                     case Firebolt::Lifecycle::LifecycleState::INITIALIZING: {
@@ -692,6 +712,7 @@ int main(int argc, char** argv)
                                 log_info("[Mode] Firebolt All - All modules across all Firebolt versions enabled.");
                                 break;
                         }
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::PAUSED: {
@@ -701,19 +722,23 @@ int main(int argc, char** argv)
                     break;
                     case Firebolt::Lifecycle::LifecycleState::ACTIVE: {
                         log_info("[LifecycleCB] State ACTIVE");
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::SUSPENDED: {
                         log_warn("[LifecycleCB] State SUSPENDED. Releasing W-EGL resources...");
                         stopGlThread();
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::HIBERNATED:
                         log_warn("[LifecycleCB] State HIBERNATED");
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
                         break;
                     case Firebolt::Lifecycle::LifecycleState::TERMINATING:
                         log_fatal("[LifecycleCB] State TERMINATING");
                         cleanupAndExit(0);
+                        log_info("[LifecycleCB] State transition ends: {}", timepointToString(std::chrono::system_clock::now()));
                         break;
                     default:
                         log_warn("[LifecycleCB] Unhandled state: {}", static_cast<int>(change.newState));
@@ -725,18 +750,34 @@ int main(int argc, char** argv)
     // Store subscription ID and check for success
     if (subResult) {
         lifecycleSubId = *subResult;
-        log_info("[LifecycleCB] Subscribed to state changes (ID: {})", lifecycleSubId);
+        log_info("[Main] Subscribed to state changes (ID: {})", lifecycleSubId);
     } else {
         escWatcherRunning = false;
         if (escWatcherThread.joinable()) {
             escWatcherThread.join();
         }
-        log_fatal("[LifecycleCB] Failed to subscribe to state changes");
+        log_fatal("[Main] Failed to subscribe to state changes");
         return 1;
     }
 
     const int exitCode = exitCodePromise.get_future().get();
-    log_warn("[LifecycleCB] Disconnected. Exiting.");
+
+    if (testThread.joinable()) {
+        log_warn("[Main] Waiting for test thread to finish...");
+        testThread.join();
+    }
+
+    if (pausedStateThread.joinable()) {
+        log_warn("[Main] Waiting for paused state thread to finish...");
+        pausedStateThread.join();
+    }
+
+    if (escWatcherThread.joinable()) {
+        log_warn("[Main] Waiting for ESC watcher thread to finish...");
+        escWatcherThread.join();
+    }
+
+    log_warn("[Main] Disconnected @ {}, Exiting.", timepointToString(std::chrono::system_clock::now()));
 
     return exitCode;
 }
