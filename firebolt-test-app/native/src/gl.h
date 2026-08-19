@@ -55,7 +55,8 @@ class GlApp {
 
         // Release EGL and Wayland resources and stop rendering.
         void shutdown();
+        void deinit();
 
-    private:
+       private:
         AppContext* m_ctx = nullptr;
 };

@@ -1193,6 +1193,26 @@ bool GlApp::init(const char* waylandDisplay)
     return true;
 }
 
+void GlApp::deinit()
+{
+    log_info("GlApp::deinit called");
+    if (!m_ctx) return;
+
+    if (m_ctx->egl_surface != EGL_NO_SURFACE) {
+        eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
+        m_ctx->egl_surface = EGL_NO_SURFACE;
+    }
+    if (m_ctx->egl_window) {
+        wl_egl_window_destroy(m_ctx->egl_window);
+        m_ctx->egl_window = nullptr;
+    }
+
+    if (m_ctx->surface) {
+        wl_surface_destroy(m_ctx->surface);
+        m_ctx->surface = nullptr;
+    }
+}
+
 void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");

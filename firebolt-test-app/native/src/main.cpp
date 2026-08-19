@@ -501,6 +501,7 @@ int main(int argc, char** argv)
         if (glApp) {
             log_info("[stopGlThread] GlApp shutdown requested.");
             glApp->shutdown();
+            glApp->deinit();
         } else {
             log_info("[stopGlThread] GlApp shutdown skipped (not initialized).");
         }
