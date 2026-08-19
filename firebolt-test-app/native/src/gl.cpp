@@ -1278,9 +1278,9 @@ void GlApp::deinit()
         m_ctx->seat = nullptr;
     }
 
-    if (app->simple_shell_ptr) {
-        wl_simple_shell_destroy(app->simple_shell_ptr);
-        app->simple_shell_ptr = nullptr;
+    if (m_ctx->simple_shell_ptr) {
+        wl_simple_shell_destroy(m_ctx->simple_shell_ptr);
+        m_ctx->simple_shell_ptr = nullptr;
     }
 
     if (m_ctx->surface) {
