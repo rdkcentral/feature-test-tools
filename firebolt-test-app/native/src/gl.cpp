@@ -32,8 +32,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
@@ -203,8 +205,14 @@ struct AppContext {
     std::atomic<RenderLifecycleState> lifecycle_state{RenderLifecycleState::Bootstrapping};
     bool configured = false;
     bool hasPresentedFrame = false;
-    bool keyFrameDirty = false;
-    uint32_t current_keycode = 0;
+    std::atomic<bool> keyFrameDirty{ false };
+    std::atomic<uint32_t> current_keycode{ 0 };
+    std::mutex preparedFrameMutex;
+    std::vector<unsigned char> pendingPreparedRgbaPixels;
+    int pendingPreparedWidth = 0;
+    int pendingPreparedHeight = 0;
+    uint32_t pendingPreparedKeycode = 0;
+    bool hasPendingPreparedFrame = false;
     std::chrono::steady_clock::time_point lastInputRenderTime{};
     EGLint glesClientVersion = 2;
     GLint positionAttribLocation = 0;
@@ -219,6 +227,13 @@ struct AppContext {
 
     // Lifetime management
     std::atomic<bool> deinitialized { false };
+};
+
+struct PreparedFrame {
+    int width = 0;
+    int height = 0;
+    uint32_t keycode = 0;
+    std::vector<unsigned char> rgbaPixels;
 };
 
 static bool recreate_egl_window_surface(AppContext* app);
@@ -523,60 +538,21 @@ static bool ensure_egl_current(AppContext* app)
     return true;
 }
 
-static bool present_minimal_frame(AppContext* app)
+static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 {
-    if (!app) {
-        return false;
+    PreparedFrame frame;
+    if (!app || app->width <= 0 || app->height <= 0) {
+        return frame;
     }
 
-    if (!ensure_egl_current(app)) {
-        return false;
-    }
+    frame.width = app->width;
+    frame.height = app->height;
+    frame.keycode = keycode;
 
-    glViewport(0, 0, app->width, app->height);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    const int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+    std::vector<unsigned char> pixels(static_cast<size_t>(stride) * static_cast<size_t>(frame.height), 0);
 
-    const EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
-    if (EGL_TRUE == swap_result) {
-        app->hasPresentedFrame = true;
-        return true;
-    }
-
-    log_warn("Minimal frame swap failed: {}", egl_error_string(eglGetError()));
-    return false;
-}
-
-//---------------------------------------------------------------------------
-
-void render_cairo_frame(AppContext* app)
-{
-    log_dbg("render_cairo_frame thread={}", current_thread_string());
-    static int frame_count = 0;
-    frame_count++;
-
-    if (!app || !app->running.load()) {
-        log_dbg("render_cairo_frame: render skipped during shutdown");
-        return;
-    }
-
-    if (!ensure_egl_current(app)) {
-        log_dbg("Skipping frame because EGL context/surface is not current");
-        app->running.store(false);
-        return;
-    }
-
-    log_dbg("[Frame {}] Rendering frame: size={}x{}, keycode={}", frame_count, app->width, app->height, app->current_keycode);
-
-    GLenum gl_error = glGetError();
-    if (gl_error != GL_NO_ERROR) {
-        log_dbg("Pre-render GL error: 0x{}", gl_error);
-    }
-
-    int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
-    std::vector<unsigned char> pixels(static_cast<size_t>(stride) * static_cast<size_t>(app->height), 0);
-
-    cairo_surface_t* surface = cairo_image_surface_create_for_data(pixels.data(), CAIRO_FORMAT_ARGB32, app->width, app->height, stride);
+    cairo_surface_t* surface = cairo_image_surface_create_for_data(pixels.data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, stride);
     cairo_t* cr = cairo_create(surface);
 
     cairo_set_source_rgb(cr, 0.05, 0.07, 0.12);
@@ -610,9 +586,9 @@ void render_cairo_frame(AppContext* app)
         cairo_surface_destroy(tile);
     }
 
-    double box_size = 350.0;
-    double box_x = (app->width  - box_size) / 2.0;
-    double box_y = (app->height - box_size) / 2.0;
+    const double box_size = 350.0;
+    const double box_x = (frame.width - box_size) / 2.0;
+    const double box_y = (frame.height - box_size) / 2.0;
 
     cairo_set_source_rgb(cr, 0.10, 0.13, 0.22);
     cairo_rectangle(cr, box_x, box_y, box_size, box_size);
@@ -627,20 +603,20 @@ void render_cairo_frame(AppContext* app)
     if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
     else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
-    double content_spacing = 65.0;
+    const double content_spacing = 65.0;
     cairo_set_font_size(cr, 28.0);
     const char* label_text = "LAST KEYCODE";
     cairo_text_extents_t label_extents;
     cairo_text_extents(cr, label_text, &label_extents);
 
     cairo_set_font_size(cr, 84.0);
-    const bool has_keycode = (app->current_keycode != 0);
-    std::string code_str = has_keycode ? std::to_string(app->current_keycode) : "?";
+    const bool has_keycode = (frame.keycode != 0);
+    std::string code_str = has_keycode ? std::to_string(frame.keycode) : "?";
     cairo_text_extents_t code_extents;
     cairo_text_extents(cr, code_str.c_str(), &code_extents);
 
-    double total_content_height = label_extents.height + content_spacing + code_extents.height;
-    double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 20.0;
+    const double total_content_height = label_extents.height + content_spacing + code_extents.height;
+    const double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 20.0;
 
     cairo_set_font_size(cr, 28.0);
     cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing, baseline_start_y + label_extents.height - label_extents.y_bearing);
@@ -652,13 +628,11 @@ void render_cairo_frame(AppContext* app)
 
     cairo_surface_flush(surface);
 
-    // Cairo ARGB32 memory on little-endian targets is BGRA byte order.
-    // Convert to RGBA for robust GLES texture uploads across drivers.
-    std::vector<unsigned char> rgba_pixels(static_cast<size_t>(app->width) * static_cast<size_t>(app->height) * 4u, 0);
-    for (int y = 0; y < app->height; ++y) {
+    frame.rgbaPixels.resize(static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4u);
+    for (int y = 0; y < frame.height; ++y) {
         const unsigned char* src = pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(stride);
-        unsigned char* dst = rgba_pixels.data() + static_cast<size_t>(y) * static_cast<size_t>(app->width) * 4u;
-        for (int x = 0; x < app->width; ++x) {
+        unsigned char* dst = frame.rgbaPixels.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.width) * 4u;
+        for (int x = 0; x < frame.width; ++x) {
             const unsigned char b = src[x * 4 + 0];
             const unsigned char g = src[x * 4 + 1];
             const unsigned char r = src[x * 4 + 2];
@@ -670,110 +644,113 @@ void render_cairo_frame(AppContext* app)
         }
     }
 
-    glViewport(0, 0, app->width, app->height);
-    log_dbg("glViewport(0, 0, " + std::to_string(app->width) + ", " + std::to_string(app->height) + ")");
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+    return frame;
+}
 
-    // CRITICAL: Set clear color before clearing (reference code pattern)
-    glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
-    log_dbg("glClearColor(0.05, 0.07, 0.12, 1.0)");
-
-    glClear(GL_COLOR_BUFFER_BIT);
-    GLenum clear_error = glGetError();
-    log_dbg("glClear(GL_COLOR_BUFFER_BIT) complete; GL error=0x{}", clear_error);
-
-    glUseProgram(app->program_id);
-    GLenum use_program_error = glGetError();
-    if (use_program_error != GL_NO_ERROR) {
-        log_dbg("glUseProgram error: 0x{}", use_program_error);
+static void queue_prepared_frame(AppContext* app, PreparedFrame&& frame)
+{
+    if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) {
+        return;
     }
 
-    // Bind the Cairo texture to unit 0 and tell the sampler which unit to use.
+    std::lock_guard<std::mutex> lock(app->preparedFrameMutex);
+    app->pendingPreparedWidth = frame.width;
+    app->pendingPreparedHeight = frame.height;
+    app->pendingPreparedKeycode = frame.keycode;
+    app->pendingPreparedRgbaPixels = std::move(frame.rgbaPixels);
+    app->hasPendingPreparedFrame = true;
+}
+
+static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame)
+{
+    if (!app) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(app->preparedFrameMutex);
+    if (!app->hasPendingPreparedFrame || app->pendingPreparedRgbaPixels.empty()) {
+        return false;
+    }
+
+    frame.width = app->pendingPreparedWidth;
+    frame.height = app->pendingPreparedHeight;
+    frame.keycode = app->pendingPreparedKeycode;
+    frame.rgbaPixels = std::move(app->pendingPreparedRgbaPixels);
+    app->pendingPreparedWidth = 0;
+    app->pendingPreparedHeight = 0;
+    app->pendingPreparedKeycode = 0;
+    app->hasPendingPreparedFrame = false;
+    return true;
+}
+
+static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
+{
+    if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) {
+        return false;
+    }
+
+    if (!ensure_egl_current(app)) {
+        log_dbg("Skipping frame because EGL context/surface is not current");
+        return false;
+    }
+
+    glViewport(0, 0, frame.width, frame.height);
+    log_dbg("glViewport(0, 0, {}, {})", frame.width, frame.height);
+
+    glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(app->program_id);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
     GLint s_tex_loc = glGetUniformLocation(app->program_id, "s_texture");
     if (s_tex_loc >= 0) {
         glUniform1i(s_tex_loc, 0);
     }
-    GLenum bind_tex_error = glGetError();
-    if (bind_tex_error != GL_NO_ERROR) {
-        log_dbg("glBindTexture/glUniform1i error: 0x{}", bind_tex_error);
-    }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    log_dbg("glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, {}, {}, 0, GL_RGBA, GL_UNSIGNED_BYTE, ...)", app->width, app->height);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, app->width, app->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_pixels.data());
-    GLenum tex_error = glGetError();
-    if (tex_error != GL_NO_ERROR) {
-        log_dbg("glTexImage2D error: 0x{}", tex_error);
-    }
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
-    GLint pos_loc = app->positionAttribLocation;
-    log_dbg("Position attribute location: {}", pos_loc);
-    glEnableVertexAttribArray(pos_loc);
-    glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
-    GLenum pos_error = glGetError();
-    if (pos_error != GL_NO_ERROR) log_dbg("Position setup error: 0x{}", pos_error);
+    glEnableVertexAttribArray(app->positionAttribLocation);
+    glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
+    glEnableVertexAttribArray(app->texCoordAttribLocation);
+    glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
-    GLint tex_loc = app->texCoordAttribLocation;
-    log_dbg("TexCoord attribute location: {}", tex_loc);
-    glEnableVertexAttribArray(tex_loc);
-    glVertexAttribPointer(tex_loc, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
-    GLenum tex_loc_error = glGetError();
-    if (tex_loc_error != GL_NO_ERROR) log_dbg("TexCoord setup error: 0x{}", tex_loc_error);
-
-    log_dbg("glDrawArrays(GL_TRIANGLE_FAN, 0, 4) about to call");
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    GLenum draw_error = glGetError();
-    if (draw_error != GL_NO_ERROR) {
-        log_dbg("glDrawArrays FAILED with error: 0x{}", draw_error);
-    } else {
-        log_dbg("glDrawArrays complete; success");
-    }
 
-    EGLint pre_swap_error = eglGetError();
-    if (pre_swap_error != EGL_SUCCESS) {
-        log_dbg("Pre-swap EGL error: {}", egl_error_string(pre_swap_error));
-    }
-    log_dbg("[Frame {}] Calling eglSwapBuffers...", frame_count);
-
-    log_dbg("[Frame {}] Before swap: currentDraw={}, currentRead={}, appSurface=] Before swap: currentDraw={}, \
-            currentRead={}, appSurface={}, currentCtx={}, appCtx={}",
-            frame_count,
-            eglGetCurrentSurface(EGL_DRAW),
-            eglGetCurrentSurface(EGL_READ),
-            eglGetCurrentSurface(EGL_DRAW),
-            eglGetCurrentSurface(EGL_READ),
-            app->egl_surface,
-            eglGetCurrentContext(),
-            app->egl_context);
-
-
-    EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
-    log_dbg("[Frame {}] eglSwapBuffers returned: {}", frame_count, swap_result == EGL_TRUE ? "SUCCESS" : "FAILURE");
+    const EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
     if (swap_result == EGL_TRUE) {
         app->hasPresentedFrame = true;
-    }
-    EGLint post_swap_error = eglGetError();
-    if (post_swap_error != EGL_SUCCESS) {
-        log_dbg("[Frame {}] Post-swap EGL error: {}", frame_count, egl_error_string(post_swap_error));
-        if (post_swap_error == EGL_BAD_SURFACE) {
-            log_dbg("[Frame {}] EGL_BAD_SURFACE detected.", frame_count);
-
-            log_dbg("[Frame {}] Current draw surface={}, current read surface={}, app egl_surface={}, current context={}, app context={}",
-                    frame_count,
-                    eglGetCurrentSurface(EGL_DRAW),
-                    eglGetCurrentSurface(EGL_READ),
-                    app->egl_surface,
-                    eglGetCurrentContext(),
-                    app->egl_context);
-
-            app->running.store(false);
-        }
+        return true;
     }
 
-    cairo_destroy(cr);
-    cairo_surface_destroy(surface);
+    log_warn("Frame swap failed: {}", egl_error_string(eglGetError()));
+    return false;
+}
+
+//---------------------------------------------------------------------------
+
+void render_cairo_frame(AppContext* app)
+{
+    log_dbg("render_cairo_frame thread={}", current_thread_string());
+    if (!app || !app->running.load()) {
+        log_dbg("render_cairo_frame: render skipped during shutdown");
+        return;
+    }
+
+    const PreparedFrame frame = prepare_cairo_frame(app, app->current_keycode.load(std::memory_order_acquire));
+    if (frame.rgbaPixels.empty()) {
+        log_dbg("render_cairo_frame: prepared frame is empty");
+        app->running.store(false);
+        return;
+    }
+
+    if (!present_prepared_frame(app, frame)) {
+        app->running.store(false);
+    }
 }
 
 static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s)
@@ -807,8 +784,8 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
     AppContext* app = static_cast<AppContext*>(data);
     log_dbg("keyboard key event state={}, key={}, serial={}", state, key, serial);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-        app->current_keycode = key;
-        app->keyFrameDirty = true;
+        app->current_keycode.store(key, std::memory_order_release);
+        app->keyFrameDirty.store(true, std::memory_order_release);
 
         if (app->keycodeCallback) {
             app->keycodeCallback(key);
@@ -1214,14 +1191,6 @@ bool GlApp::init(const char* waylandDisplay)
         log_info("GlApp init complete, Released EGL context after GLES init");
     }
 
-    if (!present_minimal_frame(m_ctx)) {
-        log_warn("Initial minimal frame presentation failed");
-    }
-
-    if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
-        log_warn("Failed to release EGL context after minimal frame: {}", egl_error_string(eglGetError()));
-    }
-
     m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
 
     return true;
@@ -1240,14 +1209,12 @@ void GlApp::renderInitialFrame()
         return;
     }
 
-    // hack to make it render once.
-    std::atomic<bool> runningbackup = m_ctx->running.load();
-    m_ctx->running.store(true);
-    // Set as 0 will show '?' in the keycode display box.
-    m_ctx->current_keycode = 0;
-    render_cairo_frame(m_ctx);
-    // restore the running state to what it was before this call.
-    m_ctx->running.store(runningbackup);
+    // Prepare the first Cairo buffer here and hand it to the render thread.
+    // The render thread remains the only thread that touches EGL/GLES.
+    PreparedFrame frame = prepare_cairo_frame(m_ctx, 0);
+    queue_prepared_frame(m_ctx, std::move(frame));
+    m_ctx->lastInputRenderTime = std::chrono::steady_clock::time_point{};
+    log_dbg("renderInitialFrame prepared and queued for render thread");
 }
 
 void GlApp::deinit()
@@ -1399,6 +1366,27 @@ void GlApp::run()
     static constexpr auto kPausedSleepInterval = std::chrono::milliseconds(20);
 
     while (m_ctx->running.load()) {
+        const RenderLifecycleState state = m_ctx->lifecycle_state.load();
+        const auto now = std::chrono::steady_clock::now();
+
+        PreparedFrame queuedFrame;
+        if (RenderLifecycleState::Active == state && take_pending_prepared_frame(m_ctx, queuedFrame)) {
+            if (!present_prepared_frame(m_ctx, queuedFrame)) {
+                m_ctx->running.store(false);
+                break;
+            }
+            last_heartbeat = now;
+        }
+
+        if (RenderLifecycleState::Active == state && m_ctx->running.load() && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
+            (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
+             now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
+            render_cairo_frame(m_ctx);
+            m_ctx->keyFrameDirty.store(false, std::memory_order_release);
+            m_ctx->lastInputRenderTime = now;
+            last_heartbeat = now;
+        }
+
         if (wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch returned < 0, stopping loop");
             m_ctx->running.store(false);
@@ -1406,8 +1394,8 @@ void GlApp::run()
         }
         dispatch_count++;
 
-        const RenderLifecycleState state = m_ctx->lifecycle_state.load();
-        if (RenderLifecycleState::Closing == state) {
+        const RenderLifecycleState state_after_dispatch = m_ctx->lifecycle_state.load();
+        if (RenderLifecycleState::Closing == state_after_dispatch) {
             m_ctx->running.store(false);
             break;
         }
@@ -1421,23 +1409,23 @@ void GlApp::run()
         }
 
         // Coalesce bursty key events and cap key-driven redraw frequency.
-        const auto now = std::chrono::steady_clock::now();
-        if (RenderLifecycleState::Active == state && m_ctx->running.load() && m_ctx->keyFrameDirty &&
+        const auto loop_now = std::chrono::steady_clock::now();
+        if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
             (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
-             now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
+             loop_now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
             render_cairo_frame(m_ctx);
-            m_ctx->keyFrameDirty = false;
-            m_ctx->lastInputRenderTime = now;
-            last_heartbeat = now;
+            m_ctx->keyFrameDirty.store(false, std::memory_order_release);
+            m_ctx->lastInputRenderTime = loop_now;
+            last_heartbeat = loop_now;
         }
 
         // Keep one low-frequency redraw in case compositor requires occasional commits.
-        if (RenderLifecycleState::Active == state && m_ctx->running.load() && (now - last_heartbeat >= std::chrono::seconds(1))) {
+        if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && (loop_now - last_heartbeat >= std::chrono::seconds(1))) {
             render_cairo_frame(m_ctx);
-            last_heartbeat = now;
+            last_heartbeat = loop_now;
         }
 
-        if (RenderLifecycleState::Paused == state || RenderLifecycleState::Bootstrapping == state) {
+        if (RenderLifecycleState::Paused == state_after_dispatch || RenderLifecycleState::Bootstrapping == state_after_dispatch) {
             std::this_thread::sleep_for(kPausedSleepInterval);
         } else {
             // Tiny backoff prevents tight-loop CPU spikes when compositor is chatty.
@@ -1460,7 +1448,7 @@ void GlApp::resume()
     log_info("Resuming GlApp rendering");
     if (m_ctx) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
-        m_ctx->keyFrameDirty = true;
+        m_ctx->keyFrameDirty.store(true, std::memory_order_release);
     }
 }
 
@@ -1469,7 +1457,7 @@ void GlApp::pause()
     log_info("Pausing GlApp rendering");
     if (m_ctx) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
-        m_ctx->keyFrameDirty = false;
+        m_ctx->keyFrameDirty.store(false, std::memory_order_release);
     }
 }
 

@@ -619,6 +619,24 @@ int main(int argc, char** argv)
         return glApp->registerKeycodeCallback(&handleGlKeycode);
     };
 
+    auto ensureGlRunThreadStarted = [&]() {
+        std::lock_guard<std::mutex> lock(glAppMutex);
+        if (glApp == nullptr) {
+            return false;
+        }
+
+        if (glRunThreadStarted) {
+            return true;
+        }
+
+        GlApp* glAppPtr = glApp.get();
+        glAppRunThread = std::thread([glAppPtr]() {
+            glAppPtr->run();
+        });
+        glRunThreadStarted = true;
+        return true;
+    };
+
     auto subscriptionResult = Firebolt::IFireboltAccessor::Instance()
                                   .LifecycleInterface()
                                   .subscribeOnStateChanged([&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
@@ -659,20 +677,17 @@ int main(int argc, char** argv)
                 break;
                 case AppState::PAUSED_TO_ACTIVE:
                 {
-                    std::lock_guard<std::mutex> lock(glAppMutex);
-                    if (glApp == nullptr) {
+                    if (!ensureGlRunThreadStarted()) {
                         log_warn("GL context not initialized during PAUSED_TO_ACTIVE; skipping resume.");
                         currentAppState = newAppState;
                         break;
                     }
 
-                    glApp->resume();
-                    if (!glRunThreadStarted) {
-                        GlApp* glAppPtr = glApp.get();
-                        glAppRunThread = std::thread([glAppPtr]() {
-                            glAppPtr->run();
-                        });
-                        glRunThreadStarted = true;
+                    {
+                        std::lock_guard<std::mutex> lock(glAppMutex);
+                        if (glApp != nullptr) {
+                            glApp->resume();
+                        }
                     }
                     currentAppState = newAppState;
                 }

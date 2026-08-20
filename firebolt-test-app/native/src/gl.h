@@ -52,7 +52,7 @@ class GlApp {
         // Returns false on any fatal initialisation error.
         bool init(const char* waylandDisplay = "wayland-0");
 
-        // render initial frame with background pattern and font text with default '?' keycode.
+        // Queue the initial frame for the render thread with default '?' keycode.
         void renderInitialFrame();
 
         // Blocks in the Wayland event loop until close() requests shutdown.
