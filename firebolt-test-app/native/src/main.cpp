@@ -674,10 +674,6 @@ int main(int argc, char** argv)
                     currentAppState = newAppState;
                 }
                 break;
-                case AppState::SUSPENDED_TO_PAUSED:
-                {
-                    currentAppState = newAppState;
-                }
                 break;
                 case AppState::PAUSED_TO_ACTIVE:
                 {
@@ -716,7 +712,9 @@ int main(int argc, char** argv)
                     currentAppState = newAppState;
                 }
                 break;
+                case AppState::SUSPENDED_TO_PAUSED:
                 default:
+                    log_warn("Lifecycle state changed: {} without specific action.", newAppState);
                     currentAppState = newAppState;
                     break;
             }

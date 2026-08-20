@@ -1213,6 +1213,7 @@ void GlApp::renderInitialFrame()
     // The render thread remains the only thread that touches EGL/GLES.
     PreparedFrame frame = prepare_cairo_frame(m_ctx, 0);
     queue_prepared_frame(m_ctx, std::move(frame));
+    m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
     m_ctx->lastInputRenderTime = std::chrono::steady_clock::time_point{};
     log_dbg("renderInitialFrame prepared and queued for render thread");
 }
