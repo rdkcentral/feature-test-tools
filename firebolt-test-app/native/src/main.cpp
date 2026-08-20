@@ -581,14 +581,36 @@ int main(int argc, char** argv)
             shutdownRequested.store(true);
             appInitiatedTeardown.store(initiatedByApp);
 
-            // Shutdown GL app and thread
-            log_warn("[cleanupAndExit] Cleaning up GL app and thread...");
-            stopGlThread();
+            // For app-initiated teardown (ESC), call Lifecycle.close() NOW while
+            // the transport is still live, before any GL/thread teardown begins.
+            // For system-initiated teardown (TERMINATING), the platform already
+            // knows about exit — skip close() to avoid re-entrant callback crash.
+            if (initiatedByApp) {
+                log_info("[cleanupAndExit] App-initiated: calling Lifecycle.close(UNLOAD)...");
+                try {
+                    Firebolt::IFireboltAccessor::Instance()
+                        .LifecycleInterface()
+                        .close(Firebolt::Lifecycle::CloseType::UNLOAD);
+                    log_info("[cleanupAndExit] Lifecycle.close(UNLOAD) sent.");
+                } catch (...) {
+                    log_warn("[cleanupAndExit] Lifecycle.close(UNLOAD) threw; ignoring.");
+                }
+            }
+
+            // For app-initiated path, stop GL here.
+            // For system-initiated (TERMINATING): DO NOT call stopGlThread() from
+            // the lifecycle callback thread — the PAUSED handler may already hold
+            // glLifecycleMutex and be blocked in glThread.join(), causing a
+            // deadlock that triggers the platform SIGTERM watchdog.
+            // Main thread will call stopGlThread() after unblocking.
+            if (initiatedByApp) {
+                log_warn("[cleanupAndExit] App-initiated: stopping GL app and thread...");
+                stopGlThread();
+            } else {
+                log_warn("[cleanupAndExit] System-initiated: signalling exit; main thread will stop GL.");
+            }
 
             escWatcherRunning = false;
-
-            // Disable input bridge and disconnect
-            //SetMenuInputBridgeEnabled(false);
             signalExit(code);
         });
     };
@@ -805,21 +827,19 @@ int main(int argc, char** argv)
         escWatcherThread.join();
     }
 
-    // Keep Firebolt transport teardown on the main thread after worker joins.
-    std::call_once(fireboltCleanupOnce, [&] {
-        if (appInitiatedTeardown.load()) {
-            log_info("[Main] App-initiated teardown: calling Lifecycle.close(UNLOAD)...");
-            auto closeResult = Firebolt::IFireboltAccessor::Instance()
-                                   .LifecycleInterface()
-                                   .close(Firebolt::Lifecycle::CloseType::UNLOAD);
-            if (closeResult != Firebolt::Error::None) {
-                log_warn("[Main] Lifecycle.close(UNLOAD) failed: {}", static_cast<int>(closeResult));
-            }
-        } else {
-            log_info("[Main] System-initiated teardown: skipping Lifecycle.close(UNLOAD)");
-        }
+    // For system-initiated teardown (TERMINATING), cleanupAndExit intentionally
+    // skipped stopGlThread to avoid a mutex deadlock on the callback thread.
+    // Stop GL from main thread now that all workers have been joined.
+    if (!appInitiatedTeardown.load()) {
+        log_warn("[Main] System-initiated teardown: stopping GL from main thread...");
+        stopGlThread();
+    }
 
-        log_info("[Main] Disconnecting Firebolt transport...");
+    // Firebolt transport teardown on main thread.
+    // Lifecycle.close(UNLOAD) was already sent inside cleanupAndExit for app-initiated path.
+    std::call_once(fireboltCleanupOnce, [&] {
+        log_info("[Main] {}-initiated teardown: Disconnecting Firebolt transport...",
+                 appInitiatedTeardown.load() ? "App" : "System");
         // For runtime debugging, skip Disconnect() if "/tmp/.fbttestnodisconnect" file exists.
         if (access("/tmp/.fbttestnodisconnect", F_OK) == 0) {
             log_warn("[Main] Skipping Firebolt transport disconnect due to /tmp/.fbttestnodisconnect");
