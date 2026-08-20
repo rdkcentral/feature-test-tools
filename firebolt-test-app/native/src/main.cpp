@@ -857,10 +857,19 @@ int main(int argc, char** argv)
     std::call_once(fireboltCleanupOnce, [&] {
         log_info("[Main] {}-initiated teardown: Disconnecting Firebolt transport...",
                  appInitiatedTeardown.load() ? "App" : "System");
+        // System-triggered TERMINATING has a strict watchdog budget from AppMgr.
+        // Disconnect() can block for several seconds during websocket shutdown, so
+        // skip it in this path and let process teardown reclaim resources.
+        if (!appInitiatedTeardown.load()) {
+            log_warn("[Main] System-initiated teardown: skipping Firebolt Disconnect to meet watchdog deadline.");
+            if (lifecycleSubId != 0) {
+                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
+                log_info("[Main] Unsubscribed from lifecycle state changes (ID: {})", lifecycleSubId);
+            }
+        }
         // For runtime debugging, skip Disconnect() if "/tmp/.fbttestnodisconnect" file exists.
-        if (access("/tmp/.fbttestnodisconnect", F_OK) == 0) {
+        else if (access("/tmp/.fbttestnodisconnect", F_OK) == 0) {
             log_warn("[Main] Skipping Firebolt transport disconnect due to /tmp/.fbttestnodisconnect");
-            // unsubscribe from lifecycle state changes to avoid dangling subscription
             if (lifecycleSubId != 0) {
                 Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
                 log_info("[Main] Unsubscribed from lifecycle state changes (ID: {})", lifecycleSubId);
@@ -876,5 +885,8 @@ int main(int argc, char** argv)
 
     log_warn("[Main] Disconnected @ {}, Exiting.", timepointToString());
 
+    // Avoid crashes from static object destruction order at process shutdown.
+    // Native app teardown has completed above, so terminate immediately.
+    _exit(exitCode);
     return exitCode;
 }
