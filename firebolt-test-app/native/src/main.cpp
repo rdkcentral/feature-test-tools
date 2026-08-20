@@ -581,22 +581,6 @@ int main(int argc, char** argv)
             shutdownRequested.store(true);
             appInitiatedTeardown.store(initiatedByApp);
 
-            // For app-initiated teardown (ESC), call Lifecycle.close() NOW while
-            // the transport is still live, before any GL/thread teardown begins.
-            // For system-initiated teardown (TERMINATING), the platform already
-            // knows about exit — skip close() to avoid re-entrant callback crash.
-            if (initiatedByApp) {
-                log_info("[cleanupAndExit] App-initiated: calling Lifecycle.close(UNLOAD)...");
-                try {
-                    Firebolt::IFireboltAccessor::Instance()
-                        .LifecycleInterface()
-                        .close(Firebolt::Lifecycle::CloseType::UNLOAD);
-                    log_info("[cleanupAndExit] Lifecycle.close(UNLOAD) sent.");
-                } catch (...) {
-                    log_warn("[cleanupAndExit] Lifecycle.close(UNLOAD) threw; ignoring.");
-                }
-            }
-
             // For app-initiated path, stop GL here.
             // For system-initiated (TERMINATING): DO NOT call stopGlThread() from
             // the lifecycle callback thread — the PAUSED handler may already hold
@@ -836,8 +820,21 @@ int main(int argc, char** argv)
     }
 
     // Firebolt transport teardown on main thread.
-    // Lifecycle.close(UNLOAD) was already sent inside cleanupAndExit for app-initiated path.
+    // All worker threads are joined and shutdownRequested=true, so no lifecycle
+    // callbacks can fire between here and Disconnect().
     std::call_once(fireboltCleanupOnce, [&] {
+        // close(UNLOAD) is safe here: main thread owns execution, all other
+        // threads are joined, and shutdownRequested gates any stray callbacks.
+        if (appInitiatedTeardown.load()) {
+            log_info("[Main] App-initiated teardown: calling Lifecycle.close(UNLOAD)...");
+            Firebolt::IFireboltAccessor::Instance()
+                .LifecycleInterface()
+                .close(Firebolt::Lifecycle::CloseType::UNLOAD);
+            log_info("[Main] Lifecycle.close(UNLOAD) sent.");
+        } else {
+            log_info("[Main] System-initiated teardown: skipping Lifecycle.close(UNLOAD).");
+        }
+
         log_info("[Main] {}-initiated teardown: Disconnecting Firebolt transport...",
                  appInitiatedTeardown.load() ? "App" : "System");
         // For runtime debugging, skip Disconnect() if "/tmp/.fbttestnodisconnect" file exists.
