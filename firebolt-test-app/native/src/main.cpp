@@ -857,6 +857,7 @@ int main(int argc, char** argv)
     std::call_once(fireboltCleanupOnce, [&] {
         log_info("[Main] {}-initiated teardown: Disconnecting Firebolt transport...",
                  appInitiatedTeardown.load() ? "App" : "System");
+#if 0
         // System-triggered TERMINATING has a strict watchdog budget from AppMgr.
         // Disconnect() can block for several seconds during websocket shutdown, so
         // skip it in this path and let process teardown reclaim resources.
@@ -879,6 +880,7 @@ int main(int argc, char** argv)
             Firebolt::IFireboltAccessor::Instance().Disconnect();
             log_info("[Main] Firebolt transport disconnected.");
         }
+#endif
         lifecycleSubId = 0;
         log_info("[Main] Firebolt transport disconnected");
     });
