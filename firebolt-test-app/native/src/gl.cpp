@@ -1235,15 +1235,19 @@ void GlApp::renderInitialFrame()
         return;
     }
 
-    if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Running) {
-        log_info("renderInitialFrame: already running; skipping first frame render");
+    if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Closing) {
+        log_info("renderInitialFrame: already closing; skipping first frame render");
         return;
     }
 
-    m_ctx->lifecycle_state.store(RenderLifecycleState::Running);
+    // hack to make it render once.
+    std::atomic<bool> runningbackup = m_ctx->running.load();
+    m_ctx->running.store(true);
     // Set as 0 will show '?' in the keycode display box.
     m_ctx->current_keycode = 0;
     render_cairo_frame(m_ctx);
+    // restore the running state to what it was before this call.
+    m_ctx->running.store(runningbackup);
 }
 
 void GlApp::deinit()
