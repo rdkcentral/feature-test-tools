@@ -434,6 +434,7 @@ int main(int argc, char** argv)
     std::thread testThread;
     std::thread escWatcherThread;
     std::thread pausedStateThread;
+    std::thread suspendedStateThread;
     std::atomic<bool> testThreadStarted{ false };
     std::atomic<bool> glThreadStarted{ false };
     std::atomic<bool> escWatcherRunning{ true };
@@ -640,8 +641,12 @@ int main(int argc, char** argv)
             return;
         }
 
+        // Do NOT join here — joining on the notification worker blocks it and prevents
+        // TERMINATING from being processed, potentially triggering platform watchdog.
+        // The previous thread is functionally done (it set pausedStateWorkScheduled=false
+        // as its last action before exiting), so detach is safe.
         if (pausedStateThread.joinable()) {
-            pausedStateThread.join();
+            pausedStateThread.detach();
         }
 
         /**
@@ -760,9 +765,24 @@ int main(int argc, char** argv)
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::SUSPENDED: {
-                        log_warn("[LifecycleCB] State SUSPENDED. Releasing W-EGL resources...");
-                        stopGlThread();
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
+                        log_warn("[LifecycleCB] State SUSPENDED. Scheduling EGL resource release...");
+                        // Do NOT call stopGlThread() here — it blocks in glThread.join() and
+                        // would prevent TERMINATING (queued behind this callback) from being
+                        // processed, causing platform watchdog timeouts.
+                        // Offload to a tracked background thread and let main join it on exit.
+                        if (suspendedStateThread.joinable()) {
+                            suspendedStateThread.detach(); // previous suspended work is done
+                        }
+                        suspendedStateThread = std::thread([&]() {
+                            if (!shutdownRequested.load()) {
+                                log_warn("[SuspendedWorker] Releasing EGL/GL resources...");
+                                stopGlThread();
+                                log_warn("[SuspendedWorker] EGL/GL resources released.");
+                            } else {
+                                log_info("[SuspendedWorker] Shutdown in progress, skipping GL stop.");
+                            }
+                        });
+                        log_info("[LifecycleCB] State transition SUSPENDED scheduled: {}", timepointToString());
                     }
                     break;
                     case Firebolt::Lifecycle::LifecycleState::HIBERNATED:
@@ -811,6 +831,11 @@ int main(int argc, char** argv)
         escWatcherThread.join();
     }
 
+    if (suspendedStateThread.joinable()) {
+        log_warn("[Main] Waiting for suspended state thread to finish...");
+        suspendedStateThread.join();
+    }
+
     // For system-initiated teardown (TERMINATING), cleanupAndExit intentionally
     // skipped stopGlThread to avoid a mutex deadlock on the callback thread.
     // Stop GL from main thread now that all workers have been joined.
@@ -823,18 +848,6 @@ int main(int argc, char** argv)
     // All worker threads are joined and shutdownRequested=true, so no lifecycle
     // callbacks can fire between here and Disconnect().
     std::call_once(fireboltCleanupOnce, [&] {
-        // close(UNLOAD) is safe here: main thread owns execution, all other
-        // threads are joined, and shutdownRequested gates any stray callbacks.
-        if (appInitiatedTeardown.load()) {
-            log_info("[Main] App-initiated teardown: calling Lifecycle.close(UNLOAD)...");
-            Firebolt::IFireboltAccessor::Instance()
-                .LifecycleInterface()
-                .close(Firebolt::Lifecycle::CloseType::UNLOAD);
-            log_info("[Main] Lifecycle.close(UNLOAD) sent.");
-        } else {
-            log_info("[Main] System-initiated teardown: skipping Lifecycle.close(UNLOAD).");
-        }
-
         log_info("[Main] {}-initiated teardown: Disconnecting Firebolt transport...",
                  appInitiatedTeardown.load() ? "App" : "System");
         // For runtime debugging, skip Disconnect() if "/tmp/.fbttestnodisconnect" file exists.
