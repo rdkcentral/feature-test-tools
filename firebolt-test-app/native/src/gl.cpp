@@ -166,6 +166,13 @@ extern "C" {
 #define DEFAULT_WIDTH   1280
 #define DEFAULT_HEIGHT  720
 
+enum class RenderLifecycleState {
+    Bootstrapping,
+    Paused,
+    Active,
+    Closing,
+};
+
 struct AppContext {
     wl_display* display = nullptr;
     wl_registry* registry = nullptr;
@@ -193,6 +200,7 @@ struct AppContext {
 
     BackgroundPatternMode background_pattern = PATTERN_NONE;
     std::atomic<bool> running{true};
+    std::atomic<RenderLifecycleState> lifecycle_state{RenderLifecycleState::Bootstrapping};
     bool configured = false;
     bool hasPresentedFrame = false;
     bool keyFrameDirty = false;
@@ -207,6 +215,7 @@ struct AppContext {
     int width = DEFAULT_WIDTH;
     int height = DEFAULT_HEIGHT;
     std::string fontPath = "/usr/share/fonts/ttf/LiberationSans-Bold.ttf";
+    void (*keycodeCallback)(uint32_t) = nullptr;
 
     // Lifetime management
     std::atomic<bool> deinitialized { false };
@@ -221,8 +230,8 @@ struct FontResourceBundle {
 
 static void apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
 {
-    if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface) {
-        log_dbg("Skipping simple-shell reapply ({}): missing shell/surface/id", reason ? reason : "unknown");
+    if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface || !app->display) {
+        log_dbg("Skipping simple-shell reapply ({}): invalid app/shell/surface/id/display", reason ? reason : "unknown");
         return;
     }
 
@@ -514,6 +523,30 @@ static bool ensure_egl_current(AppContext* app)
     return true;
 }
 
+static bool present_minimal_frame(AppContext* app)
+{
+    if (!app) {
+        return false;
+    }
+
+    if (!ensure_egl_current(app)) {
+        return false;
+    }
+
+    glViewport(0, 0, app->width, app->height);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    const EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
+    if (EGL_TRUE == swap_result) {
+        app->hasPresentedFrame = true;
+        return true;
+    }
+
+    log_warn("Minimal frame swap failed: {}", egl_error_string(eglGetError()));
+    return false;
+}
+
 //---------------------------------------------------------------------------
 
 void render_cairo_frame(AppContext* app)
@@ -774,22 +807,12 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
     AppContext* app = static_cast<AppContext*>(data);
     log_dbg("keyboard key event state={}, key={}, serial={}", state, key, serial);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-        if (key == KEY_ESC || key == KEY_BACKSPACE) {
-            // Prevent GL event loop from scheduling another frame after EXIT trigger KEYCODE.
-            app->running.store(false);
-            app->keyFrameDirty = false;
-            log_info("ESC or BACKSPACE key received; requesting application exit without rendering it.");
-            RequestEscExit();
-            return;
-        }
         app->current_keycode = key;
         app->keyFrameDirty = true;
 
-        // TODO: remove this.
-        // MenuInputEvent event;
-        // if (translate_menu_input_event(key, event)) {
-        // 	PushMenuInputEvent(event);
-        // }
+        if (app->keycodeCallback) {
+            app->keycodeCallback(key);
+        }
     }
 }
 
@@ -994,6 +1017,17 @@ GlApp::~GlApp()
     deinit();
 }
 
+bool GlApp::registerKeycodeCallback(void (*callback)(uint32_t keycode))
+{
+    m_keycodeCallback = callback;
+    if (m_ctx) {
+        m_ctx->keycodeCallback = callback;
+        log_info("Keycode callback registered");
+        return true;
+    }
+    return false;
+}
+
 bool GlApp::init(const char* waylandDisplay)
 {
     log_dbg("GlApp::init thread={}", current_thread_string());
@@ -1180,6 +1214,16 @@ bool GlApp::init(const char* waylandDisplay)
         log_info("GlApp init complete, Released EGL context after GLES init");
     }
 
+    if (!present_minimal_frame(m_ctx)) {
+        log_warn("Initial minimal frame presentation failed");
+    }
+
+    if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
+        log_warn("Failed to release EGL context after minimal frame: {}", egl_error_string(eglGetError()));
+    }
+
+    m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
+
     return true;
 }
 
@@ -1325,30 +1369,11 @@ void GlApp::run()
         return;
     }
 
-    log_info("Surface configured, drawing first frame");
-    render_cairo_frame(m_ctx);
-
-    if (!m_ctx->hasPresentedFrame) {
-        log_info("First frame not presented yet; starting short warm-up retries");
-        for (int i = 0; m_ctx->running.load() && !m_ctx->hasPresentedFrame && i < 20; ++i) {
-            wl_surface_commit(m_ctx->surface);
-            wl_display_flush(m_ctx->display);
-            wl_display_roundtrip(m_ctx->display);
-            render_cairo_frame(m_ctx);
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
-        if (m_ctx->hasPresentedFrame) {
-            log_info("Warm-up retries succeeded; first frame is now presented");
-        } else {
-            log_warn("Warm-up retries ended without a confirmed presented frame");
-        }
-    }
-
     log_info("Entering event-driven loop (low CPU mode)");
     int dispatch_count = 0;
     auto last_heartbeat = std::chrono::steady_clock::now();
     static constexpr auto kInputRenderMinInterval = std::chrono::milliseconds(20);
+    static constexpr auto kPausedSleepInterval = std::chrono::milliseconds(20);
 
     while (m_ctx->running.load()) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
@@ -1357,6 +1382,12 @@ void GlApp::run()
             break;
         }
         dispatch_count++;
+
+        const RenderLifecycleState state = m_ctx->lifecycle_state.load();
+        if (RenderLifecycleState::Closing == state) {
+            m_ctx->running.store(false);
+            break;
+        }
 
         if (dispatch_count % 120 == 0) {
             apply_simple_shell_state(m_ctx, "periodic", false);
@@ -1368,7 +1399,7 @@ void GlApp::run()
 
         // Coalesce bursty key events and cap key-driven redraw frequency.
         const auto now = std::chrono::steady_clock::now();
-        if (m_ctx->running.load() && m_ctx->keyFrameDirty &&
+        if (RenderLifecycleState::Active == state && m_ctx->running.load() && m_ctx->keyFrameDirty &&
             (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
              now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
             render_cairo_frame(m_ctx);
@@ -1378,13 +1409,17 @@ void GlApp::run()
         }
 
         // Keep one low-frequency redraw in case compositor requires occasional commits.
-        if (m_ctx->running.load() && (now - last_heartbeat >= std::chrono::seconds(1))) {
+        if (RenderLifecycleState::Active == state && m_ctx->running.load() && (now - last_heartbeat >= std::chrono::seconds(1))) {
             render_cairo_frame(m_ctx);
             last_heartbeat = now;
         }
 
-        // Tiny backoff prevents tight-loop CPU spikes when compositor is chatty.
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (RenderLifecycleState::Paused == state || RenderLifecycleState::Bootstrapping == state) {
+            std::this_thread::sleep_for(kPausedSleepInterval);
+        } else {
+            // Tiny backoff prevents tight-loop CPU spikes when compositor is chatty.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
     if (m_ctx->egl_display != EGL_NO_DISPLAY) {
         glFinish();
@@ -1397,10 +1432,34 @@ void GlApp::run()
     log_warn("Wayland dispatch loop exited");
 }
 
-void GlApp::shutdown()
+void GlApp::resume()
 {
-    log_info("Shutting down GlApp");
+    log_info("Resuming GlApp rendering");
     if (m_ctx) {
+        m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
+        m_ctx->keyFrameDirty = true;
+    }
+}
+
+void GlApp::pause()
+{
+    log_info("Pausing GlApp rendering");
+    if (m_ctx) {
+        m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
+        m_ctx->keyFrameDirty = false;
+    }
+}
+
+void GlApp::close()
+{
+    log_info("Closing GlApp");
+    if (m_ctx) {
+        m_ctx->lifecycle_state.store(RenderLifecycleState::Closing);
         m_ctx->running.store(false);
     }
+}
+
+void GlApp::shutdown()
+{
+    close();
 }

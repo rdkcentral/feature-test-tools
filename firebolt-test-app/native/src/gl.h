@@ -22,6 +22,7 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 enum BackgroundPatternMode {
@@ -47,16 +48,33 @@ class GlApp {
 
         // Initialises Wayland, EGL, and GLES pipeline.
         // waylandDisplay defaults to "wayland-0"; pass nullptr to use that default.
+        // Registers input/state callbacks and presents a minimal bootstrap frame.
         // Returns false on any fatal initialisation error.
         bool init(const char* waylandDisplay = "wayland-0");
 
-        // Blocks in the Wayland event-dispatch loop until the window is closed.
+        // Blocks in the Wayland event loop until close() requests shutdown.
+        // Rendering behavior is driven by pause()/resume().
         void run();
 
-        // Release EGL and Wayland resources and stop rendering.
+        // Switches the event loop into active rendering mode.
+        void resume();
+
+        // Keeps the current frame visible while reducing graphics activity.
+        void pause();
+
+        // Requests shutdown and lets the run() loop unwind.
+        void close();
+
+        // Backward-compatible alias for close().
         void shutdown();
+
+        // Release EGL and Wayland resources after the loop has stopped.
         void deinit();
+
+        // callback function pointer for giving keycode to external app.
+        bool registerKeycodeCallback(void (*callback)(uint32_t keycode));
 
     private:
         AppContext* m_ctx = nullptr;
+        void (*m_keycodeCallback)(uint32_t keycode) = nullptr;
 };

@@ -61,11 +61,13 @@
 #include <firebolt/firebolt.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <future>
@@ -74,6 +76,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -91,6 +94,98 @@ struct AppLoggerConfig {
     static constexpr const char* kTag = "[APP]";
 };
 using LocalLogger = RuntimeLogger<AppLoggerConfig>;
+
+namespace {
+constexpr uint32_t kEscKeyCode = 1;
+constexpr uint32_t kBackspaceKeyCode = 14;
+std::atomic<bool> gGlExitKeyRequested{ false };
+
+void handleGlKeycode(uint32_t keycode)
+{
+    log_info("GL keycode received: {}", keycode);
+    if (kEscKeyCode == keycode || kBackspaceKeyCode == keycode) {
+        gGlExitKeyRequested.store(true, std::memory_order_release);
+    }
+}
+}
+
+// ---------------------------------------------------------------------------
+// LifeCycleState to AppState mapping
+// ---------------------------------------------------------------------------
+#define APP_STATE_LIST(X) \
+    X(INITIALIZING_TO_SUSPEND) \
+    X(INITIALIZING_TO_PAUSED) \
+    X(PAUSED_TO_ACTIVE) \
+    X(ACTIVE_TO_PAUSED) \
+    X(PAUSED_TO_SUSPENDED) \
+    X(SUSPENDED_TO_PAUSED) \
+    X(SUSPENDED_TO_HIBERNATED) \
+    X(HIBERNATED_TO_SUSPENDED) \
+    X(ACTIVE_TO_TERMINATING) \
+    X(PAUSED_TO_TERMINATING) \
+    X(SUSPENDED_TO_TERMINATING) \
+    X(UNKNOWN_STATE)
+
+#define GENERATE_ENUM(ENUM) ENUM,
+enum class AppState : uint8_t {
+    APP_STATE_LIST(GENERATE_ENUM)
+};
+#undef GENERATE_ENUM
+
+constexpr AppState getAppStateFromLifeCycleEvent(const Firebolt::Lifecycle::StateChange& stateChange) noexcept
+{
+    using LC = Firebolt::Lifecycle::LifecycleState;
+
+    // Deduce the fastest, safest integer key type based on the target architecture pointer size
+    using KeyType = std::conditional_t<sizeof(void*) == 8, uint64_t, uint32_t>;
+    constexpr size_t shift_bits = (sizeof(KeyType) == 8) ? 32 : 16;
+
+    auto unique_key = [](LC oldS, LC newS) constexpr -> KeyType {
+        // Masking with 0xFFFF protects 32-bit builds from unexpected external enum values > 65535
+        if constexpr (sizeof(KeyType) == 4) {
+            return ((static_cast<uint32_t>(oldS) & 0xFFFF) << shift_bits) | (static_cast<uint32_t>(newS) & 0xFFFF);
+        } else {
+            return (static_cast<uint64_t>(oldS) << shift_bits) | static_cast<uint64_t>(newS);
+        }
+    };
+
+    switch (unique_key(stateChange.oldState, stateChange.newState)) {
+        case unique_key(LC::INITIALIZING, LC::SUSPENDED):   return AppState::INITIALIZING_TO_SUSPEND;
+        case unique_key(LC::INITIALIZING, LC::PAUSED):      return AppState::INITIALIZING_TO_PAUSED;
+        case unique_key(LC::PAUSED,       LC::ACTIVE):      return AppState::PAUSED_TO_ACTIVE;
+        case unique_key(LC::ACTIVE,       LC::PAUSED):      return AppState::ACTIVE_TO_PAUSED;
+        case unique_key(LC::PAUSED,       LC::SUSPENDED):   return AppState::PAUSED_TO_SUSPENDED;
+        case unique_key(LC::SUSPENDED,    LC::PAUSED):      return AppState::SUSPENDED_TO_PAUSED;
+        case unique_key(LC::SUSPENDED,    LC::HIBERNATED):  return AppState::SUSPENDED_TO_HIBERNATED;
+        case unique_key(LC::HIBERNATED,   LC::SUSPENDED):  return AppState::HIBERNATED_TO_SUSPENDED;
+        case unique_key(LC::ACTIVE,       LC::TERMINATING): return AppState::ACTIVE_TO_TERMINATING;
+        case unique_key(LC::PAUSED,       LC::TERMINATING): return AppState::PAUSED_TO_TERMINATING;
+        case unique_key(LC::SUSPENDED,    LC::TERMINATING): return AppState::SUSPENDED_TO_TERMINATING;
+        default:                                            return AppState::UNKNOWN_STATE;
+    }
+}
+
+constexpr std::string_view to_string(AppState state) noexcept
+{
+    #define GENERATE_STRING(STRING) #STRING,
+    constexpr std::array state_strings{
+        APP_STATE_LIST(GENERATE_STRING)
+    };
+    #undef GENERATE_STRING
+
+    const auto idx = static_cast<size_t>(state);
+
+    if (idx >= state_strings.size()) {
+        return "UNKNOWN_STATE";
+    }
+    return state_strings[idx];
+}
+
+// Overloaded Stream Operator for Printing
+inline std::ostream& operator<<(std::ostream& os, AppState state)
+{
+    return os << to_string(state);
+}
 
 // ---------------------------------------------------------------------------
 // printUsage
@@ -285,6 +380,34 @@ static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& mod
     }
 }
 
+/**
+ * @brief Initializes the GL context using the GlApp class and return its instance.
+ * @param width The width of the GL context.
+ * @param height The height of the GL context.
+ * @param fontPath The path to the font file to be used in the GL context.
+ * @param pattern The background pattern mode for the GL context.
+ * @return GlApp instance if initialization is successful, nullptr otherwise.
+ */
+static std::unique_ptr<GlApp> initGlApp(int width,
+                                        int height,
+                                        const std::string& fontPath,
+                                        BackgroundPatternMode pattern,
+                                        const char* waylandDisplay)
+{
+	auto glApp = std::make_unique<GlApp>(width, height, fontPath, pattern);
+	if (!glApp)
+	{
+		log_fatal("Failed to create GlApp instance.");
+		return nullptr;
+	}
+    if (!glApp->init(waylandDisplay))
+	{
+		log_fatal("Failed to initialize GL context.");
+		return nullptr;
+	}
+	return glApp;
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -427,468 +550,175 @@ int main(int argc, char** argv)
 
     log_info("Connected to Firebolt.");
 
-    // --------------------------- App Lifecycle ---------------------------------
-    std::vector<std::unique_ptr<TestModuleBase>> gModules;
-    std::shared_ptr<GlApp> glApp = nullptr;
-    std::thread glThread;
-    std::thread testThread;
-    std::thread escWatcherThread;
-    std::thread pausedStateThread;
-    std::thread suspendedStateThread;
-    std::atomic<bool> testThreadStarted{ false };
-    std::atomic<bool> glThreadStarted{ false };
-    std::atomic<bool> escWatcherRunning{ true };
-    std::condition_variable glStartCv;
-    std::mutex glStartMutex;
-    std::mutex glLifecycleMutex;
-    bool glRunRequested = false;
-    bool glStopRequested = false;
-    std::mutex pausedStateMutex;
-    std::atomic<bool> pausedStateWorkScheduled{ false };
+    // --------------------------- GL App Lifecycle -------------------------------
+    BackgroundPatternMode glAppPattern = PATTERN_NONE;
+    int glAppWidth = 1920, glAppHeight = 1080;
+
+    std::atomic<bool> exitRequested{ false };
+    std::atomic<AppState> nextAppState{ AppState::UNKNOWN_STATE };
+    AppState currentAppState{AppState::UNKNOWN_STATE};
+
+    // GLApp context
+    std::unique_ptr<GlApp> glApp = nullptr;
+    std::mutex glAppMutex;
+    std::thread glAppRunThread;
+    bool glRunThreadStarted = false;
     Firebolt::SubscriptionId lifecycleSubId = 0;
-    std::promise<int> exitCodePromise;
-    std::once_flag exitCodeOnce;
-    std::once_flag cleanupOnce;
-    std::once_flag fireboltCleanupOnce;
-    std::atomic<bool> shutdownRequested{ false };
-    std::atomic<bool> appInitiatedTeardown{ false };
 
-    auto signalExit = [&](int code) {
-        std::call_once(exitCodeOnce, [&] {
-            exitCodePromise.set_value(code);
-        });
-    };
+    if (const char* w = std::getenv("WIDTH"))  try { glAppWidth = std::stoi(w); } catch (...) {}
+    if (const char* h = std::getenv("HEIGHT")) try { glAppHeight = std::stoi(h); } catch (...) {}
 
-    auto startGlThread = [&]() {
-        log_dbg("[startGlThread] Starting GlApp thread...refCount={}", glApp ? glApp.use_count() : 0);
-        if (!glApp) {
-            log_fatal("[startGlThread] Cannot start GlApp thread: GlApp not initialized.");
-            return;
-        }
+    if (const char* pm = std::getenv("PATTERN_MODE")) {
+        if (std::strcmp(pm, "GRID") == 0) glAppPattern = PATTERN_GRID;
+        else if (std::strcmp(pm, "DOT") == 0) glAppPattern = PATTERN_DOT;
+    }
 
-        bool expected = false;
-        if (!glThreadStarted.compare_exchange_strong(expected, true)) {
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(glStartMutex);
-            glRunRequested = false;
-            glStopRequested = false;
-        }
-
-        log_info("[startGlThread] Starting GlApp thread...");
-        glThread = std::thread([&, glAppCopy = glApp]() {
-            log_dbg("[startGlThread] GlApp thread started: refCount={}", glAppCopy ? glAppCopy.use_count() : 0);
-            std::unique_lock<std::mutex> lock(glStartMutex);
-            glStartCv.wait(lock, [&] {
-                return glRunRequested || glStopRequested;
-            });
-
-            const bool shouldStop = glStopRequested;
-            lock.unlock();
-
-            if (!shouldStop && glAppCopy) {
-                log_info("[startGlThread] GlApp start run().");
-                glAppCopy->run();
-            } else {
-                log_info("[startGlThread] GlApp run() skipped due to stop request.");
-            }
-        });
-    };
-
-    auto stopGlThread = [&]() {
-        std::lock_guard<std::mutex> lifecycleLock(glLifecycleMutex);
-        log_info("[stopGlThread] Stopping GlApp thread...refCount={}", glApp ? glApp.use_count() : 0);
-
-        {
-            std::lock_guard<std::mutex> lock(glStartMutex);
-            glStopRequested = true;
-            glRunRequested = true;
-        }
-        glStartCv.notify_all();
-
-        if (glApp) {
-            log_info("[stopGlThread] GlApp shutdown requested.");
-            glApp->shutdown();
-        } else {
-            log_info("[stopGlThread] GlApp shutdown skipped (not initialized).");
-        }
-
-        if (glThread.joinable() && glThread.get_id() != std::this_thread::get_id()) {
-            log_dbg("[stopGlThread] Joining GlApp thread...");
-            glThread.join();
-        } else if (glThread.joinable()) {
-            // Avoid std::terminate when stop is invoked from the GL worker itself.
-            log_dbg("[stopGlThread] Detaching GlApp thread...");
-            glThread.detach();
-        }
-
-        log_dbg("[stopGlThread] Resetting GlApp... refCount={}", glApp ? glApp.use_count() : 0);
-        if (glApp) {
-            glApp.reset();
-        }
-        log_dbg("[stopGlThread] Resetted GlApp state...refCount={}", glApp ? glApp.use_count() : 0);
-        glThreadStarted = false;
-
-        {
-            std::lock_guard<std::mutex> lock(glStartMutex);
-            glRunRequested = false;
-            glStopRequested = false;
-        }
-    };
-
-    auto initializeGlApp = [&]() -> bool {
-        log_info("[initializeGlApp] Initializing GlApp...refCount={}", glApp ? glApp.use_count() : 0);
-        std::lock_guard<std::mutex> lifecycleLock(glLifecycleMutex);
-
-        SetMenuInputBridgeEnabled(true);
-
-        int glW = 1920, glH = 1080;
-        if (const char* w = std::getenv("WIDTH"))  try { glW = std::stoi(w); } catch (...) {}
-        if (const char* h = std::getenv("HEIGHT")) try { glH = std::stoi(h); } catch (...) {}
-
-        BackgroundPatternMode glPat = PATTERN_NONE;
-        if (const char* pm = std::getenv("PATTERN_MODE")) {
-            if      (std::strcmp(pm, "GRID") == 0) glPat = PATTERN_GRID;
-            else if (std::strcmp(pm, "DOT")  == 0) glPat = PATTERN_DOT;
-        }
-
-        const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
-        std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
-        if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
-            log_fatal("Font file not found or not readable at " + fontFile);
-            return false;
-        }
-
-        auto nextGlApp = std::make_shared<GlApp>(glW, glH, fontFile, glPat);
-        if (!nextGlApp || !nextGlApp->init(waylandDisp)) {
-            log_fatal("Aborting: GlApp failed to initialize.");
-            return false;
-        }
-
-        glApp = std::move(nextGlApp);
-        log_warn("[Lifecycle] GlApp initialized successfully - refCount {}.", glApp ? glApp.use_count() : 0);
-        startGlThread();
-        return true;
-    };
-
-    /**
-      * @brief Cleanup and signal application exit with the specified exit code.
-      * @param code Exit code to return from main().
-      */
-    auto cleanupAndExit = [&](int code, bool initiatedByApp) {
-        std::call_once(cleanupOnce, [&] {
-            shutdownRequested.store(true);
-            appInitiatedTeardown.store(initiatedByApp);
-
-            // For app-initiated path, stop GL here.
-            // For system-initiated (TERMINATING): DO NOT call stopGlThread() from
-            // the lifecycle callback thread — the PAUSED handler may already hold
-            // glLifecycleMutex and be blocked in glThread.join(), causing a
-            // deadlock that triggers the platform SIGTERM watchdog.
-            // Main thread will call stopGlThread() after unblocking.
-            if (initiatedByApp) {
-                log_warn("[cleanupAndExit] App-initiated: stopping GL app and thread...");
-                stopGlThread();
-            } else {
-                log_warn("[cleanupAndExit] System-initiated: signalling exit; main thread will stop GL.");
-            }
-
-            escWatcherRunning = false;
-            signalExit(code);
-        });
-    };
-
-    /**
-     * @brief: Start a background thread to watch for ESC exit requests.
-     */
-    escWatcherThread = std::thread([&]() {
-        while (escWatcherRunning.load()) {
-            if (ConsumeEscExitRequest()) {
-                log_warn("[ESCWatcher] ESC exit request received. Cleaning up and exiting...");
-                cleanupAndExit(0, true);
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-    });
-
-    auto lifecycleStateToString = [](Firebolt::Lifecycle::LifecycleState state) {
-        switch (state) {
-            case Firebolt::Lifecycle::LifecycleState::INITIALIZING: return "INITIALIZING";
-            case Firebolt::Lifecycle::LifecycleState::PAUSED:       return "PAUSED";
-            case Firebolt::Lifecycle::LifecycleState::ACTIVE:       return "ACTIVE";
-            case Firebolt::Lifecycle::LifecycleState::SUSPENDED:    return "SUSPENDED";
-            case Firebolt::Lifecycle::LifecycleState::HIBERNATED:   return "HIBERNATED";
-            case Firebolt::Lifecycle::LifecycleState::TERMINATING:  return "TERMINATING";
-            default:                                                return "UNKNOWN";
-        }
-    };
-
-    /**
-      * @brief Schedule work to be done when the app is in PAUSED state.
-      */
-    auto schedulePausedStateWork = [&](Firebolt::Lifecycle::LifecycleState oldState) {
-        if (shutdownRequested.load()) {
-            log_info("[schedulePausedStateWork] Shutdown in progress. Skipping PAUSED work scheduling.");
-            return;
-        }
-
-        bool expected = false;
-        if (!pausedStateWorkScheduled.compare_exchange_strong(expected, true)) {
-            log_info("[schedulePausedStateWork] PAUSED handling already scheduled. Skipping duplicate work.");
-            return;
-        }
-
-        // A finished std::thread remains joinable until joined. Join it here before
-        // assigning a new worker thread object.
-        if (pausedStateThread.joinable()) {
-            pausedStateThread.join();
-        }
-
-        /**
-          * @brief Thread function to handle state transitions.
-          */
-        pausedStateThread = std::thread([&, oldState]() {
-            if (shutdownRequested.load()) {
-                pausedStateWorkScheduled = false;
-                log_info("[schedulePausedStateWork] Shutdown in progress. Exiting PAUSED worker early.");
-                return;
-            }
-
-            std::lock_guard<std::mutex> stateLock(pausedStateMutex);
-
-            if (oldState == Firebolt::Lifecycle::LifecycleState::INITIALIZING) {
-                gModules = buildModuleList(appConfig.fireboltVersion);
-                if (gModules.empty()) {
-                    log_warn("[schedulePausedStateWork] No modules registered for the selected Firebolt version.");
-                    pausedStateWorkScheduled = false;
-                    cleanupAndExit(1, true);
-                    return;
-                }
-            }
-
-            if (oldState == Firebolt::Lifecycle::LifecycleState::ACTIVE ||
-                oldState == Firebolt::Lifecycle::LifecycleState::SUSPENDED) {
-                stopGlThread();
-            }
-
-            if (shutdownRequested.load()) {
-                pausedStateWorkScheduled = false;
-                log_info("[schedulePausedStateWork] Shutdown requested after stop. Skipping init/start.");
-                return;
-            }
-
-            if (std::getenv("XDG_RUNTIME_DIR") || std::getenv("WAYLAND_DISPLAY")) {
-                if (!initializeGlApp()) {
-                    pausedStateWorkScheduled = false;
-                    cleanupAndExit(1, true);
-                    return;
-                }
-
-                // Start rendering so that WindowMgr puts app to ACTIVE state.
-                if (glApp && glThreadStarted.load()) {
-                    {
-                        std::lock_guard<std::mutex> lock(glStartMutex);
-                        glRunRequested = true;
-                    }
-                    glStartCv.notify_one();
-                    log_info("[schedulePausedStateWork] GlApp run() requested.");
-                }
-#if 0
-                bool testExpected = false;
-                if (testThreadStarted.compare_exchange_strong(testExpected, true)) {
-                    testThread = std::thread([&]() {
-                        log_info("[schedulePausedStateWork] Test mode loader thread started.");
-                        if (appConfig.autoRun) {
-                            runAutoMode(gModules);
-                        } else if (!ISATTY(STDIN_FD)) {
-                            runPipedMode(gModules);
-                        } else {
-                            runInteractiveMode(gModules);
-                        }
-                        cleanupAndExit(0, true);
-                    });
-                }
-#endif
-            } else {
-                SetMenuInputBridgeEnabled(false);
-            }
-
-            pausedStateWorkScheduled = false;
-            log_info("[schedulePausedStateWork] State transition ends: {}", timepointToString());
-        });
-    };
-
-    // Register for Lifecycle state changes
-    auto subResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().subscribeOnStateChanged(
-        [&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
-            for (const auto& change : changes) {
-                if (shutdownRequested.load()) {
-                    log_info("[LifecycleCB] Shutdown in progress. Ignoring {} -> {} transition.",
-                             static_cast<int>(change.oldState), static_cast<int>(change.newState));
-                    continue;
-                }
-
-                log_fatal("[LifecycleCB] State change: {} -> {}" , static_cast<int>(change.oldState), static_cast<int>(change.newState));
-                log_fatal("[LifecycleCB] State change: {} -> {}" , lifecycleStateToString(change.oldState), lifecycleStateToString(change.newState));
-                log_info("[LifecycleCB] State transition begins: {}", timepointToString());
-
-                switch (change.newState) {
-                    case Firebolt::Lifecycle::LifecycleState::INITIALIZING: {
-                        log_info("[LifecycleCB] State INITIALIZING");
-                        switch (appConfig.fireboltVersion) {
-                            case FIREBOLT_VERSION_8:
-                                log_info("[Mode] Firebolt 8 - Base API set only (Actions/Intents excluded).");
-                                break;
-                            case FIREBOLT_VERSION_9:
-                                log_info("[Mode] Firebolt 9 / All - Firebolt 8 base modules + Firebolt 9 modules enabled.");
-                                break;
-                            default:
-                                log_info("[Mode] Firebolt All - All modules across all Firebolt versions enabled.");
-                                break;
-                        }
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
-                    }
-                    break;
-                    case Firebolt::Lifecycle::LifecycleState::PAUSED: {
-                        log_info("[LifecycleCB] State PAUSED");
-                        schedulePausedStateWork(change.oldState);
-                    }
-                    break;
-                    case Firebolt::Lifecycle::LifecycleState::ACTIVE: {
-                        log_info("[LifecycleCB] State ACTIVE");
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
-                    }
-                    break;
-                    case Firebolt::Lifecycle::LifecycleState::SUSPENDED: {
-                        log_warn("[LifecycleCB] State SUSPENDED. Scheduling EGL resource release...");
-                        // Do NOT call stopGlThread() here — it blocks in glThread.join() and
-                        // would prevent TERMINATING (queued behind this callback) from being
-                        // processed, causing platform watchdog timeouts.
-                        // Offload to a tracked background thread and let main join it on exit.
-                        if (suspendedStateThread.joinable()) {
-                            log_warn("[LifecycleCB] SUSPENDED worker already active. Skipping duplicate scheduling.");
-                            break;
-                        }
-                        suspendedStateThread = std::thread([&]() {
-                            if (!shutdownRequested.load()) {
-                                log_warn("[SuspendedWorker] Releasing EGL/GL resources...");
-                                stopGlThread();
-                                log_warn("[SuspendedWorker] EGL/GL resources released.");
-                            } else {
-                                log_info("[SuspendedWorker] Shutdown in progress, skipping GL stop.");
-                            }
-                        });
-                        log_info("[LifecycleCB] State transition SUSPENDED scheduled: {}", timepointToString());
-                    }
-                    break;
-                    case Firebolt::Lifecycle::LifecycleState::HIBERNATED:
-                        log_warn("[LifecycleCB] State HIBERNATED");
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
-                        break;
-                    case Firebolt::Lifecycle::LifecycleState::TERMINATING:
-                        log_fatal("[LifecycleCB] State TERMINATING");
-                        cleanupAndExit(0, false);
-                        log_info("[LifecycleCB] State transition ends: {}", timepointToString());
-                        break;
-                    default:
-                        log_warn("[LifecycleCB] Unhandled state: {}", static_cast<int>(change.newState));
-                        break;
-                }
-            }
-        });
-
-    // Store subscription ID and check for success
-    if (subResult) {
-        lifecycleSubId = *subResult;
-        log_info("[Main] Subscribed to state changes (ID: {})", lifecycleSubId);
-    } else {
-        escWatcherRunning = false;
-        if (escWatcherThread.joinable()) {
-            escWatcherThread.join();
-        }
-        log_fatal("[Main] Failed to subscribe to state changes");
+    const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
+    std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
+    if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
+        log_fatal("Font file not found or not readable at " + fontFile);
         return 1;
     }
 
-    const int exitCode = exitCodePromise.get_future().get();
-    log_dbg("[Main] Exit processing begins: refCount={}", glApp ? glApp.use_count() : 0);
-    if (testThread.joinable()) {
-        log_warn("[Main] Waiting for test thread to finish...");
-        testThread.join();
-    }
-
-    if (pausedStateThread.joinable()) {
-        if (appInitiatedTeardown.load()) {
-            log_warn("[Main] Waiting for paused state thread to finish...");
-            pausedStateThread.join();
-        } else {
-            log_warn("[Main] System-initiated teardown: detaching paused state thread to avoid watchdog delay.");
-            pausedStateThread.detach();
+    auto stopGlApp = [&]() {
+        GlApp* glAppPtr = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(glAppMutex);
+            glAppPtr = glApp.get();
         }
-    }
 
-    if (escWatcherThread.joinable()) {
-        log_warn("[Main] Waiting for ESC watcher thread to finish...");
-        escWatcherThread.join();
-    }
-
-    if (suspendedStateThread.joinable()) {
-        if (appInitiatedTeardown.load()) {
-            log_warn("[Main] Waiting for suspended state thread to finish...");
-            suspendedStateThread.join();
-        } else {
-            log_warn("[Main] System-initiated teardown: detaching suspended state thread to avoid watchdog delay.");
-            suspendedStateThread.detach();
+        if (glAppPtr != nullptr) {
+            glAppPtr->close();
         }
-    }
 
-    // For system-initiated teardown (TERMINATING), avoid blocking on GL joins here.
-    // AppManager is terminating the process; the OS will reclaim resources.
-    if (!appInitiatedTeardown.load()) {
-        log_warn("[Main] System-initiated teardown: skipping synchronous GL stop to avoid watchdog SIGTERM.");
-    }
+        if (glAppRunThread.joinable()) {
+            glAppRunThread.join();
+        }
+        glRunThreadStarted = false;
 
-    // Firebolt transport teardown on main thread.
-    // All worker threads are joined and shutdownRequested=true, so no lifecycle
-    // callbacks can fire between here and Disconnect().
-    std::call_once(fireboltCleanupOnce, [&] {
-        log_info("[Main] {}-initiated teardown: Disconnecting Firebolt transport...",
-                 appInitiatedTeardown.load() ? "App" : "System");
-#if 0
-        // System-triggered TERMINATING has a strict watchdog budget from AppMgr.
-        // Disconnect() can block for several seconds during websocket shutdown, so
-        // skip it in this path and let process teardown reclaim resources.
-        if (!appInitiatedTeardown.load()) {
-            log_warn("[Main] System-initiated teardown: skipping Firebolt Disconnect to meet watchdog deadline.");
-            if (lifecycleSubId != 0) {
-                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
-                log_info("[Main] Unsubscribed from lifecycle state changes (ID: {})", lifecycleSubId);
+        {
+            std::lock_guard<std::mutex> lock(glAppMutex);
+            if (glApp != nullptr) {
+                glApp->deinit();
+                glApp.reset();
             }
         }
-        // For runtime debugging, skip Disconnect() if "/tmp/.fbttestnodisconnect" file exists.
-        else if (access("/tmp/.fbttestnodisconnect", F_OK) == 0) {
-            log_warn("[Main] Skipping Firebolt transport disconnect due to /tmp/.fbttestnodisconnect");
-            if (lifecycleSubId != 0) {
-                Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
-                log_info("[Main] Unsubscribed from lifecycle state changes (ID: {})", lifecycleSubId);
-            }
-        } else {
-            log_info("[Main] Calling Firebolt::IFireboltAccessor::Instance().Disconnect()...");
-            Firebolt::IFireboltAccessor::Instance().Disconnect();
-            log_info("[Main] Firebolt transport disconnected.");
+    };
+
+    auto ensureGlAppInitialized = [&]() -> bool {
+        std::lock_guard<std::mutex> lock(glAppMutex);
+        if (glApp != nullptr) {
+            return true;
         }
-#endif
-        lifecycleSubId = 0;
-        log_info("[Main] Firebolt transport disconnected");
-    });
 
-    log_warn("[Main] Disconnected @ {}, Exiting.", timepointToString());
+        glApp = initGlApp(glAppWidth, glAppHeight, fontFile, glAppPattern, waylandDisp);
+        if (glApp == nullptr) {
+            return false;
+        }
 
-    // Avoid crashes from static object destruction order at process shutdown.
-    // Native app teardown has completed above, so terminate immediately.
-    _exit(exitCode);
-    return exitCode;
+        return glApp->registerKeycodeCallback(&handleGlKeycode);
+    };
+
+    auto subscriptionResult = Firebolt::IFireboltAccessor::Instance()
+                                  .LifecycleInterface()
+                                  .subscribeOnStateChanged([&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
+                                      for (const auto& change : changes) {
+                                          nextAppState.store(getAppStateFromLifeCycleEvent(change), std::memory_order_release);
+                                      }
+                                  });
+
+    if (!subscriptionResult) {
+        log_fatal("Failed to subscribe to lifecycle state changes.");
+        Firebolt::IFireboltAccessor::Instance().Disconnect();
+        return 1;
+    }
+
+    lifecycleSubId = *subscriptionResult;
+
+    while (!exitRequested.load(std::memory_order_acquire)) {
+        if (nextAppState.load(std::memory_order_acquire) != currentAppState) {
+            AppState newAppState = nextAppState.load(std::memory_order_acquire);
+            switch (newAppState) {
+                case AppState::INITIALIZING_TO_PAUSED:
+                {
+                    if (!ensureGlAppInitialized()) {
+                        log_fatal("Failed to initialize GL context.");
+                        exitRequested.store(true, std::memory_order_release);
+                    }
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::SUSPENDED_TO_PAUSED:
+                {
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::PAUSED_TO_ACTIVE:
+                {
+                    std::lock_guard<std::mutex> lock(glAppMutex);
+                    if (glApp == nullptr) {
+                        log_warn("GL context not initialized during PAUSED_TO_ACTIVE; skipping resume.");
+                        currentAppState = newAppState;
+                        break;
+                    }
+
+                    glApp->resume();
+                    if (!glRunThreadStarted) {
+                        GlApp* glAppPtr = glApp.get();
+                        glAppRunThread = std::thread([glAppPtr]() {
+                            glAppPtr->run();
+                        });
+                        glRunThreadStarted = true;
+                    }
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::ACTIVE_TO_PAUSED:
+                {
+                    std::lock_guard<std::mutex> lock(glAppMutex);
+                    if (glApp != nullptr) {
+                        glApp->pause();
+                    }
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::PAUSED_TO_SUSPENDED:
+                case AppState::SUSPENDED_TO_HIBERNATED:
+                {
+                    stopGlApp();
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::ACTIVE_TO_TERMINATING:
+                case AppState::PAUSED_TO_TERMINATING:
+                case AppState::SUSPENDED_TO_TERMINATING:
+                {
+                    stopGlApp();
+                    exitRequested.store(true, std::memory_order_release);
+                    currentAppState = newAppState;
+                }
+                break;
+                default:
+                    currentAppState = newAppState;
+                    break;
+            }
+        }
+
+        if (gGlExitKeyRequested.load(std::memory_order_acquire)) {
+            stopGlApp();
+            exitRequested.store(true, std::memory_order_release);
+            continue;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if (lifecycleSubId != 0) {
+        Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
+    }
+
+    Firebolt::IFireboltAccessor::Instance().Disconnect();
+    log_info("Exit complete.");
+
+    return 0;
 }
