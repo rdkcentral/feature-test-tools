@@ -641,12 +641,10 @@ int main(int argc, char** argv)
             return;
         }
 
-        // Do NOT join here — joining on the notification worker blocks it and prevents
-        // TERMINATING from being processed, potentially triggering platform watchdog.
-        // The previous thread is functionally done (it set pausedStateWorkScheduled=false
-        // as its last action before exiting), so detach is safe.
+        // A finished std::thread remains joinable until joined. Join it here before
+        // assigning a new worker thread object.
         if (pausedStateThread.joinable()) {
-            pausedStateThread.detach();
+            pausedStateThread.join();
         }
 
         /**
@@ -771,7 +769,8 @@ int main(int argc, char** argv)
                         // processed, causing platform watchdog timeouts.
                         // Offload to a tracked background thread and let main join it on exit.
                         if (suspendedStateThread.joinable()) {
-                            suspendedStateThread.detach(); // previous suspended work is done
+                            log_warn("[LifecycleCB] SUSPENDED worker already active. Skipping duplicate scheduling.");
+                            break;
                         }
                         suspendedStateThread = std::thread([&]() {
                             if (!shutdownRequested.load()) {
@@ -822,8 +821,13 @@ int main(int argc, char** argv)
     }
 
     if (pausedStateThread.joinable()) {
-        log_warn("[Main] Waiting for paused state thread to finish...");
-        pausedStateThread.join();
+        if (appInitiatedTeardown.load()) {
+            log_warn("[Main] Waiting for paused state thread to finish...");
+            pausedStateThread.join();
+        } else {
+            log_warn("[Main] System-initiated teardown: detaching paused state thread to avoid watchdog delay.");
+            pausedStateThread.detach();
+        }
     }
 
     if (escWatcherThread.joinable()) {
@@ -832,16 +836,19 @@ int main(int argc, char** argv)
     }
 
     if (suspendedStateThread.joinable()) {
-        log_warn("[Main] Waiting for suspended state thread to finish...");
-        suspendedStateThread.join();
+        if (appInitiatedTeardown.load()) {
+            log_warn("[Main] Waiting for suspended state thread to finish...");
+            suspendedStateThread.join();
+        } else {
+            log_warn("[Main] System-initiated teardown: detaching suspended state thread to avoid watchdog delay.");
+            suspendedStateThread.detach();
+        }
     }
 
-    // For system-initiated teardown (TERMINATING), cleanupAndExit intentionally
-    // skipped stopGlThread to avoid a mutex deadlock on the callback thread.
-    // Stop GL from main thread now that all workers have been joined.
+    // For system-initiated teardown (TERMINATING), avoid blocking on GL joins here.
+    // AppManager is terminating the process; the OS will reclaim resources.
     if (!appInitiatedTeardown.load()) {
-        log_warn("[Main] System-initiated teardown: stopping GL from main thread...");
-        stopGlThread();
+        log_warn("[Main] System-initiated teardown: skipping synchronous GL stop to avoid watchdog SIGTERM.");
     }
 
     // Firebolt transport teardown on main thread.
