@@ -666,6 +666,10 @@ int main(int argc, char** argv)
                     }
                     if (glApp != nullptr) {
                         glApp->renderInitialFrame();
+                        if (!ensureGlRunThreadStarted()) {
+                            log_warn("Failed to start GL render thread during INITIALIZING_TO_PAUSED.");
+                            exitRequested.store(true, std::memory_order_release);
+                        }
                     }
                     currentAppState = newAppState;
                 }
@@ -677,12 +681,6 @@ int main(int argc, char** argv)
                 break;
                 case AppState::PAUSED_TO_ACTIVE:
                 {
-                    if (!ensureGlRunThreadStarted()) {
-                        log_warn("GL context not initialized during PAUSED_TO_ACTIVE; skipping resume.");
-                        currentAppState = newAppState;
-                        break;
-                    }
-
                     {
                         std::lock_guard<std::mutex> lock(glAppMutex);
                         if (glApp != nullptr) {
