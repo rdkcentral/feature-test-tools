@@ -638,12 +638,16 @@ int main(int argc, char** argv)
     while (!exitRequested.load(std::memory_order_acquire)) {
         if (nextAppState.load(std::memory_order_acquire) != currentAppState) {
             AppState newAppState = nextAppState.load(std::memory_order_acquire);
+            log_dbg("Lifecycle state change requested: {} -> {}", currentAppState, newAppState);
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {
                     if (!ensureGlAppInitialized()) {
                         log_fatal("Failed to initialize GL context.");
                         exitRequested.store(true, std::memory_order_release);
+                    }
+                    if (glApp != nullptr) {
+                        glApp->renderInitialFrame();
                     }
                     currentAppState = newAppState;
                 }
@@ -677,6 +681,7 @@ int main(int argc, char** argv)
                 {
                     std::lock_guard<std::mutex> lock(glAppMutex);
                     if (glApp != nullptr) {
+                        glApp->renderInitialFrame();
                         glApp->pause();
                     }
                     currentAppState = newAppState;
