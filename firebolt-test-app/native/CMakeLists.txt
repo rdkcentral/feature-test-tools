@@ -47,6 +47,8 @@ set(APP_TARGET firebolt-test-app)
 set(GL_MODULE_TARGET gl-module)
 
 option(GL_MODULE_SHARED "Build gl module as SHARED library (OFF=STATIC)" OFF)
+option(BUILD_FIREBOLT_APP "Build firebolt-test-app executable" ON)
+option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 add_compile_definitions(
@@ -63,13 +65,6 @@ if(LINK_STATIC)
     # Prefer .a archives; fall back to .so if a static variant is absent
     set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
-
-# ---------------------------------------------------------------------------
-# Dependencies: find installed FireboltClient (and its transport)
-# ---------------------------------------------------------------------------
-find_package(FireboltTransport CONFIG REQUIRED)
-find_package(FireboltClient    CONFIG REQUIRED)
-find_package(nlohmann_json    CONFIG REQUIRED)
 
 # ---------------------------------------------------------------------------
 # GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
@@ -227,45 +222,50 @@ message(STATUS "GL module target=${GL_MODULE_TARGET}, type=${GL_MODULE_TYPE}")
 # Firebolt Application target
 # ---------------------------------------------------------------------------
 
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
+if(BUILD_FIREBOLT_APP)
+    # ---------------------------------------------------------------------------
+    # Dependencies: find installed FireboltClient (and its transport)
+    # ---------------------------------------------------------------------------
+    find_package(FireboltTransport CONFIG REQUIRED)
+    find_package(FireboltClient    CONFIG REQUIRED)
+    find_package(nlohmann_json     CONFIG REQUIRED)
 
-add_executable(${APP_TARGET}
-    src/main.cpp
-    src/utils.cpp
-    src/logger.hpp
-    ${TEST_SOURCES}
-)
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
 
-target_link_libraries(${APP_TARGET}
-    PRIVATE
-        FireboltTransport::FireboltTransport
-        FireboltClient::FireboltClient
-        nlohmann_json::nlohmann_json
-)
+    add_executable(${APP_TARGET}
+        src/main.cpp
+        src/utils.cpp
+        src/logger.hpp
+        ${TEST_SOURCES}
+    )
 
-target_include_directories(${APP_TARGET}
-    PRIVATE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
-)
+    target_link_libraries(${APP_TARGET}
+        PRIVATE
+            FireboltTransport::FireboltTransport
+            FireboltClient::FireboltClient
+            nlohmann_json::nlohmann_json
+            ${GL_MODULE_TARGET}
+    )
 
-target_link_libraries(${APP_TARGET}
-    PRIVATE
-        ${GL_MODULE_TARGET}
-)
+    target_include_directories(${APP_TARGET}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
+    )
 
-target_compile_definitions(${APP_TARGET}
-    PRIVATE
-        USE_WESTEROS_SIMPLESHELL
-        APP_FONT_DIR=\"${APP_FONT_DIR}\"
-)
+    target_compile_definitions(${APP_TARGET}
+        PRIVATE
+            USE_WESTEROS_SIMPLESHELL
+            APP_FONT_DIR=\"${APP_FONT_DIR}\"
+    )
 
-set_target_properties(${APP_TARGET} PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED YES
-)
+    set_target_properties(${APP_TARGET} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED YES
+    )
 
-install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 
 install(FILES
     assets/LiberationSans-Bold.ttf
@@ -279,10 +279,8 @@ install(FILES
 
 # ---------------------------------------------------------------------------
 # Optional standalone GL lifecycle test (no Firebolt connection at runtime)
-# Build with: cmake -DBUILD_GL_TEST=ON ...
+# Build with: cmake -DBUILD_FIREBOLT_APP=OFF -DBUILD_GL_TEST=ON ...
 # ---------------------------------------------------------------------------
-option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
-
 if(BUILD_GL_TEST)
     set(GL_TEST_TARGET gl-standalone-test)
 
