@@ -23,7 +23,14 @@
 
 #include "gl.h"
 #include "logger.hpp"
-#include "utils.h"
+#include <sstream>
+
+static std::string current_thread_string()
+{
+    std::ostringstream oss;
+    oss << std::this_thread::get_id();
+    return oss.str();
+}
 
 #include <atomic>
 #include <cassert>
@@ -63,30 +70,6 @@
 #define EGL_OPENGL_ES3_BIT_KHR 0x00000040
 #endif
 
-#if __has_include(<linux/input-event-codes.h>)
-#include <linux/input-event-codes.h>
-#else
-#define KEY_ESC 1
-#define KEY_1 2
-#define KEY_2 3
-#define KEY_3 4
-#define KEY_4 5
-#define KEY_5 6
-#define KEY_6 7
-#define KEY_7 8
-#define KEY_8 9
-#define KEY_9 10
-#define KEY_BACKSPACE 14
-#define KEY_ENTER 28
-#define KEY_LEFT 105
-#define KEY_RIGHT 106
-#define KEY_UP 103
-#define KEY_DOWN 108
-#define KEY_BACK 158
-#define KEY_OK 352
-#define KEY_ESCAPE 1
-#endif
-
 // FIX: Universal macro fallback to protect compilations across strict embedded ARM toolchains
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT 0x80E1
@@ -117,44 +100,6 @@ static std::string egl_error_string(EGLint error)
         case EGL_BAD_NATIVE_PIXMAP: return "EGL_BAD_NATIVE_PIXMAP";
         case EGL_BAD_NATIVE_WINDOW: return "EGL_BAD_NATIVE_WINDOW";
         default: return "EGL_ERROR_0x" + std::to_string(static_cast<unsigned long long>(error));
-    }
-}
-
-static bool translate_menu_input_event(uint32_t key, MenuInputEvent& event)
-{
-    event.rawKeyCode = key;
-    switch (key)
-    {
-        case KEY_UP:
-            event.action = MenuInputAction::Up;
-            return true;
-        case KEY_DOWN:
-            event.action = MenuInputAction::Down;
-            return true;
-        case KEY_ENTER:
-        case KEY_OK:
-            event.action = MenuInputAction::Select;
-            return true;
-        case KEY_ESC:
-        case KEY_BACK:
-        case KEY_BACKSPACE:
-        case KEY_LEFT:
-            event.action = MenuInputAction::Back;
-            return true;
-        case KEY_1:
-        case KEY_2:
-        case KEY_3:
-        case KEY_4:
-        case KEY_5:
-        case KEY_6:
-        case KEY_7:
-        case KEY_8:
-        case KEY_9:
-            event.action = MenuInputAction::Digit;
-            event.digit = static_cast<int>(key - KEY_1) + 1;
-            return true;
-        default:
-            return false;
     }
 }
 

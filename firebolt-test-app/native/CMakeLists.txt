@@ -219,6 +219,55 @@ set_target_properties(${APP_TARGET} PROPERTIES
     CXX_STANDARD_REQUIRED YES
 )
 
+# ---------------------------------------------------------------------------
+# Optional standalone GL lifecycle test (no Firebolt connection at runtime)
+# Build with: cmake -DBUILD_GL_TEST=ON ...
+# ---------------------------------------------------------------------------
+option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
+
+if(BUILD_GL_TEST)
+    set(GL_TEST_TARGET gl-standalone-test)
+
+    add_executable(${GL_TEST_TARGET}
+        src/gl.cpp
+        src/tests/gl_standalone_test.cpp
+    )
+
+    target_link_libraries(${GL_TEST_TARGET}
+        PRIVATE
+            ${WAYLAND_LINK_LIBS}
+            ${EGL_LIBRARIES}
+            ${GLESV2_LIBRARIES}
+            ${CAIRO_FT_LIBRARIES}
+            ${FREETYPE_LIBRARIES}
+    )
+
+    target_include_directories(${GL_TEST_TARGET}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
+            ${WAYLAND_INCLUDE_DIRS}
+            ${EGL_INCLUDE_DIRS}
+            ${GLESV2_INCLUDE_DIRS}
+            ${CAIRO_FT_INCLUDE_DIRS}
+            ${FREETYPE_INCLUDE_DIRS}
+    )
+
+    target_compile_definitions(${GL_TEST_TARGET}
+        PRIVATE
+            USE_WESTEROS_SIMPLESHELL
+            APP_FONT_DIR=\"${APP_FONT_DIR}\"
+    )
+
+    set_target_properties(${GL_TEST_TARGET} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED YES
+    )
+
+    install(TARGETS ${GL_TEST_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    message(STATUS "GL standalone test enabled: target=${GL_TEST_TARGET}")
+endif()
+
 install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
