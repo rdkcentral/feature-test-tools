@@ -44,20 +44,13 @@ include(GNUInstallDirs)
 # Target
 # ---------------------------------------------------------------------------
 set(APP_TARGET firebolt-test-app)
+set(GL_MODULE_TARGET gl-module)
+
+option(GL_MODULE_SHARED "Build gl module as SHARED library (OFF=STATIC)" OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 add_compile_definitions(
     PROJECT_VERSION="${PROJECT_VERSION}"
-)
-
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
-
-add_executable(${APP_TARGET}
-    src/main.cpp
-    src/utils.cpp
-    src/gl.cpp
-    src/logger.hpp
-    ${TEST_SOURCES}
 )
 
 # ---------------------------------------------------------------------------
@@ -77,13 +70,6 @@ endif()
 find_package(FireboltTransport CONFIG REQUIRED)
 find_package(FireboltClient    CONFIG REQUIRED)
 find_package(nlohmann_json    CONFIG REQUIRED)
-
-target_link_libraries(${APP_TARGET}
-    PRIVATE
-        FireboltTransport::FireboltTransport
-        FireboltClient::FireboltClient
-        nlohmann_json::nlohmann_json
-)
 
 # ---------------------------------------------------------------------------
 # GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
@@ -182,31 +168,91 @@ pkg_check_modules(GLESV2      REQUIRED glesv2)
 pkg_check_modules(CAIRO_FT    REQUIRED cairo cairo-ft)
 pkg_check_modules(FREETYPE    REQUIRED freetype2)
 
-target_link_libraries(${APP_TARGET}
-    PRIVATE
-    ${WAYLAND_LINK_LIBS}
+set(FONT_BASE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}")
+set(APP_FONT_DIR "${FONT_BASE_DIR}/fonts/ttf/")
+set(APP_FONT_LIC_DIR "${FONT_BASE_DIR}/doc/liberation-fonts/")
+
+message("Application font directory: ${APP_FONT_DIR}")
+
+# ---------------------------------------------------------------------------
+# GL module library (static/shared selectable)
+# ---------------------------------------------------------------------------
+if(GL_MODULE_SHARED)
+    set(GL_MODULE_TYPE SHARED)
+else()
+    set(GL_MODULE_TYPE STATIC)
+endif()
+
+add_library(${GL_MODULE_TARGET} ${GL_MODULE_TYPE}
+    src/gl.cpp
+    src/gl.h
+    src/logger.hpp
+)
+
+target_link_libraries(${GL_MODULE_TARGET}
+    PUBLIC
+        ${WAYLAND_LINK_LIBS}
         ${EGL_LIBRARIES}
         ${GLESV2_LIBRARIES}
         ${CAIRO_FT_LIBRARIES}
         ${FREETYPE_LIBRARIES}
 )
 
-target_include_directories(${APP_TARGET}
-    PRIVATE
+target_include_directories(${GL_MODULE_TARGET}
+    PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
-    ${WAYLAND_INCLUDE_DIRS}
+    PRIVATE
+        ${WAYLAND_INCLUDE_DIRS}
         ${EGL_INCLUDE_DIRS}
         ${GLESV2_INCLUDE_DIRS}
         ${CAIRO_FT_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
 )
 
-set(FONT_BASE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}")
-set(APP_FONT_DIR "${FONT_BASE_DIR}/fonts/ttf/")
-set(APP_FONT_LIC_DIR "${FONT_BASE_DIR}/doc/liberation-fonts/")
+target_compile_definitions(${GL_MODULE_TARGET}
+    PRIVATE
+        USE_WESTEROS_SIMPLESHELL
+        APP_FONT_DIR=\"${APP_FONT_DIR}\"
+)
 
-message("Application font directory: ${APP_FONT_DIR}")
+set_target_properties(${GL_MODULE_TARGET} PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+)
+
+install(TARGETS ${GL_MODULE_TARGET} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+message(STATUS "GL module target=${GL_MODULE_TARGET}, type=${GL_MODULE_TYPE}")
+
+# ---------------------------------------------------------------------------
+# Firebolt Application target
+# ---------------------------------------------------------------------------
+
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
+
+add_executable(${APP_TARGET}
+    src/main.cpp
+    src/utils.cpp
+    src/logger.hpp
+    ${TEST_SOURCES}
+)
+
+target_link_libraries(${APP_TARGET}
+    PRIVATE
+        FireboltTransport::FireboltTransport
+        FireboltClient::FireboltClient
+        nlohmann_json::nlohmann_json
+)
+
+target_include_directories(${APP_TARGET}
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
+)
+
+target_link_libraries(${APP_TARGET}
+    PRIVATE
+        ${GL_MODULE_TARGET}
+)
 
 target_compile_definitions(${APP_TARGET}
     PRIVATE
@@ -219,55 +265,6 @@ set_target_properties(${APP_TARGET} PROPERTIES
     CXX_STANDARD_REQUIRED YES
 )
 
-# ---------------------------------------------------------------------------
-# Optional standalone GL lifecycle test (no Firebolt connection at runtime)
-# Build with: cmake -DBUILD_GL_TEST=ON ...
-# ---------------------------------------------------------------------------
-option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
-
-if(BUILD_GL_TEST)
-    set(GL_TEST_TARGET gl-standalone-test)
-
-    add_executable(${GL_TEST_TARGET}
-        src/gl.cpp
-        src/tests/gl_standalone_test.cpp
-    )
-
-    target_link_libraries(${GL_TEST_TARGET}
-        PRIVATE
-            ${WAYLAND_LINK_LIBS}
-            ${EGL_LIBRARIES}
-            ${GLESV2_LIBRARIES}
-            ${CAIRO_FT_LIBRARIES}
-            ${FREETYPE_LIBRARIES}
-    )
-
-    target_include_directories(${GL_TEST_TARGET}
-        PRIVATE
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
-            ${WAYLAND_INCLUDE_DIRS}
-            ${EGL_INCLUDE_DIRS}
-            ${GLESV2_INCLUDE_DIRS}
-            ${CAIRO_FT_INCLUDE_DIRS}
-            ${FREETYPE_INCLUDE_DIRS}
-    )
-
-    target_compile_definitions(${GL_TEST_TARGET}
-        PRIVATE
-            USE_WESTEROS_SIMPLESHELL
-            APP_FONT_DIR=\"${APP_FONT_DIR}\"
-    )
-
-    set_target_properties(${GL_TEST_TARGET} PROPERTIES
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED YES
-    )
-
-    install(TARGETS ${GL_TEST_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
-    message(STATUS "GL standalone test enabled: target=${GL_TEST_TARGET}")
-endif()
-
 install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
@@ -279,3 +276,41 @@ install(FILES
     assets/OFL.txt
     DESTINATION "${APP_FONT_LIC_DIR}"
 )
+
+# ---------------------------------------------------------------------------
+# Optional standalone GL lifecycle test (no Firebolt connection at runtime)
+# Build with: cmake -DBUILD_GL_TEST=ON ...
+# ---------------------------------------------------------------------------
+option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
+
+if(BUILD_GL_TEST)
+    set(GL_TEST_TARGET gl-standalone-test)
+
+    add_executable(${GL_TEST_TARGET}
+        src/gltest/gl_standalone_test.cpp
+    )
+
+    target_link_libraries(${GL_TEST_TARGET}
+        PRIVATE
+            ${GL_MODULE_TARGET}
+    )
+
+    target_include_directories(${GL_TEST_TARGET}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/gltest>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    )
+
+    target_compile_definitions(${GL_TEST_TARGET}
+        PRIVATE
+            APP_FONT_DIR=\"${APP_FONT_DIR}\"
+    )
+
+    set_target_properties(${GL_TEST_TARGET} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED YES
+    )
+
+    install(TARGETS ${GL_TEST_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    message(STATUS "GL standalone test enabled: target=${GL_TEST_TARGET}")
+endif()
