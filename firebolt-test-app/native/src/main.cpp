@@ -581,14 +581,12 @@ int main(int argc, char** argv)
     }
 
     auto stopGlApp = [&]() {
-        GlApp* glAppPtr = nullptr;
+        // Signal close under the lock so the raw pointer is never used after glApp is reset.
         {
             std::lock_guard<std::mutex> lock(glAppMutex);
-            glAppPtr = glApp.get();
-        }
-
-        if (glAppPtr != nullptr) {
-            glAppPtr->close();
+            if (glApp != nullptr) {
+                glApp->close();
+            }
         }
 
         if (glAppRunThread.joinable()) {
@@ -596,12 +594,10 @@ int main(int argc, char** argv)
         }
         glRunThreadStarted = false;
 
+        // Destroy the GlApp; ~GlApp() calls deinit() so no explicit deinit() needed.
         {
             std::lock_guard<std::mutex> lock(glAppMutex);
-            if (glApp != nullptr) {
-                glApp->deinit();
-                glApp.reset();
-            }
+            glApp.reset();
         }
     };
 
@@ -730,7 +726,19 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
+    if (access("/data/skipfbtteardown", F_OK) == 0) {
+        log_info("Skipping teardown due to /data/skipfbtteardown file.");
+        return 0;
+    }
+
     log_info("Exiting Firebolt Test App.");
+    if (lifecycleSubId != 0) {
+        auto unsubscribeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
+        if (!unsubscribeResult) {
+            log_warn("Failed to unsubscribe lifecycle state change handler.");
+        }
+        lifecycleSubId = 0;
+    }
     Firebolt::IFireboltAccessor::Instance().Disconnect();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     log_info("Exit complete.");

@@ -1005,6 +1005,17 @@ bool GlApp::registerKeycodeCallback(void (*callback)(uint32_t keycode))
     return false;
 }
 
+bool GlApp::unregisterKeycodeCallback()
+{
+    m_keycodeCallback = nullptr;
+    if (m_ctx) {
+        m_ctx->keycodeCallback = nullptr;
+        log_info("Keycode callback unregistered");
+        return true;
+    }
+    return false;
+}
+
 bool GlApp::init(const char* waylandDisplay)
 {
     log_dbg("GlApp::init thread={}", current_thread_string());
@@ -1419,7 +1430,7 @@ void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
 
-    while (m_ctx->running.load() && !m_ctx->configured) {
+    while (m_ctx && m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch failed while waiting for initial configure");
             m_ctx->running.store(false);
@@ -1427,7 +1438,7 @@ void GlApp::run()
         }
     }
 
-    if (!m_ctx->running.load()) {
+    if (!m_ctx || !m_ctx->running.load()) {
         log_warn("Exiting before first frame due to dispatch failure");
         return;
     }
@@ -1438,7 +1449,7 @@ void GlApp::run()
     static constexpr auto kInputRenderMinInterval = std::chrono::milliseconds(20);
     static constexpr auto kPausedSleepInterval = std::chrono::milliseconds(20);
 
-    while (m_ctx->running.load()) {
+    while (m_ctx && m_ctx->running.load()) {
         const RenderLifecycleState state = m_ctx->lifecycle_state.load();
         const auto now = std::chrono::steady_clock::now();
 
@@ -1460,7 +1471,7 @@ void GlApp::run()
             last_heartbeat = now;
         }
 
-        if (wl_display_dispatch(m_ctx->display) < 0) {
+        if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
             log_warn("wl_display_dispatch returned < 0, stopping loop");
             m_ctx->running.store(false);
             break;
@@ -1505,7 +1516,7 @@ void GlApp::run()
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
-    if (m_ctx->egl_display != EGL_NO_DISPLAY) {
+    if (m_ctx && m_ctx->egl_display != EGL_NO_DISPLAY) {
         glFinish();
         if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
             log_warn("Failed to release *GL context from run/render: {}", egl_error_string(eglGetError()));

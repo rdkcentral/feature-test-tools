@@ -74,8 +74,9 @@ class GlApp {
         // Release EGL and Wayland resources after the loop has stopped.
         void deinit();
 
-        // callback function pointer for giving keycode to external app.
+        // callback function pointer for get/clear keycode to external app.
         bool registerKeycodeCallback(void (*callback)(uint32_t keycode));
+        bool unregisterKeycodeCallback();
 
     private:
         AppContext* m_ctx = nullptr;
