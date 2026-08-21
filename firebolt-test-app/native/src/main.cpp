@@ -730,7 +730,9 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::UNLOAD);
+    log_info("Exiting Firebolt Test App.");
+    Firebolt::IFireboltAccessor::Instance().Disconnect();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     log_info("Exit complete.");
 
     return 0;
