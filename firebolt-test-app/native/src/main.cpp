@@ -631,7 +631,9 @@ int main(int argc, char** argv)
 
         GlApp* glAppPtr = glApp.get();
         glAppRunThread = std::thread([glAppPtr]() {
+            log_info("Starting GL render thread.");
             glAppPtr->run();
+            log_info("GL render thread exited.");
         });
         glRunThreadStarted = true;
         return true;
@@ -673,7 +675,6 @@ int main(int argc, char** argv)
                     }
                     currentAppState = newAppState;
                 }
-                break;
                 break;
                 case AppState::PAUSED_TO_ACTIVE:
                 {
