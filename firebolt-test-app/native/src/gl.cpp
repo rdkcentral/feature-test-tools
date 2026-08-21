@@ -24,14 +24,7 @@
 #include "gl.h"
 #include "logger.hpp"
 #include <sstream>
-
-static std::string current_thread_string()
-{
-    std::ostringstream oss;
-    oss << std::this_thread::get_id();
-    return oss.str();
-}
-
+#include <thread>
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -41,7 +34,6 @@ static std::string current_thread_string()
 #include <iostream>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -187,6 +179,13 @@ struct FontResourceBundle {
     FT_Library library = nullptr;
     FT_Face face = nullptr;
 };
+
+static std::string current_thread_string()
+{
+    std::ostringstream oss;
+    oss << std::this_thread::get_id();
+    return oss.str();
+}
 
 static void apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
 {
