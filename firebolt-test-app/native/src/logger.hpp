@@ -146,51 +146,29 @@ struct RuntimeLogger {
         auto now = system_clock::now();
         auto duration = now.time_since_epoch();
         auto secs = duration_cast<seconds>(duration).count();
+        auto micros = duration_cast<microseconds>(duration).count() % 1000000;
+        thread_local std::string timestamped_prefix_str;
+        timestamped_prefix_str.clear();
 
-        // C++17 friendly microsecond offset parsing
-        auto sub_secs = duration_cast<microseconds>(duration).count() % 1000000;
-        constexpr int kDigits = 6;
+        timestamped_prefix_str += '[';
+        timestamped_prefix_str += std::to_string(secs);
+        timestamped_prefix_str += '.';
 
-        // Static thread-local array prevents runtime heap thrashing
-        thread_local char buffer[128];
-        char* ptr = buffer;
-
-        *ptr++ = '[';
-        uint64_t temp_secs = secs;
-        char* secs_start = ptr;
-        do {
-            *ptr++ = '0' + (temp_secs % 10);
-            temp_secs /= 10;
-        } while (temp_secs > 0);
-
-        char* secs_end = ptr - 1;
-        while (secs_start < secs_end) {
-            std::swap(*secs_start++, *secs_end--);
+        // Pad microseconds to exactly 6 digits natively
+        std::string micro_str = std::to_string(micros);
+        if (micro_str.size() < 6) {
+            timestamped_prefix_str.append(6 - micro_str.size(), '0');
         }
+        timestamped_prefix_str += micro_str;
+        timestamped_prefix_str += "] ";
 
-        *ptr++ = '.';
-
-        uint64_t temp_sub = sub_secs;
-        char* sub_end = ptr + kDigits;
-        ptr = sub_end;
-        for (int i = 0; i < kDigits; ++i) {
-            *(--sub_end) = '0' + (temp_sub % 10);
-            temp_sub /= 10;
-        }
-
-        *ptr++ = ']';
-        *ptr++ = ' ';
-
-        size_t written_len = ptr - buffer;
-        size_t copy_len = std::min(prefix.size(), sizeof(buffer) - written_len - 1);
-        std::memcpy(buffer + written_len, prefix.data(), copy_len);
-
-        std::string_view prefix_with_timestamp(buffer, written_len + copy_len);
+        // Append your logging level prefix
+        timestamped_prefix_str.append(prefix);
 
         if constexpr (sizeof...(Args) == 0) {
-            write_log(stream, prefix_with_timestamp, fmt);
+            write_log(stream, timestamped_prefix_str, fmt);
         } else {
-            write_log_fmt(stream, prefix_with_timestamp, fmt, std::forward<Args>(args)...);
+            write_log_fmt(stream, timestamped_prefix_str, fmt, std::forward<Args>(args)...);
         }
     }
 
