@@ -564,6 +564,7 @@ int main(int argc, char** argv)
     std::thread glAppRunThread;
     bool glRunThreadStarted = false;
     Firebolt::SubscriptionId lifecycleSubId = 0;
+    std::atomic<bool> sawLifecycleTerminating{ false };
 
     if (const char* w = std::getenv("WIDTH"))  try { glAppWidth = std::stoi(w); } catch (...) {}
     if (const char* h = std::getenv("HEIGHT")) try { glAppHeight = std::stoi(h); } catch (...) {}
@@ -584,10 +585,6 @@ int main(int argc, char** argv)
         // Signal close under the lock so the raw pointer is never used after glApp is reset.
         {
             std::lock_guard<std::mutex> lock(glAppMutex);
-            if (!glRunThreadStarted) {
-                log_dbg("GL render thread not started, skipping stopGlApp.");
-                return;
-            }
             if (glApp != nullptr) {
                 glApp->close();
             }
@@ -596,6 +593,15 @@ int main(int argc, char** argv)
         if (glAppRunThread.joinable()) {
             glAppRunThread.join();
         }
+
+        {
+            std::lock_guard<std::mutex> lock(glAppMutex);
+            if (glApp != nullptr) {
+                glApp->deinit();
+                glApp.reset();
+            }
+        }
+
         glRunThreadStarted = false;
     };
 
@@ -702,6 +708,7 @@ int main(int argc, char** argv)
                 case AppState::PAUSED_TO_TERMINATING:
                 case AppState::SUSPENDED_TO_TERMINATING:
                 {
+                    sawLifecycleTerminating.store(true, std::memory_order_release);
                     stopGlApp();
                     exitRequested.store(true, std::memory_order_release);
                     currentAppState = newAppState;
@@ -735,6 +742,13 @@ int main(int argc, char** argv)
     }
 
     log_info("Exiting Firebolt Test App.");
+    if (!sawLifecycleTerminating.load(std::memory_order_acquire)) {
+        auto closeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::DEACTIVATE);
+        if (!closeResult) {
+            log_warn("Lifecycle.close(DEACTIVATE) failed during shutdown.");
+        }
+    }
+
     if (lifecycleSubId != 0) {
         auto unsubscribeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
         if (!unsubscribeResult) {
