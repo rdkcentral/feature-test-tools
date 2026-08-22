@@ -138,10 +138,56 @@ struct RuntimeLogger {
     template<typename... Args>
     static void log_dispatch(std::ostream& stream, std::string_view prefix, std::string_view fmt, Args&&... args)
     {
+        using namespace std::chrono;
+
+        auto now = system_clock::now();
+        auto duration = now.time_since_epoch();
+        auto secs = duration_cast<seconds>(duration).count();
+
+        // C++17 friendly microsecond offset parsing
+        auto sub_secs = duration_cast<microseconds>(duration).count() % 1000000;
+        constexpr int kDigits = 6;
+
+        // Static thread-local array prevents runtime heap thrashing
+        thread_local char buffer[128];
+        char* ptr = buffer;
+
+        *ptr++ = '[';
+        uint64_t temp_secs = secs;
+        char* secs_start = ptr;
+        do {
+            *ptr++ = '0' + (temp_secs % 10);
+            temp_secs /= 10;
+        } while (temp_secs > 0);
+
+        char* secs_end = ptr - 1;
+        while (secs_start < secs_end) {
+            std::swap(*secs_start++, *secs_end--);
+        }
+
+        *ptr++ = '.';
+
+        uint64_t temp_sub = sub_secs;
+        char* sub_end = ptr + kDigits;
+        ptr = sub_end;
+        for (int i = 0; i < kDigits; ++i) {
+            *(--sub_end) = '0' + (temp_sub % 10);
+            temp_sub /= 10;
+        }
+
+        *ptr++ = ']';
+        *ptr++ = ' ';
+
+        size_t written_len = ptr - buffer;
+        size_t copy_len = std::min(prefix.size(), sizeof(buffer) - written_len - 1);
+        std::memcpy(buffer + written_len, prefix.data(), copy_len);
+
+        std::string_view prefix_with_timestamp(buffer, written_len + copy_len);
+
         if constexpr (sizeof...(Args) == 0) {
-            write_log(stream, prefix, fmt);
+            write_log(stream, prefix_with_timestamp, fmt);
         } else {
-            write_log_fmt(stream, prefix, fmt, std::forward<Args>(args)...);
+            write_log_fmt(stream, prefix_with_timestamp, fmt, std::forward<Args>(args)...);
         }
     }
 
