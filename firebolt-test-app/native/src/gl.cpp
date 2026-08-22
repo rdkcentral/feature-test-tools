@@ -859,7 +859,10 @@ GlApp::GlApp(int width, int height, const std::string& fontPath, BackgroundPatte
 GlApp::~GlApp()
 {
     log_info("GlApp destructor called");
-    deinit();
+    if (m_ctx && !m_ctx->deinitialized.load()) {
+        log_info("GlApp destructor: calling deinit()");
+        deinit();
+    }
 }
 
 bool GlApp::registerKeycodeCallback(void (*callback)(uint32_t keycode))

@@ -593,12 +593,6 @@ int main(int argc, char** argv)
             glAppRunThread.join();
         }
         glRunThreadStarted = false;
-
-        // Destroy the GlApp; ~GlApp() calls deinit() so no explicit deinit() needed.
-        {
-            std::lock_guard<std::mutex> lock(glAppMutex);
-            glApp.reset();
-        }
     };
 
     auto ensureGlAppInitialized = [&]() -> bool {
