@@ -584,6 +584,10 @@ int main(int argc, char** argv)
         // Signal close under the lock so the raw pointer is never used after glApp is reset.
         {
             std::lock_guard<std::mutex> lock(glAppMutex);
+            if (!glRunThreadStarted) {
+                log_dbg("GL render thread not started, skipping stopGlApp.");
+                return;
+            }
             if (glApp != nullptr) {
                 glApp->close();
             }
