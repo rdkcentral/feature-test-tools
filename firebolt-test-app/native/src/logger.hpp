@@ -81,7 +81,9 @@ struct RuntimeLogger {
 
     template<typename... Args>
     static void write_log_fmt(std::ostream& stream, std::string_view prefix, std::string_view format_str, Args&&... args) {
-        std::ostringstream oss;
+        std::string result_str;
+        result_str.reserve(format_str.size() + 128);
+
         size_t last_pos = 0;
         size_t current_pos = 0;
         bool has_extra_args = false;
@@ -91,37 +93,34 @@ struct RuntimeLogger {
             using T = std::decay_t<decltype(arg)>;
 
             if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
-                oss << (arg ? arg : "<null>");
+                result_str.append(arg ? arg : "<null>");
             } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
-                oss << "<null>";
-            } else if constexpr (std::is_pointer_v<T> && std::is_convertible_v<T, const void*>) {
-                oss << static_cast<const void*>(arg);
+                result_str.append("<null>");
             } else if constexpr (std::is_pointer_v<T>) {
-                oss << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(arg);
-            } else if constexpr (std::is_same_v<T, std::uintptr_t>) {
-                oss << "0x" << std::hex << static_cast<std::uintptr_t>(arg);
+                char ptr_buf[32];
+                int len = std::snprintf(ptr_buf, sizeof(ptr_buf), "%p", static_cast<const void*>(arg));
+                if (len > 0) result_str.append(ptr_buf, len);
+            } else if constexpr (std::is_integral_v<T> || std::is_floating_point_v<T>) {
+                result_str.append(std::to_string(arg));
             } else {
-                oss << std::dec << arg;
+                result_str.append("<unsupported type>");
             }
         };
 
         auto format_placeholder = [&](const auto& arg) {
             current_pos = format_str.find("{}", last_pos);
             if (current_pos != std::string_view::npos) {
-                oss << format_str.substr(last_pos, current_pos - last_pos);
-
+                result_str.append(format_str.data() + last_pos, current_pos - last_pos);
                 append_arg(arg);
-
                 last_pos = current_pos + 2;
             } else {
                 if (!has_extra_args) {
                     has_extra_args = true;
-                    oss << format_str.substr(last_pos);
-                    oss << " [extra args: ";
+                    result_str.append(format_str.data() + last_pos, format_str.size() - last_pos);
+                    result_str.append(" [extra args: ");
                 } else if (!first_extra_arg) {
-                    oss << ", ";
+                    result_str.append(", ");
                 }
-
                 append_arg(arg);
                 first_extra_arg = false;
             }
@@ -130,12 +129,12 @@ struct RuntimeLogger {
         (format_placeholder(args), ...);
 
         if (!has_extra_args) {
-            oss << format_str.substr(last_pos);
+            result_str.append(format_str.data() + last_pos, format_str.size() - last_pos);
         } else {
-            oss << "]";
+            result_str.append("]");
         }
 
-        write_log(stream, prefix, oss.str());
+        write_log(stream, prefix, result_str);
     }
 
     template<typename... Args>
