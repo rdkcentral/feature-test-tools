@@ -1181,10 +1181,7 @@ void GlApp::deinit()
         m_ctx->display = nullptr;
     }
 
-    // 8. Safely delete the context memory allocation
-    auto* ctx_to_delete = m_ctx;
     m_ctx = nullptr;
-    delete ctx_to_delete;
 
     log_info("GlApp::deinit completed");
 }
