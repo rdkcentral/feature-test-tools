@@ -31,6 +31,9 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <chrono>
+#include <cstring>
+#include <algorithm>
 
 enum class LogLevel : int {
     Debug = 0,
