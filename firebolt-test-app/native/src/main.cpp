@@ -726,6 +726,11 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
+    // Wait for the GL render thread to exit if it was started.
+    if (glAppRunThread.joinable()) {
+        glAppRunThread.join();
+    }
+
     if (access("/data/skipfbtteardown", F_OK) == 0) {
         log_info("Skipping teardown due to /data/skipfbtteardown file.");
         return 0;

@@ -70,6 +70,8 @@ endif()
 # GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
 # Westeros simple-shell is now the mandatory window management protocol.
 # ---------------------------------------------------------------------------
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 find_package(PkgConfig REQUIRED)
 
 set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS "")

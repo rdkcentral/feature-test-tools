@@ -173,8 +173,6 @@ struct PreparedFrame {
     std::vector<unsigned char> rgbaPixels;
 };
 
-static bool recreate_egl_window_surface(AppContext* app);
-
 struct FontResourceBundle {
     FT_Library library = nullptr;
     FT_Face face = nullptr;
@@ -187,11 +185,11 @@ static std::string current_thread_string()
     return oss.str();
 }
 
-static void apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
+static bool apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
 {
     if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface || !app->display) {
         log_dbg("Skipping simple-shell reapply ({}): invalid app/shell/surface/id/display", reason ? reason : "unknown");
-        return;
+        return false;
     }
 
     wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
@@ -206,6 +204,7 @@ static void apply_simple_shell_state(AppContext* app, const char* reason, bool s
     log_dbg(
         "Reapplied simple-shell state ({}): id={}, size={}x{}", reason ? reason : "unknown",
         app->simple_shell_surface_id, app->width, app->height);
+    return true;
 }
 
 static void update_simple_shell_configured_state(AppContext* app, const char* reason)
@@ -677,24 +676,30 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
 //---------------------------------------------------------------------------
 
-void render_cairo_frame(AppContext* app)
+/**
+ * @brief Render a frame using Cairo and present it via OpenGL ES.
+ * @param app Pointer to the application context.
+ * @return 0 on success, -1 if rendering was skipped due to shutdown, or 0 if the prepared frame was empty.
+ */
+int render_cairo_frame(AppContext* app)
 {
     log_dbg("render_cairo_frame thread={}", current_thread_string());
     if (!app || !app->running.load()) {
         log_dbg("render_cairo_frame: render skipped during shutdown");
-        return;
+        return -1;
     }
 
     const PreparedFrame frame = prepare_cairo_frame(app, app->current_keycode.load(std::memory_order_acquire));
     if (frame.rgbaPixels.empty()) {
         log_dbg("render_cairo_frame: prepared frame is empty");
         app->running.store(false);
-        return;
+        return 0;
     }
 
     if (!present_prepared_frame(app, frame)) {
         app->running.store(false);
     }
+    return 0;
 }
 
 static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s)
@@ -814,87 +819,6 @@ static const wl_simple_shell_listener simple_shell_listener = {
     simple_shell_surface_status,
     simple_shell_get_surfaces_done
 };
-
-static bool recreate_egl_window_surface(AppContext* app)
-{
-    if (!app ||
-        !app->display ||
-        !app->surface ||
-        app->egl_display == EGL_NO_DISPLAY ||
-        app->egl_config == nullptr ||
-        app->egl_context == EGL_NO_CONTEXT) {
-        return false;
-    }
-
-    /*
-     * Step 1: Unbind the old surface/context before destroying the old surface.
-     * Do NOT try to make the old surface current here.
-     */
-    if (eglMakeCurrent(app->egl_display,
-                       EGL_NO_SURFACE,
-                       EGL_NO_SURFACE,
-                       EGL_NO_CONTEXT) != EGL_TRUE) {
-        log_dbg("Failed to unbind old EGL context before surface recreate: {}", egl_error_string(eglGetError()));
-        return false;
-    }
-
-    if (app->egl_surface != EGL_NO_SURFACE) {
-        eglDestroySurface(app->egl_display, app->egl_surface);
-        app->egl_surface = EGL_NO_SURFACE;
-    }
-
-    if (app->egl_window) {
-        wl_egl_window_destroy(app->egl_window);
-        app->egl_window = nullptr;
-    }
-
-    app->egl_window = wl_egl_window_create(app->surface, app->width, app->height);
-    if (!app->egl_window) {
-        log_dbg("Failed to recreate wl_egl_window");
-        return false;
-    }
-
-    wl_egl_window_resize(app->egl_window, app->width, app->height, 0, 0);
-
-    app->egl_surface = create_wayland_egl_surface(
-        app->egl_display,
-        app->egl_config,
-        app->egl_window);
-
-    if (app->egl_surface == EGL_NO_SURFACE) {
-        log_warn("Failed to recreate EGL window surface: {}", egl_error_string(eglGetError()));
-
-        wl_egl_window_destroy(app->egl_window);
-        app->egl_window = nullptr;
-
-        return false;
-    }
-
-    /*
-     * Step 6: Bind the new EGL surface.
-     */
-    if (eglMakeCurrent(app->egl_display,
-                       app->egl_surface,
-                       app->egl_surface,
-                       app->egl_context) != EGL_TRUE) {
-        log_warn("Failed to make recreated EGL surface current: {}", egl_error_string(eglGetError()));
-
-        if (app->egl_surface != EGL_NO_SURFACE) {
-            eglDestroySurface(app->egl_display, app->egl_surface);
-            app->egl_surface = EGL_NO_SURFACE;
-        }
-
-        if (app->egl_window) {
-            wl_egl_window_destroy(app->egl_window);
-            app->egl_window = nullptr;
-        }
-
-        return false;
-    }
-
-    log_dbg("Recreated EGL window surface successfully");
-    return true;
-}
 
 static void global_registry_handler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
 {
@@ -1126,7 +1050,10 @@ bool GlApp::init(const char* waylandDisplay)
 
     // Re-assert visibility and geometry after EGL objects exist; some simple-shell
     // compositors do not map until this state is applied post-EGL setup.
-    apply_simple_shell_state(m_ctx, "post-egl-setup");
+    if (!apply_simple_shell_state(m_ctx, "post-egl-setup")) {
+        log_fatal("Failed to apply simple shell state post-EGL setup");
+        return false;
+    }
 
     if (!init_gles_pipeline(m_ctx)) {
         log_fatal("GLES pipeline initialization failed for OpenGL ES {}.x", m_ctx->glesClientVersion);
@@ -1222,16 +1149,16 @@ void GlApp::deinit()
         m_ctx->egl_surface = EGL_NO_SURFACE;
     }
 
-    // 3. Destroy Wayland EGL wrapper window second
-    if (m_ctx->egl_window) {
-        wl_egl_window_destroy(m_ctx->egl_window);
-        m_ctx->egl_window = nullptr;
-    }
-
-    // 4. Destroy EGL Context third
+    // 3. Destroy EGL Context third
     if (m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_display != EGL_NO_DISPLAY) {
         eglDestroyContext(m_ctx->egl_display, m_ctx->egl_context);
         m_ctx->egl_context = EGL_NO_CONTEXT;
+    }
+
+    // 4. Destroy Wayland EGL wrapper window second
+    if (m_ctx->egl_window) {
+        wl_egl_window_destroy(m_ctx->egl_window);
+        m_ctx->egl_window = nullptr;
     }
 
     // 5. CRITICAL: Destroy fundamental Wayland surface assets BEFORE terminating EGL
@@ -1259,114 +1186,6 @@ void GlApp::deinit()
     m_ctx = nullptr;
     delete ctx_to_delete;
 
-#if 0
-    // GL objects must be deleted while the EGL context is current.
-    // The run thread released this context before exiting, so the cleanup thread can now acquire it.
-    bool contextCurrent = false;
-
-    // Ensure GL object destruction runs with a valid current context.
-    if (m_ctx->egl_display != EGL_NO_DISPLAY &&
-        m_ctx->egl_context != EGL_NO_CONTEXT &&
-        m_ctx->egl_surface != EGL_NO_SURFACE) {
-        if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
-            contextCurrent = true;
-            // Only call glDelete* when a valid context is current.
-            if (m_ctx->texture_id) {
-                glDeleteTextures(1, &m_ctx->texture_id);
-                m_ctx->texture_id = 0;
-            }
-            if (m_ctx->vbo_id) {
-                glDeleteBuffers(1, &m_ctx->vbo_id);
-                m_ctx->vbo_id = 0;
-            }
-            if (m_ctx->program_id) {
-                glDeleteProgram(m_ctx->program_id);
-                m_ctx->program_id = 0;
-            }
-
-            glFinish();
-
-            if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
-                log_warn("GlApp::deinit: Failed to release EGL context from deinit: {}", egl_error_string(eglGetError()));
-            } else {
-                log_info("GlApp::deinit: Released EGL context after GL object cleanup");
-            }
-        } else {
-            log_warn("GlApp::deinit: Failed to make EGL context current in deinit: {}", egl_error_string(eglGetError()));
-            /*
-            * EGL context destruction will release driver-side GL resources.
-            * Do not call glDelete* without a current context.
-            */
-            m_ctx->texture_id = 0;
-            m_ctx->vbo_id = 0;
-            m_ctx->program_id = 0;
-        }
-    }
-
-    if (m_ctx->embedded_font) {
-        cairo_font_face_destroy(m_ctx->embedded_font);
-        m_ctx->embedded_font = nullptr;
-    }
-
-    if (m_ctx->egl_surface != EGL_NO_SURFACE && m_ctx->egl_display != EGL_NO_DISPLAY) {
-        eglDestroySurface(m_ctx->egl_display, m_ctx->egl_surface);
-        m_ctx->egl_surface = EGL_NO_SURFACE;
-    }
-
-    if (m_ctx->egl_window) {
-        wl_egl_window_destroy(m_ctx->egl_window);
-        m_ctx->egl_window = nullptr;
-    }
-
-    if (m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_display != EGL_NO_DISPLAY) {
-        eglDestroyContext(m_ctx->egl_display, m_ctx->egl_context);
-        m_ctx->egl_context = EGL_NO_CONTEXT;
-    }
-
-    if (m_ctx->egl_display != EGL_NO_DISPLAY) {
-        eglTerminate(m_ctx->egl_display);
-        m_ctx->egl_display = EGL_NO_DISPLAY;
-    }
-
-    // Destroy Wayland child objects before the display connection.
-    if (m_ctx->keyboard) {
-        wl_keyboard_destroy(m_ctx->keyboard);
-        m_ctx->keyboard = nullptr;
-    }
-
-    if (m_ctx->seat) {
-        wl_seat_destroy(m_ctx->seat);
-        m_ctx->seat = nullptr;
-    }
-
-    if (m_ctx->simple_shell_ptr) {
-        wl_simple_shell_destroy(m_ctx->simple_shell_ptr);
-        m_ctx->simple_shell_ptr = nullptr;
-    }
-
-    if (m_ctx->surface) {
-        wl_surface_destroy(m_ctx->surface);
-        m_ctx->surface = nullptr;
-    }
-
-    if (m_ctx->compositor) {
-        wl_compositor_destroy(m_ctx->compositor);
-        m_ctx->compositor = nullptr;
-    }
-
-    if (m_ctx->registry) {
-        wl_registry_destroy(m_ctx->registry);
-        m_ctx->registry = nullptr;
-    }
-
-    if (m_ctx->display) {
-        wl_display_disconnect(m_ctx->display);
-        m_ctx->display = nullptr;
-    }
-
-    delete m_ctx;
-    m_ctx = nullptr;
-#endif
     log_info("GlApp::deinit completed");
 }
 
@@ -1409,7 +1228,10 @@ void GlApp::run()
         if (RenderLifecycleState::Active == state && m_ctx->running.load() && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
             (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
              now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
-            render_cairo_frame(m_ctx);
+            if (render_cairo_frame(m_ctx) < 0) {
+                m_ctx->running.store(false);
+                break;
+            }
             m_ctx->keyFrameDirty.store(false, std::memory_order_release);
             m_ctx->lastInputRenderTime = now;
             last_heartbeat = now;
@@ -1422,6 +1244,11 @@ void GlApp::run()
         }
         dispatch_count++;
 
+        if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)){
+            log_warn("Dispatch loop exiting due to running=false");
+            break;
+        }
+
         const RenderLifecycleState state_after_dispatch = m_ctx->lifecycle_state.load();
         if (RenderLifecycleState::Closing == state_after_dispatch) {
             m_ctx->running.store(false);
@@ -1429,7 +1256,10 @@ void GlApp::run()
         }
 
         if (dispatch_count % 120 == 0) {
-            apply_simple_shell_state(m_ctx, "periodic", false);
+            if (!apply_simple_shell_state(m_ctx, "periodic", false)) {
+                m_ctx->running.store(false);
+                break;
+            }
         }
 
         if (dispatch_count % 60 == 0) {
@@ -1438,10 +1268,13 @@ void GlApp::run()
 
         // Coalesce bursty key events and cap key-driven redraw frequency.
         const auto loop_now = std::chrono::steady_clock::now();
-        if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
+        if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && m_ctx && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
             (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
              loop_now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
-            render_cairo_frame(m_ctx);
+            if (render_cairo_frame(m_ctx) < 0) {
+                m_ctx->running.store(false);
+                break;
+            }
             m_ctx->keyFrameDirty.store(false, std::memory_order_release);
             m_ctx->lastInputRenderTime = loop_now;
             last_heartbeat = loop_now;
@@ -1449,7 +1282,10 @@ void GlApp::run()
 
         // Keep one low-frequency redraw in case compositor requires occasional commits.
         if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && (loop_now - last_heartbeat >= std::chrono::seconds(1))) {
-            render_cairo_frame(m_ctx);
+            if (render_cairo_frame(m_ctx) < 0) {
+                m_ctx->running.store(false);
+                break;
+            }
             last_heartbeat = loop_now;
         }
 
@@ -1457,9 +1293,10 @@ void GlApp::run()
             std::this_thread::sleep_for(kPausedSleepInterval);
         } else {
             // Tiny backoff prevents tight-loop CPU spikes when compositor is chatty.
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
+
     if (m_ctx && m_ctx->egl_display != EGL_NO_DISPLAY) {
         glFinish();
         if (eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
