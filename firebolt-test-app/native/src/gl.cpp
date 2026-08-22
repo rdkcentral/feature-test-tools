@@ -1180,6 +1180,7 @@ void GlApp::deinit()
 
     // 7. Disconnect core server display link last
     if (m_ctx->display) {
+        wl_display_flush(m_ctx->display);
         wl_display_disconnect(m_ctx->display);
         m_ctx->display = nullptr;
     }
