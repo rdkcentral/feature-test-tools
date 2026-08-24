@@ -77,26 +77,21 @@ inherit cmake pkgconfig
 
 SRC_URI = "${CMF_GITHUB_ROOT}/feature-test-tools;${CMF_GITHUB_SRC_URI_SUFFIX}"
 SRCREV = "${AUTOREV}"  <=== Replace with SHA
-PV = "1.0.0"
+PV = "2.0.0"
 PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client nlohmann-json wayland wayland-native libgles-mali cairo freetype"
-RDEPENDS:${PN} += "firebolt-cpp-client"
+DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell"
+RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell"
 
-EXTRA_OECMAKE = ""
+EXTRA_OECMAKE:append = " \
+    -DBUILD_FIREBOLT_APP=ON \
+    -DBUILD_GL_TEST=ON \
+    -DGL_MODULE_SHARED=OFF \
+    "
 
-do_install() {
-    install -d ${D}${bindir}
-    install -m 0755 ${B}/firebolt-test-app ${D}${bindir}/firebolt-test-app
-
-    install -d ${D}${datadir}/firebolt-test-app/assets
-    install -m 0644 ${S}/assets/LiberationSans-Bold.ttf ${D}${datadir}/firebolt-test-app/assets/
-    install -m 0644 ${S}/assets/OFL.txt                 ${D}${datadir}/firebolt-test-app/assets/
-}
-
-FILES:${PN} += "${bindir}/firebolt-test-app ${datadir}/firebolt-test-app"
+FILES:${PN} += " /usr/share/fonts"
 ```
 
 </details>
