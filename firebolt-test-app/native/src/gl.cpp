@@ -431,6 +431,17 @@ static bool ensure_egl_current(AppContext* app)
     if (!app || app->egl_display == EGL_NO_DISPLAY || app->egl_context == EGL_NO_CONTEXT || app->egl_surface == EGL_NO_SURFACE) {
         return false;
     }
+
+    EGLContext currentCtx = eglGetCurrentContext();
+    EGLSurface currentDraw = eglGetCurrentSurface(EGL_DRAW);
+    EGLSurface currentRead = eglGetCurrentSurface(EGL_READ);
+    log_dbg("ensure_egl_current: currentCtx={}/ExpectedCtx={}, currentDraw={} & currentRead={}/Expected={}",
+        reinterpret_cast<uintptr_t>(currentCtx),
+        reinterpret_cast<uintptr_t>(app->egl_context),
+        reinterpret_cast<uintptr_t>(currentDraw),
+        reinterpret_cast<uintptr_t>(currentRead),
+        reinterpret_cast<uintptr_t>(app->egl_surface));
+
     if (eglGetCurrentContext() == app->egl_context) {
         return true;
     }
@@ -558,6 +569,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!ensure_egl_current(app)) return false;
 
     glViewport(0, 0, frame.width, frame.height);
+    log_dbg("glViewport(0, 0, {}, {})", frame.width, frame.height);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -592,7 +604,8 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
         }
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
     } else {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+        log_dbg("Using GL_EXT_texture_format_BGRA8888 extension for direct upload");
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
@@ -908,7 +921,9 @@ void GlApp::run()
         }
 
         if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
-            apply_simple_shell_state(m_ctx, "periodic", false);
+            //apply_simple_shell_state(m_ctx, "periodic", false);
+            if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
+            if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
             last_shell_reapply = std::chrono::steady_clock::now();
         }
     }
