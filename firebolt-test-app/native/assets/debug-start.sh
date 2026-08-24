@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -eu
+set -ea
 
 ##########################################################################
 # If not stated otherwise in this file or this component's LICENSE
@@ -36,4 +36,6 @@ ulimit -c unlimited
 echo "/data/core.%e.%p.%t" > /proc/sys/kernel/core_pattern
 
 # Start the application
+touch /data/launcher.begin
 exec "/usr/bin/firebolt-test-app"
+touch /data/launcher.end
