@@ -605,7 +605,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
     } else {
         log_dbg("Using GL_EXT_texture_format_BGRA8888 extension for direct upload");
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
