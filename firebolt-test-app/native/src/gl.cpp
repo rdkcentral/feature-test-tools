@@ -865,9 +865,11 @@ void GlApp::run()
         }
     }
 
-    if (m_ctx && m_ctx->egl_display != EGL_NO_DISPLAY) {
-        glFinish();
-        eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (access("/data/skip-run-egl-cleanup", F_OK) != 0) {
+        if (m_ctx && m_ctx->egl_display != EGL_NO_DISPLAY) {
+            glFinish();
+            eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        }
     }
     log_warn("Wayland dispatch loop exited");
 }
