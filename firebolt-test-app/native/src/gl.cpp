@@ -28,6 +28,7 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -37,6 +38,9 @@
 #include <utility>
 #include <vector>
 
+#include <errno.h>
+#include <poll.h>
+#include <sys/eventfd.h>
 #include <unistd.h>
 
 #include <cairo/cairo.h>
@@ -141,7 +145,6 @@ struct AppContext {
     std::atomic<bool> running{true};
     std::atomic<RenderLifecycleState> lifecycle_state{RenderLifecycleState::Bootstrapping};
     bool configured = false;
-    bool hasPresentedFrame = false;
     std::atomic<bool> keyFrameDirty{ false };
     std::atomic<uint32_t> current_keycode{ 0 };
     std::mutex preparedFrameMutex;
@@ -150,8 +153,9 @@ struct AppContext {
     int pendingPreparedHeight = 0;
     uint32_t pendingPreparedKeycode = 0;
     bool hasPendingPreparedFrame = false;
-    std::chrono::steady_clock::time_point lastInputRenderTime{};
-    EGLint glesClientVersion = 2;
+    int wakeEventFd = -1;
+    int waylandFd = -1;
+    EGLint glesClientVersion = 3;
     GLint positionAttribLocation = 0;
     GLint texCoordAttribLocation = 1;
 
@@ -183,6 +187,111 @@ static std::string current_thread_string()
     std::ostringstream oss;
     oss << std::this_thread::get_id();
     return oss.str();
+}
+
+static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame);
+static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
+int render_cairo_frame(AppContext* app);
+
+static bool ensure_run_wake_signal(AppContext* app)
+{
+    if (!app) {
+        return false;
+    }
+    if (app->wakeEventFd >= 0) {
+        return true;
+    }
+
+    app->wakeEventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (app->wakeEventFd < 0) {
+        log_err("eventfd creation failed: errno={}", errno);
+        return false;
+    }
+    return true;
+}
+
+static void signal_run_loop(AppContext* app)
+{
+    if (!app || app->wakeEventFd < 0) {
+        return;
+    }
+
+    const uint64_t wakeValue = 1;
+    const ssize_t written = write(app->wakeEventFd, &wakeValue, sizeof(wakeValue));
+    if (written < 0 && errno != EAGAIN) {
+        log_warn("run-loop signal write failed: errno={}", errno);
+    }
+}
+
+static void drain_run_signal(AppContext* app)
+{
+    if (!app || app->wakeEventFd < 0) {
+        return;
+    }
+
+    uint64_t wakeValue = 0;
+    while (read(app->wakeEventFd, &wakeValue, sizeof(wakeValue)) > 0);
+}
+
+static void release_run_wake_signal(AppContext* app)
+{
+    if (!app) {
+        return;
+    }
+
+    if (app->wakeEventFd >= 0) {
+        close(app->wakeEventFd);
+        app->wakeEventFd = -1;
+    }
+}
+
+static void stop_run_loop(AppContext* app, const char* reason)
+{
+    if (!app) {
+        return;
+    }
+
+    log_warn("{}", reason ? reason : "run loop stopping");
+    app->running.store(false);
+}
+
+static bool render_active_work(AppContext* app,
+                               const std::chrono::steady_clock::time_point& now,
+                               std::chrono::steady_clock::time_point& lastHeartbeat,
+                               std::chrono::steady_clock::time_point& lastInputRender,
+                               const std::chrono::milliseconds& inputMinInterval)
+{
+    if (!app) {
+        return false;
+    }
+
+    const RenderLifecycleState state = app->lifecycle_state.load(std::memory_order_acquire);
+    if (RenderLifecycleState::Active != state) {
+        return true;
+    }
+
+    PreparedFrame queuedFrame;
+    if (take_pending_prepared_frame(app, queuedFrame)) {
+        if (!present_prepared_frame(app, queuedFrame)) {
+            stop_run_loop(app, "present_prepared_frame failed");
+            return false;
+        }
+        lastHeartbeat = now;
+    }
+
+    if (app->running.load(std::memory_order_acquire) &&
+        app->keyFrameDirty.load(std::memory_order_acquire) &&
+        (lastInputRender.time_since_epoch().count() == 0 || now - lastInputRender >= inputMinInterval)) {
+        if (render_cairo_frame(app) < 0) {
+            stop_run_loop(app, "render_cairo_frame failed while processing input-driven frame");
+            return false;
+        }
+        app->keyFrameDirty.store(false, std::memory_order_release);
+        lastInputRender = now;
+        lastHeartbeat = now;
+    }
+
+    return true;
 }
 
 static bool apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
@@ -309,47 +418,27 @@ bool init_gles_pipeline(AppContext* app)
     const char* vertex_shader_src = nullptr;
     const char* fragment_shader_src = nullptr;
 
-    if (app->glesClientVersion >= 3) {
-        vertex_shader_src =
-            "#version 300 es\n"
-            "precision mediump float;\n"
-            "layout(location = 0) in vec4 position;\n"
-            "layout(location = 1) in vec2 texCoord;\n"
-            "out vec2 v_texCoord;\n"
-            "void main() {\n"
-            "   gl_Position = position;\n"
-            "   v_texCoord = vec2(texCoord.x, 1.0 - texCoord.y);\n"
-            "}\n";
-        fragment_shader_src =
-            "#version 300 es\n"
-            "precision mediump float;\n"
-            "in vec2 v_texCoord;\n"
-            "uniform sampler2D s_texture;\n"
-            "out vec4 fragColor;\n"
-            "void main() {\n"
-            "   fragColor = texture(s_texture, v_texCoord);\n"
-            "}\n";
-        app->positionAttribLocation = 0;
-        app->texCoordAttribLocation = 1;
-    } else {
-        vertex_shader_src =
-            "attribute vec4 position;\n"
-            "attribute vec2 texCoord;\n"
-            "varying vec2 v_texCoord;\n"
-            "void main() {\n"
-            "   gl_Position = position;\n"
-            "   v_texCoord = vec2(texCoord.x, 1.0 - texCoord.y);\n"
-            "}\n";
-        fragment_shader_src =
-            "precision mediump float;\n"
-            "varying vec2 v_texCoord;\n"
-            "uniform sampler2D s_texture;\n"
-            "void main() {\n"
-            "   gl_FragColor = texture2D(s_texture, v_texCoord);\n"
-            "}\n";
-        app->positionAttribLocation = 0;
-        app->texCoordAttribLocation = 1;
-    }
+    vertex_shader_src =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "layout(location = 0) in vec4 position;\n"
+        "layout(location = 1) in vec2 texCoord;\n"
+        "out vec2 v_texCoord;\n"
+        "void main() {\n"
+        "   gl_Position = position;\n"
+        "   v_texCoord = vec2(texCoord.x, 1.0 - texCoord.y);\n"
+        "}\n";
+    fragment_shader_src =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "in vec2 v_texCoord;\n"
+        "uniform sampler2D s_texture;\n"
+        "out vec4 fragColor;\n"
+        "void main() {\n"
+        "   fragColor = texture(s_texture, v_texCoord);\n"
+        "}\n";
+    app->positionAttribLocation = 0;
+    app->texCoordAttribLocation = 1;
 
     GLuint vs = compile_hardware_shader(GL_VERTEX_SHADER, vertex_shader_src);
     GLuint fs = compile_hardware_shader(GL_FRAGMENT_SHADER, fragment_shader_src);
@@ -362,10 +451,6 @@ bool init_gles_pipeline(AppContext* app)
     app->program_id = glCreateProgram();
     glAttachShader(app->program_id, vs);
     glAttachShader(app->program_id, fs);
-    if (app->glesClientVersion < 3) {
-        glBindAttribLocation(app->program_id, app->positionAttribLocation, "position");
-        glBindAttribLocation(app->program_id, app->texCoordAttribLocation, "texCoord");
-    }
     glLinkProgram(app->program_id);
     GLint linked = 0;
     glGetProgramiv(app->program_id, GL_LINK_STATUS, &linked);
@@ -666,7 +751,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
     const EGLBoolean swap_result = eglSwapBuffers(app->egl_display, app->egl_surface);
     if (swap_result == EGL_TRUE) {
-        app->hasPresentedFrame = true;
         return true;
     }
 
@@ -911,6 +995,15 @@ bool GlApp::init(const char* waylandDisplay)
         log_fatal("Failed to connect to Wayland display socket at {}", waylandDisplay);
         return false;
     }
+    m_ctx->waylandFd = wl_display_get_fd(m_ctx->display);
+    if (m_ctx->waylandFd < 0) {
+        log_fatal("Failed to obtain Wayland display file descriptor");
+        return false;
+    }
+    if (!ensure_run_wake_signal(m_ctx)) {
+        log_fatal("Failed to initialize run-loop wake signal");
+        return false;
+    }
     log_info("Connected to Wayland display {}", waylandDisplay);
 
     m_ctx->registry = wl_display_get_registry(m_ctx->display);
@@ -937,31 +1030,16 @@ bool GlApp::init(const char* waylandDisplay)
     }
     log_info("EGL initialized: version={}.{}", major, minor);
 
-    // Try ES3-capable config first; fall back to ES2-only config so this works
-    // on devices that only support OpenGL ES 2.0 or earlier.
+    // Use ES3-capable config only.
     EGLint config_attribs_es3[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR, EGL_NONE
     };
-    EGLint config_attribs_es2[] = {
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_NONE
-    };
 
     EGLint num_configs = 0;
-    bool es3ConfigAvailable = false;
     EGLBoolean config_ok = eglChooseConfig(m_ctx->egl_display, config_attribs_es3, &m_ctx->egl_config, 1, &num_configs);
-    if (config_ok == EGL_TRUE && num_configs > 0) {
-        es3ConfigAvailable = true;
-        log_info("EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES3");
-    } else {
-        eglGetError(); // clear stale error from failed ES3 config attempt
-        log_info("ES3 EGL config unavailable; retrying with ES2 config.");
-        config_ok = eglChooseConfig(m_ctx->egl_display, config_attribs_es2, &m_ctx->egl_config, 1, &num_configs);
-        log_info("EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES2");
-    }
+    log_info("EGL config attribs: RED=8, GREEN=8, BLUE=8, ALPHA=8, RENDERABLE=ES3");
     if (num_configs > 0 && m_ctx->egl_config) {
         EGLint red, green, blue, alpha, depth, stencil;
         eglGetConfigAttrib(m_ctx->egl_display, m_ctx->egl_config, EGL_RED_SIZE, &red);
@@ -980,31 +1058,21 @@ bool GlApp::init(const char* waylandDisplay)
 
     eglBindAPI(EGL_OPENGL_ES_API);
 
-    auto try_create_context = [&](EGLint clientVersion) {
-        EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, clientVersion, EGL_NONE };
+    auto try_create_context = [&]() {
+        EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
         m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
         if (m_ctx->egl_context != EGL_NO_CONTEXT) {
-            m_ctx->glesClientVersion = clientVersion;
+            m_ctx->glesClientVersion = 3;
             return true;
         }
         return false;
     };
 
-    // Only attempt ES3 context when the config supports it.
-    if (es3ConfigAvailable && try_create_context(3)) {
-        log_info("EGL context created for OpenGL ES 3.x");
-    } else {
-        if (es3ConfigAvailable) {
-            log_warn("OpenGL ES 3.x context creation failed despite ES3 config: {}. Falling back to ES 2.0.", egl_error_string(eglGetError()));
-            eglGetError(); // clear
-        }
-        if (!try_create_context(2)) {
-            log_fatal("eglCreateContext() for OpenGL ES 2.0 failed: {}", egl_error_string(eglGetError()));
-            return false;
-        }
-        log_info("EGL context created for OpenGL ES 2.x");
+    if (!try_create_context()) {
+        log_fatal("eglCreateContext() for OpenGL ES 3.0 failed: {}", egl_error_string(eglGetError()));
+        return false;
     }
-    log_info("Selected OpenGL ES version: {}", m_ctx->glesClientVersion);
+    log_info("EGL context created for OpenGL ES 3.x, Selected ES version: {}", m_ctx->glesClientVersion);
 
     m_ctx->surface = wl_compositor_create_surface(m_ctx->compositor);
     if (!m_ctx->surface) {
@@ -1099,7 +1167,8 @@ void GlApp::renderInitialFrame()
     PreparedFrame frame = prepare_cairo_frame(m_ctx, 0);
     queue_prepared_frame(m_ctx, std::move(frame));
     m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
-    m_ctx->lastInputRenderTime = std::chrono::steady_clock::time_point{};
+    m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+    signal_run_loop(m_ctx);
     log_dbg("renderInitialFrame prepared and queued for render thread");
 }
 
@@ -1118,6 +1187,7 @@ void GlApp::deinit()
     }
 
     m_ctx->running.store(false);
+    signal_run_loop(m_ctx);
 
     // 1. Unbind and clean up OpenGL resources
     if (m_ctx->egl_display != EGL_NO_DISPLAY &&
@@ -1184,6 +1254,8 @@ void GlApp::deinit()
         wl_display_disconnect(m_ctx->display);
         m_ctx->display = nullptr;
     }
+    m_ctx->waylandFd = -1;
+    release_run_wake_signal(m_ctx);
 
     m_ctx = nullptr;
 
@@ -1194,10 +1266,14 @@ void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
 
+    if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) {
+        log_warn("run() aborted: invalid run-loop signaling or Wayland fd state");
+        return;
+    }
+
     while (m_ctx && m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
-            log_warn("wl_display_dispatch failed while waiting for initial configure");
-            m_ctx->running.store(false);
+            stop_run_loop(m_ctx, "wl_display_dispatch failed while waiting for initial configure");
             break;
         }
     }
@@ -1207,94 +1283,138 @@ void GlApp::run()
         return;
     }
 
-    log_info("Entering event-driven loop (low CPU mode)");
-    int dispatch_count = 0;
+    log_info("Entering event-driven loop (poll + eventfd)");
     auto last_heartbeat = std::chrono::steady_clock::now();
+    auto last_shell_reapply = std::chrono::steady_clock::now();
+    auto last_input_render = std::chrono::steady_clock::time_point{};
     static constexpr auto kInputRenderMinInterval = std::chrono::milliseconds(20);
-    static constexpr auto kPausedSleepInterval = std::chrono::milliseconds(20);
+    static constexpr auto kHeartbeatInterval = std::chrono::seconds(1);
+    static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
 
     while (m_ctx && m_ctx->running.load()) {
-        const RenderLifecycleState state = m_ctx->lifecycle_state.load();
         const auto now = std::chrono::steady_clock::now();
+        const RenderLifecycleState state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
 
-        PreparedFrame queuedFrame;
-        if (RenderLifecycleState::Active == state && take_pending_prepared_frame(m_ctx, queuedFrame)) {
-            if (!present_prepared_frame(m_ctx, queuedFrame)) {
-                m_ctx->running.store(false);
-                break;
-            }
-            last_heartbeat = now;
+        if (!render_active_work(m_ctx, now, last_heartbeat, last_input_render, kInputRenderMinInterval)) {
+            break;
         }
 
-        if (RenderLifecycleState::Active == state && m_ctx->running.load() && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
-            (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
-             now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
-            if (render_cairo_frame(m_ctx) < 0) {
-                m_ctx->running.store(false);
-                break;
+        int timeoutMs = -1;
+        if (RenderLifecycleState::Active == state) {
+            timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                (last_heartbeat + kHeartbeatInterval) - now).count());
+            if (timeoutMs < 0) {
+                timeoutMs = 0;
             }
-            m_ctx->keyFrameDirty.store(false, std::memory_order_release);
-            m_ctx->lastInputRenderTime = now;
-            last_heartbeat = now;
+
+            if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
+                int inputRenderTimeoutMs = 0;
+                if (last_input_render.time_since_epoch().count() != 0) {
+                    inputRenderTimeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        (last_input_render + kInputRenderMinInterval) - now).count());
+                    if (inputRenderTimeoutMs < 0) {
+                        inputRenderTimeoutMs = 0;
+                    }
+                }
+                timeoutMs = std::min(timeoutMs, inputRenderTimeoutMs);
+            }
         }
 
-        if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
-            log_warn("wl_display_dispatch returned < 0, stopping loop");
+        while (0 != wl_display_prepare_read(m_ctx->display)) {
+            if (wl_display_dispatch_pending(m_ctx->display) < 0) {
+                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed while preparing read");
+                break;
+            }
+        }
+        if (!m_ctx->running.load()) {
+            break;
+        }
+
+        wl_display_flush(m_ctx->display);
+
+        pollfd fds[2];
+        fds[0].fd = m_ctx->waylandFd;
+        fds[0].events = POLLIN;
+        fds[0].revents = 0;
+        fds[1].fd = m_ctx->wakeEventFd;
+        fds[1].events = POLLIN;
+        fds[1].revents = 0;
+
+        const int pollResult = poll(fds, 2, timeoutMs);
+        if (pollResult < 0) {
+            wl_display_cancel_read(m_ctx->display);
+            if (EINTR == errno) {
+                continue;
+            }
+            log_warn("poll failed in run loop: errno={}", errno);
             m_ctx->running.store(false);
             break;
         }
-        dispatch_count++;
 
-        if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)){
-            log_warn("Dispatch loop exiting due to running=false");
-            break;
-        }
-
-        const RenderLifecycleState state_after_dispatch = m_ctx->lifecycle_state.load();
-        if (RenderLifecycleState::Closing == state_after_dispatch) {
-            m_ctx->running.store(false);
-            break;
-        }
-
-        if (dispatch_count % 120 == 0) {
-            if (!apply_simple_shell_state(m_ctx, "periodic", false)) {
-                m_ctx->running.store(false);
-                break;
-            }
-        }
-
-        if (dispatch_count % 60 == 0) {
-            log_info("Dispatch iteration {}", dispatch_count);
-        }
-
-        // Coalesce bursty key events and cap key-driven redraw frequency.
-        const auto loop_now = std::chrono::steady_clock::now();
-        if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && m_ctx && m_ctx->keyFrameDirty.load(std::memory_order_acquire) &&
-            (m_ctx->lastInputRenderTime.time_since_epoch().count() == 0 ||
-             loop_now - m_ctx->lastInputRenderTime >= kInputRenderMinInterval)) {
-            if (render_cairo_frame(m_ctx) < 0) {
-                m_ctx->running.store(false);
-                break;
-            }
-            m_ctx->keyFrameDirty.store(false, std::memory_order_release);
-            m_ctx->lastInputRenderTime = loop_now;
-            last_heartbeat = loop_now;
-        }
-
-        // Keep one low-frequency redraw in case compositor requires occasional commits.
-        if (RenderLifecycleState::Active == state_after_dispatch && m_ctx->running.load() && (loop_now - last_heartbeat >= std::chrono::seconds(1))) {
-            if (render_cairo_frame(m_ctx) < 0) {
-                m_ctx->running.store(false);
-                break;
-            }
-            last_heartbeat = loop_now;
-        }
-
-        if (RenderLifecycleState::Paused == state_after_dispatch || RenderLifecycleState::Bootstrapping == state_after_dispatch) {
-            std::this_thread::sleep_for(kPausedSleepInterval);
+        if (0 == pollResult) {
+            wl_display_cancel_read(m_ctx->display);
         } else {
-            // Tiny backoff prevents tight-loop CPU spikes when compositor is chatty.
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                wl_display_cancel_read(m_ctx->display);
+                stop_run_loop(m_ctx, "Wake fd reported terminal poll event");
+                break;
+            }
+
+            if ((fds[1].revents & POLLIN) != 0) {
+                drain_run_signal(m_ctx);
+            }
+
+            if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                wl_display_cancel_read(m_ctx->display);
+                log_warn("Wayland fd reported terminal poll event: revents={}", fds[0].revents);
+                m_ctx->running.store(false);
+                break;
+            }
+
+            if ((fds[0].revents & POLLIN) != 0) {
+                if (wl_display_read_events(m_ctx->display) < 0) {
+                    stop_run_loop(m_ctx, "wl_display_read_events failed");
+                    break;
+                }
+            } else {
+                wl_display_cancel_read(m_ctx->display);
+            }
+        }
+
+        if (wl_display_dispatch_pending(m_ctx->display) < 0) {
+            stop_run_loop(m_ctx, "wl_display_dispatch_pending returned < 0, stopping loop");
+            break;
+        }
+
+        if (!m_ctx->running.load(std::memory_order_acquire)) {
+            break;
+        }
+
+        const RenderLifecycleState postDispatchState = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+        const auto postDispatchNow = std::chrono::steady_clock::now();
+        if (RenderLifecycleState::Closing == postDispatchState) {
+            m_ctx->running.store(false);
+            break;
+        }
+
+        if (!render_active_work(m_ctx, postDispatchNow, last_heartbeat, last_input_render, kInputRenderMinInterval)) {
+            break;
+        }
+
+        if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_heartbeat >= kHeartbeatInterval) {
+            if (render_cairo_frame(m_ctx) < 0) {
+                stop_run_loop(m_ctx, "render_cairo_frame failed while processing heartbeat frame");
+                break;
+            }
+            last_heartbeat = std::chrono::steady_clock::now();
+        }
+
+        if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
+            if (!apply_simple_shell_state(m_ctx, "periodic", false)) {
+                stop_run_loop(m_ctx, "apply_simple_shell_state failed during periodic reapply");
+                break;
+            }
+            last_shell_reapply = std::chrono::steady_clock::now();
         }
     }
 
@@ -1315,6 +1435,7 @@ void GlApp::resume()
     if (m_ctx) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+        signal_run_loop(m_ctx);
     }
 }
 
@@ -1324,6 +1445,7 @@ void GlApp::pause()
     if (m_ctx) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
         m_ctx->keyFrameDirty.store(false, std::memory_order_release);
+        signal_run_loop(m_ctx);
     }
 }
 
@@ -1333,6 +1455,7 @@ void GlApp::close()
     if (m_ctx) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Closing);
         m_ctx->running.store(false);
+        signal_run_loop(m_ctx);
     }
 }
 
