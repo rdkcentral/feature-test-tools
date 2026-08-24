@@ -40,6 +40,7 @@ private:
     void showAppManagerMenu();
     void showPackageManagerMenu();
     void showRDKWindowMgrCtrlMenu();
+    void showAppActionsControlMenu();
     void showPerformanceTests();
 
     ThunderBridge thunderBridge;

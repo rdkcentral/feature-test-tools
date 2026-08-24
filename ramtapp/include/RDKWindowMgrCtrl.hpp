@@ -30,7 +30,6 @@
 
 #include "MgrControl.hpp"
 
-
 class WMgrEvtHandler : public Exchange::IRDKWindowManager::INotification
 {
 public:
@@ -110,7 +109,6 @@ public:
         // This is Base64 encoded image data (PNG format). We need to export this to a file to view the screenshot.
         // For demonstration, we will just print the size of the image data.
         cout << "Screenshot Image Data Size: " << imageData.size() << " bytes" << endl;
-
     }
 };
 
@@ -128,6 +126,7 @@ public:
 
 private:
     // Add private members and methods here
+    void handleCreateDisplayRequest();
     void handleGetClientsRequest();
     void handleSetVisibilityRequest();
     void handleSetFocusRequest();

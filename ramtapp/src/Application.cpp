@@ -38,14 +38,14 @@ void Application::initialize()
     auto downloadManagerFactory = std::make_unique<DownloadManagerFactory>();
     auto installManagerFactory = std::make_unique<InstallManagerFactory>();
     auto rdkWindowManagerFactory = std::make_unique<RDKWindowMgrCtrlFactory>();
+    auto appActionsControlFactory = std::make_unique<AppActionsControlFactory>();
 
     managerRegistry.add("AppManager", appManagerFactory->createManager(thunderBridge));
     managerRegistry.add("PkgManager", pkgManagerFactory->createManager(thunderBridge));
     managerRegistry.add("DownloadManager", downloadManagerFactory->createManager(thunderBridge));
     managerRegistry.add("InstallManager", installManagerFactory->createManager(thunderBridge));
     managerRegistry.add("RDKWindowMgrCtrl", rdkWindowManagerFactory->createManager(thunderBridge));
-
-
+    managerRegistry.add("AppActionsControl", appActionsControlFactory->createManager(thunderBridge));
 
     perfTestMgr.initialize(&managerRegistry);
 }
@@ -60,6 +60,8 @@ void Application::createMainMenu()
                        { this->showPackageManagerMenu(); });
     mainMenu.addOption("RDK Window Manager related functions", [this]()
                        { this->showRDKWindowMgrCtrlMenu(); });
+    mainMenu.addOption("App Actions Control related functions", [this]()
+                       { this->showAppActionsControlMenu(); });
     mainMenu.addOption("Performance tests", [this]()
                        { this->showPerformanceTests(); });
     mainMenu.setExitOption(true);
@@ -122,6 +124,17 @@ void Application::showRDKWindowMgrCtrlMenu()
     }
 }
 
+void Application::showAppActionsControlMenu()
+{
+    if (auto *manager = managerRegistry.get("AppActionsControl"))
+    {
+        manager->displayMenu();
+    }
+    else
+    {
+        std::cout << "AppActionsControl is not initialized." << std::endl;
+    }
+}
 void Application::showPackageManagerMenu()
 {
     while (true)
