@@ -264,14 +264,16 @@ static bool render_active_work(AppContext* app,
     return true;
 }
 
-static bool apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true)
+static bool apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true, bool setName = false)
 {
     if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface || !app->display) {
         log_dbg("Skipping simple-shell reapply ({}): invalid configurations", reason ? reason : "unknown");
         return false;
     }
 
-    wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
+    if (setName) {
+        wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
+    }
     wl_simple_shell_set_visible(app->simple_shell_ptr, app->simple_shell_surface_id, 1);
     wl_simple_shell_set_geometry(app->simple_shell_ptr, app->simple_shell_surface_id, 0, 0, app->width, app->height);
     if (setFocus) {
@@ -279,6 +281,7 @@ static bool apply_simple_shell_state(AppContext* app, const char* reason, bool s
     }
     wl_surface_commit(app->surface);
     wl_display_flush(app->display);
+
     return true;
 }
 
@@ -289,6 +292,7 @@ static void update_simple_shell_configured_state(AppContext* app, const char* re
         if (!app->configured) {
             app->configured = true;
             log_info("simple-shell ready: id={}, reason={}", app->simple_shell_surface_id, reason ? reason : "unknown");
+            wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
         }
     }
 }
@@ -584,6 +588,7 @@ int render_cairo_frame(AppContext* app)
     if (!present_prepared_frame(app, frame)) app->running.store(false);
     return 0;
 }
+
 static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s) { close(fd); }
 static void keyboard_handle_enter(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf, wl_array* k) {}
 static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf) {}
@@ -622,7 +627,7 @@ static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surfa
     if (surface != app->surface) return;
 
     app->simple_shell_surface_id = surface_id;
-    apply_simple_shell_state(app, "initial-setup");
+    apply_simple_shell_state(app, "initial-setup", false);
     update_simple_shell_configured_state(app, "surface-id");
 }
 
@@ -741,7 +746,7 @@ bool GlApp::init(const char* waylandDisplay)
     m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE || eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) != EGL_TRUE) return false;
 
-    if (!apply_simple_shell_state(m_ctx, "post-egl-setup") || !init_gles_pipeline(m_ctx)) return false;
+    if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
     glFinish();
     eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -878,7 +883,9 @@ void GlApp::run()
         }
 
         if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
-            apply_simple_shell_state(m_ctx, "periodic", false);
+            //apply_simple_shell_state(m_ctx, "periodic", false);
+            if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
+            if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
             last_shell_reapply = std::chrono::steady_clock::now();
         }
     }
