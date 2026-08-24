@@ -500,9 +500,6 @@ bool init_gles_pipeline(AppContext* app)
     return true;
 }
 
-
-//---------------------------------------------------------------------------
-// New logic
 static EGLDisplay get_wayland_egl_display(wl_display* display)
 {
     using PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL =
@@ -757,8 +754,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     log_warn("Frame swap failed: {}", egl_error_string(eglGetError()));
     return false;
 }
-
-//---------------------------------------------------------------------------
 
 /**
  * @brief Render a frame using Cairo and present it via OpenGL ES.
@@ -1293,21 +1288,20 @@ void GlApp::run()
 
     while (m_ctx && m_ctx->running.load()) {
         const auto now = std::chrono::steady_clock::now();
-        const RenderLifecycleState state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
 
         if (!render_active_work(m_ctx, now, last_heartbeat, last_input_render, kInputRenderMinInterval)) {
             break;
         }
 
         int timeoutMs = -1;
-        if (RenderLifecycleState::Active == state) {
+        if (m_ctx && (RenderLifecycleState::Active == m_ctx->lifecycle_state.load(std::memory_order_acquire))) {
             timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
                 (last_heartbeat + kHeartbeatInterval) - now).count());
             if (timeoutMs < 0) {
                 timeoutMs = 0;
             }
 
-            if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
+            if (m_ctx && m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
                 int inputRenderTimeoutMs = 0;
                 if (last_input_render.time_since_epoch().count() != 0) {
                     inputRenderTimeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1320,13 +1314,13 @@ void GlApp::run()
             }
         }
 
-        while (0 != wl_display_prepare_read(m_ctx->display)) {
+        while (m_ctx && (0 != wl_display_prepare_read(m_ctx->display))) {
             if (wl_display_dispatch_pending(m_ctx->display) < 0) {
                 stop_run_loop(m_ctx, "wl_display_dispatch_pending failed while preparing read");
                 break;
             }
         }
-        if (!m_ctx->running.load()) {
+        if (!m_ctx || !m_ctx->running.load()) {
             break;
         }
 
@@ -1347,7 +1341,7 @@ void GlApp::run()
                 continue;
             }
             log_warn("poll failed in run loop: errno={}", errno);
-            m_ctx->running.store(false);
+            if (m_ctx) m_ctx->running.store(false);
             break;
         }
 
@@ -1367,33 +1361,33 @@ void GlApp::run()
             if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
                 wl_display_cancel_read(m_ctx->display);
                 log_warn("Wayland fd reported terminal poll event: revents={}", fds[0].revents);
-                m_ctx->running.store(false);
+                if (m_ctx) m_ctx->running.store(false);
                 break;
             }
 
             if ((fds[0].revents & POLLIN) != 0) {
-                if (wl_display_read_events(m_ctx->display) < 0) {
+                if (m_ctx && (wl_display_read_events(m_ctx->display) < 0)) {
                     stop_run_loop(m_ctx, "wl_display_read_events failed");
                     break;
                 }
             } else {
-                wl_display_cancel_read(m_ctx->display);
+                if (m_ctx) wl_display_cancel_read(m_ctx->display);
             }
         }
 
-        if (wl_display_dispatch_pending(m_ctx->display) < 0) {
+        if (m_ctx && (wl_display_dispatch_pending(m_ctx->display) < 0)) {
             stop_run_loop(m_ctx, "wl_display_dispatch_pending returned < 0, stopping loop");
             break;
         }
 
-        if (!m_ctx->running.load(std::memory_order_acquire)) {
+        if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) {
             break;
         }
 
         const RenderLifecycleState postDispatchState = m_ctx->lifecycle_state.load(std::memory_order_acquire);
         const auto postDispatchNow = std::chrono::steady_clock::now();
         if (RenderLifecycleState::Closing == postDispatchState) {
-            m_ctx->running.store(false);
+            if (m_ctx) m_ctx->running.store(false);
             break;
         }
 
@@ -1402,7 +1396,7 @@ void GlApp::run()
         }
 
         if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_heartbeat >= kHeartbeatInterval) {
-            if (render_cairo_frame(m_ctx) < 0) {
+            if (m_ctx && (render_cairo_frame(m_ctx) < 0)) {
                 stop_run_loop(m_ctx, "render_cairo_frame failed while processing heartbeat frame");
                 break;
             }
@@ -1410,7 +1404,7 @@ void GlApp::run()
         }
 
         if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
-            if (!apply_simple_shell_state(m_ctx, "periodic", false)) {
+            if (!m_ctx || !apply_simple_shell_state(m_ctx, "periodic", false)) {
                 stop_run_loop(m_ctx, "apply_simple_shell_state failed during periodic reapply");
                 break;
             }
