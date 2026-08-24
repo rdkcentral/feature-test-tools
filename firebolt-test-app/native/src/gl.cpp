@@ -432,6 +432,11 @@ static bool ensure_egl_current(AppContext* app)
         return false;
     }
 
+    if (eglGetCurrentContext() == app->egl_context) {
+        return true;
+    }
+
+    // Kept for debugging. We shall not see this happen in normal operation.
     EGLContext currentCtx = eglGetCurrentContext();
     EGLSurface currentDraw = eglGetCurrentSurface(EGL_DRAW);
     EGLSurface currentRead = eglGetCurrentSurface(EGL_READ);
@@ -442,9 +447,6 @@ static bool ensure_egl_current(AppContext* app)
         reinterpret_cast<uintptr_t>(currentRead),
         reinterpret_cast<uintptr_t>(app->egl_surface));
 
-    if (eglGetCurrentContext() == app->egl_context) {
-        return true;
-    }
     return (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) == EGL_TRUE);
 }
 
