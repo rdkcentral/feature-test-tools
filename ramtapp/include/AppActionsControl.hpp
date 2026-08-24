@@ -64,8 +64,7 @@ private:
 
 public:
     AppActionsControl() = default;
-    virtual ~AppActionsControl() = default;
-
+    ~AppActionsControl() override;
     // Define specific actions for the AppActionsControl here
     bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) override;
     bool checkPluginStatus() override;
