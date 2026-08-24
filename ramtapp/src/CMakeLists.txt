@@ -28,7 +28,9 @@ add_executable(${TARGET} main.cpp
     managers/PkgMgrControl.cpp
     managers/DownloadMgrCtrl.cpp
     managers/InstallMgrCtrl.cpp
+    managers/PkgConfigMgrCtrl.cpp
     managers/RDKWindowMgrCtrl.cpp
+    managers/AppActionsControl.cpp
     )
 
 find_package(PkgConfig REQUIRED)
