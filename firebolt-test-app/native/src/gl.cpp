@@ -759,6 +759,7 @@ void GlApp::renderInitialFrame()
     m_ctx->keyFrameDirty.store(true, std::memory_order_release);
     signal_run_loop(m_ctx);
 }
+
 void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
@@ -773,6 +774,19 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load()) return;
 
+    // -------------------------------------------------------------------------
+    // Frame Timing & Compositor Maintenance Throttling
+    // -------------------------------------------------------------------------
+    // Used to calculate dynamic timeouts for poll(), allowing the thread to sleep
+    // when idle while ensuring periodic updates and input throttling:
+    //
+    // - Heartbeat (1s): Enforces a low-frequency baseline refresh so the
+    //   compositor doesn't drop the surface during idle states.
+    // - Shell Reapply (2s): Periodically forces simple-shell bounds, visibility,
+    //   and focus. Prevents window state desyncs in containerized environments.
+    // - Input Throttle (25ms / 40 FPS max): Coalesces blast key repeats
+    //   (e.g., holding down a remote button) to stop CPU spikes.
+    // -------------------------------------------------------------------------
     auto last_heartbeat = std::chrono::steady_clock::now();
     auto last_shell_reapply = std::chrono::steady_clock::now();
     auto last_input_render = std::chrono::steady_clock::time_point{};
@@ -813,8 +827,12 @@ void GlApp::run()
         wl_display_flush(m_ctx->display);
 
         pollfd fds[2];
-        fds[0].fd = m_ctx->waylandFd;  fds[0].events = POLLIN;  fds[0].revents = 0;
-        fds[1].fd = m_ctx->wakeEventFd; fds[1].events = POLLIN; fds[1].revents = 0;
+        fds[0].fd = m_ctx->waylandFd;
+        fds[0].events = POLLIN;
+        fds[0].revents = 0;
+        fds[1].fd = m_ctx->wakeEventFd;
+        fds[1].events = POLLIN;
+        fds[1].revents = 0;
 
         const int pollResult = poll(fds, 2, timeoutMs);
         if (pollResult < 0) {
@@ -865,12 +883,7 @@ void GlApp::run()
         }
     }
 
-    if (access("/data/skip-run-egl-cleanup", F_OK) != 0) {
-        if (m_ctx && m_ctx->egl_display != EGL_NO_DISPLAY) {
-            glFinish();
-            eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        }
-    }
+    // deinit() handles the glFinish and eglMakeCurrent perfectly and safely out-of-band.
     log_warn("Wayland dispatch loop exited");
 }
 
