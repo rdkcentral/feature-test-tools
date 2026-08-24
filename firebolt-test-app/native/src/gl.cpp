@@ -565,8 +565,50 @@ static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame)
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 {
+    // Cache the BGRA extension check and optimal internal format to avoid repeated queries.
+    static bool has_bgra_extension = false;
+    static GLint optimal_internal_format = GL_RGBA; // Default fallback layout
+    static bool is_format_initialized = false;
+
     if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) return false;
     if (!ensure_egl_current(app)) return false;
+
+    if (!is_format_initialized) {
+        GLint num_exts = 0;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
+        while (glGetError() != GL_NO_ERROR);
+
+        for (GLint i = 0; i < num_exts; ++i) {
+            const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
+            if (ext && std::strcmp(ext, "GL_EXT_texture_format_BGRA8888") == 0) {
+                has_bgra_extension = true;
+                break;
+            }
+        }
+
+        if (has_bgra_extension) {
+            // One-time driver probe using a temporary texture
+            GLuint test_tex;
+            glGenTextures(1, &test_tex);
+            glBindTexture(GL_TEXTURE_2D, test_tex);
+
+            // Test Method A: Mali/PowerVR style (GL_BGRA_EXT for both parameters)
+            unsigned char dummy_pixel[4] = {0, 0, 0, 0};
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1, 1, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, dummy_pixel);
+
+            if (glGetError() == GL_NO_ERROR) {
+                optimal_internal_format = GL_BGRA_EXT;
+            } else {
+                optimal_internal_format = GL_RGBA;
+                while (glGetError() != GL_NO_ERROR);
+            }
+
+            glDeleteTextures(1, &test_tex);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+
+        is_format_initialized = true;
+    }
 
     glViewport(0, 0, frame.width, frame.height);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
@@ -578,40 +620,18 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-    // OPTIMIZATION: Pass direct BGRA driver extension mapping to avoid software conversion pixel copy delays
-    static bool has_bgra_extension = false;
     if (!has_bgra_extension) {
-        GLint num_exts = 0;
-        glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
-        for (GLint i = 0; i < num_exts; ++i) {
-            const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
-            if (ext && std::strcmp(ext, "GL_EXT_texture_format_BGRA8888") == 0) {
-                has_bgra_extension = true;
-                break;
-            }
-        }
-    }
-
-    if (!has_bgra_extension) {
-        log_warn("GL_EXT_texture_format_BGRA8888 not supported, falling back to software swizzle");
         std::vector<unsigned char> swizzledPixels(frame.rgbaPixels.size());
         for (size_t i = 0; i < frame.rgbaPixels.size(); i += 4) {
-            swizzledPixels[i + 0] = frame.rgbaPixels[i + 2]; // R -> B
-            swizzledPixels[i + 1] = frame.rgbaPixels[i + 1]; // G -> G
-            swizzledPixels[i + 2] = frame.rgbaPixels[i + 0]; // B -> R
-            swizzledPixels[i + 3] = frame.rgbaPixels[i + 3]; // A -> A
+            swizzledPixels[i + 0] = frame.rgbaPixels[i + 2];
+            swizzledPixels[i + 1] = frame.rgbaPixels[i + 1];
+            swizzledPixels[i + 2] = frame.rgbaPixels[i + 0];
+            swizzledPixels[i + 3] = frame.rgbaPixels[i + 3];
         }
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
     } else {
-        log_dbg("Using GL_EXT_texture_format_BGRA8888 extension for direct upload");
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
-        GLenum err = glGetError();
-        if (err != GL_NO_ERROR) {
-            log_warn("glTexImage2D failed with error code: 0x%X. Trying alternative internalFormat.", err);
-            // Fallback option: some drivers want internalFormat to be GL_BGRA_EXT too
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
-        }
+        // Use the optimal internal format (GL_BGRA_EXT) for better performance on supported drivers
+        glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
