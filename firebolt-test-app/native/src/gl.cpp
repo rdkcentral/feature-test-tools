@@ -386,7 +386,7 @@ bool init_gles_pipeline(AppContext* app)
 
     GLenum program_error = glGetError();
     if (program_error != GL_NO_ERROR) {
-        log_err("GL error after program link: 0x{}", program_error);
+        log_err("GL error after program link: {}", program_error);
     }
 
     // Validate program
@@ -754,7 +754,7 @@ static const wl_keyboard_listener keyboard_listener = {
 static void seat_handle_capabilities(void* data, wl_seat* seat, uint32_t caps)
 {
     AppContext* app = static_cast<AppContext*>(data);
-    log_info("Seat capabilities changed: caps=0x{}", caps);
+    log_info("Seat capabilities changed: caps={}", caps);
     if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !app->keyboard) {
         app->keyboard = wl_seat_get_keyboard(seat);
         log_info("wl_seat_get_keyboard() acquired");
@@ -794,22 +794,22 @@ static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uin
         app->simple_shell_created_id = surface_id;
         update_simple_shell_configured_state(app, "surface-created");
     }
-    log_info("simple_shell_surface_created: id={}, name={}", surface_id, name ? name : "<null>");
+    log_info("wayland: simple_shell_surface_created: id={}, name={}", surface_id, name ? name : "<null>");
 }
 
 static void simple_shell_surface_destroyed(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name)
 {
-    log_warn("simple_shell_surface_destroyed: id={}, name={}", surface_id, name ? name : "<null>");
+    log_warn("wayland: simple_shell_surface_destroyed: id={}, name={}", surface_id, name ? name : "<null>");
 }
 
 static void simple_shell_surface_status(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name, uint32_t visible, int32_t x, int32_t y, int32_t width, int32_t height, wl_fixed_t opacity, wl_fixed_t zorder)
 {
-    log_dbg("wayland", "simple_shell_surface_status: id={}, visible={}, geom={}x{}", surface_id, visible, width, height);
+    log_dbg("wayland: simple_shell_surface_status: id={}, visible={}, geom={}x{}", surface_id, visible, width, height);
 }
 
 static void simple_shell_get_surfaces_done(void* data, wl_simple_shell* shell)
 {
-    log_dbg("wayland", "simple_shell_get_surfaces_done");
+    log_dbg("wayland: simple_shell_get_surfaces_done");
 }
 
 static const wl_simple_shell_listener simple_shell_listener = {

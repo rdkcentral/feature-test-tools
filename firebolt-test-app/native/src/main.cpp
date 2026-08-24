@@ -78,6 +78,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <unistd.h>
 #include <vector>
 
@@ -394,18 +395,13 @@ static std::unique_ptr<GlApp> initGlApp(int width,
                                         BackgroundPatternMode pattern,
                                         const char* waylandDisplay)
 {
-	auto glApp = std::make_unique<GlApp>(width, height, fontPath, pattern);
-	if (!glApp)
-	{
-		log_fatal("Failed to create GlApp instance.");
-		return nullptr;
-	}
+    auto glApp = std::make_unique<GlApp>(width, height, fontPath, pattern);
     if (!glApp->init(waylandDisplay))
-	{
-		log_fatal("Failed to initialize GL context.");
-		return nullptr;
-	}
-	return glApp;
+    {
+        log_fatal("Failed to initialize GL context.");
+        return nullptr;
+    }
+    return glApp;
 }
 
 // ---------------------------------------------------------------------------

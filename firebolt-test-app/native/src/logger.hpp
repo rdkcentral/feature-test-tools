@@ -24,10 +24,12 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <iostream>
 #include <atomic>
 #include <cstdlib>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -92,14 +94,21 @@ struct RuntimeLogger {
         auto append_arg = [&](const auto& arg) {
             using T = std::decay_t<decltype(arg)>;
 
-            if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
+            if constexpr (std::is_same_v<T, std::string>) {
+                result_str.append(arg);
+            } else if constexpr (std::is_same_v<T, std::string_view>) {
+                result_str.append(arg.data(), arg.size());
+            } else if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
                 result_str.append(arg ? arg : "<null>");
             } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
                 result_str.append("<null>");
             } else if constexpr (std::is_pointer_v<T>) {
                 char ptr_buf[32];
-                int len = std::snprintf(ptr_buf, sizeof(ptr_buf), "%p", static_cast<const void*>(arg));
-                if (len > 0) result_str.append(ptr_buf, len);
+                const int len = std::snprintf(ptr_buf, sizeof(ptr_buf), "%p", static_cast<const void*>(arg));
+                if (len > 0) result_str.append(ptr_buf, static_cast<size_t>(len));
+            } else if constexpr (std::is_enum_v<T>) {
+                using U = std::underlying_type_t<T>;
+                result_str.append(std::to_string(static_cast<U>(arg)));
             } else if constexpr (std::is_integral_v<T> || std::is_floating_point_v<T>) {
                 result_str.append(std::to_string(arg));
             } else {
