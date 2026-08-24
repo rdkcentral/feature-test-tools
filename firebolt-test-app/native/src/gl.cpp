@@ -908,9 +908,7 @@ void GlApp::run()
         }
 
         if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
-            //apply_simple_shell_state(m_ctx, "periodic", false);
-            if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
-            if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
+            apply_simple_shell_state(m_ctx, "periodic", false);
             last_shell_reapply = std::chrono::steady_clock::now();
         }
     }
