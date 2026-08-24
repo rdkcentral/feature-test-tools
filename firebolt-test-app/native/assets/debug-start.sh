@@ -33,7 +33,7 @@ ulimit -c unlimited
 
 # The core dump file will be named as core.<executable_name>.<pid>.<timestamp>
 # Note: /data is where the persistent volume is mounted in the container.
-echo "/data/core.%e.%p.%t" | sudo tee /proc/sys/kernel/core_pattern
+echo "/data/core.%e.%p.%t" > /proc/sys/kernel/core_pattern
 
 # Start the application
-exec "$@"
+exec "/usr/bin/firebolt-test-app"
