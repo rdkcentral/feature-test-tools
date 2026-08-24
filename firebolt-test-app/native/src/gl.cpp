@@ -569,7 +569,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!ensure_egl_current(app)) return false;
 
     glViewport(0, 0, frame.width, frame.height);
-    log_dbg("glViewport(0, 0, {}, {})", frame.width, frame.height);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -605,7 +604,14 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
     } else {
         log_dbg("Using GL_EXT_texture_format_BGRA8888 extension for direct upload");
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+        GLenum err = glGetError();
+        if (err != GL_NO_ERROR) {
+            log_warn("glTexImage2D failed with error code: 0x%X. Trying alternative internalFormat.", err);
+            // Fallback option: some drivers want internalFormat to be GL_BGRA_EXT too
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+        }
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
