@@ -37,6 +37,7 @@ void Application::initialize()
     auto pkgManagerFactory = std::make_unique<PkgManagerFactory>();
     auto downloadManagerFactory = std::make_unique<DownloadManagerFactory>();
     auto installManagerFactory = std::make_unique<InstallManagerFactory>();
+    auto pkgConfigManagerFactory = std::make_unique<PkgConfigManagerFactory>();
     auto rdkWindowManagerFactory = std::make_unique<RDKWindowMgrCtrlFactory>();
     auto appActionsControlFactory = std::make_unique<AppActionsControlFactory>();
 
@@ -44,6 +45,7 @@ void Application::initialize()
     managerRegistry.add("PkgManager", pkgManagerFactory->createManager(thunderBridge));
     managerRegistry.add("DownloadManager", downloadManagerFactory->createManager(thunderBridge));
     managerRegistry.add("InstallManager", installManagerFactory->createManager(thunderBridge));
+    managerRegistry.add("PkgConfigManager", pkgConfigManagerFactory->createManager(thunderBridge));
     managerRegistry.add("RDKWindowMgrCtrl", rdkWindowManagerFactory->createManager(thunderBridge));
     managerRegistry.add("AppActionsControl", appActionsControlFactory->createManager(thunderBridge));
 
@@ -78,6 +80,9 @@ void Application::createPackageManagerMenu()
     packageManagerMenu.addOption("Package Handler Menu", [this]()
                                  {
         if (auto* manager = managerRegistry.get("PkgManager")) manager->displayMenu(); });
+    packageManagerMenu.addOption("Package Config Menu", [this]()
+                                 {
+        if (auto* manager = managerRegistry.get("PkgConfigManager")) manager->displayMenu(); });
     packageManagerMenu.setExitOption(true);
 }
 
