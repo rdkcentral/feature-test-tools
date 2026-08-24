@@ -568,7 +568,32 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     // OPTIMIZATION: Pass direct BGRA driver extension mapping to avoid software conversion pixel copy delays
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+    static bool has_bgra_extension = false;
+    if (!has_bgra_extension) {
+        GLint num_exts = 0;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
+        for (GLint i = 0; i < num_exts; ++i) {
+            const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
+            if (ext && std::strcmp(ext, "GL_EXT_texture_format_BGRA8888") == 0) {
+                has_bgra_extension = true;
+                break;
+            }
+        }
+    }
+
+    if (!has_bgra_extension) {
+        log_warn("GL_EXT_texture_format_BGRA8888 not supported, falling back to software swizzle");
+        std::vector<unsigned char> swizzledPixels(frame.rgbaPixels.size());
+        for (size_t i = 0; i < frame.rgbaPixels.size(); i += 4) {
+            swizzledPixels[i + 0] = frame.rgbaPixels[i + 2]; // R -> B
+            swizzledPixels[i + 1] = frame.rgbaPixels[i + 1]; // G -> G
+            swizzledPixels[i + 2] = frame.rgbaPixels[i + 0]; // B -> R
+            swizzledPixels[i + 3] = frame.rgbaPixels[i + 3]; // A -> A
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+    }
 
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glEnableVertexAttribArray(app->positionAttribLocation);
@@ -986,5 +1011,12 @@ void GlApp::deinit()
 
     m_ctx->waylandFd = -1;
     release_run_wake_signal(m_ctx);
+
+    if (access("/data/ensure-deinit-free", F_OK) != 0) {
+        log_warn("GlApp::deinit: ensure-deinit-free file not found, deleting AppContext");
+        AppContext* ctx = m_ctx;
+        m_ctx = nullptr;
+        delete ctx;
+    }
     log_info("GlApp::deinit completed");
 }

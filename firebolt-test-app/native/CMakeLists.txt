@@ -166,7 +166,7 @@ pkg_check_modules(GLESV2      REQUIRED glesv2)
 pkg_check_modules(CAIRO_FT    REQUIRED cairo cairo-ft)
 pkg_check_modules(FREETYPE    REQUIRED freetype2)
 
-set(FONT_BASE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}")
+set(FONT_BASE_DIR "${CMAKE_INSTALL_FULL_DATADIR}")
 set(APP_FONT_DIR "${FONT_BASE_DIR}/fonts/ttf/")
 set(APP_FONT_LIC_DIR "${FONT_BASE_DIR}/doc/liberation-fonts/")
 

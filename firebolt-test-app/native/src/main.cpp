@@ -654,7 +654,7 @@ int main(int argc, char** argv)
     while (!exitRequested.load(std::memory_order_acquire)) {
         if (nextAppState.load(std::memory_order_acquire) != currentAppState) {
             AppState newAppState = nextAppState.load(std::memory_order_acquire);
-            log_dbg("Lifecycle state change requested: {} -> {}", currentAppState, newAppState);
+            log_dbg("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {
@@ -712,7 +712,7 @@ int main(int argc, char** argv)
                 break;
                 case AppState::SUSPENDED_TO_PAUSED:
                 default:
-                    log_warn("Lifecycle state changed: {} without specific action.", newAppState);
+                    log_warn("Lifecycle state changed: {} without specific action.", to_string(newAppState));
                     currentAppState = newAppState;
                     break;
             }
