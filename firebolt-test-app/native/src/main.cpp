@@ -596,9 +596,8 @@ int main(int argc, char** argv)
                 glApp->deinit();
                 glApp.reset();
             }
+            glRunThreadStarted = false;
         }
-
-        glRunThreadStarted = false;
     };
 
     auto ensureGlAppInitialized = [&]() -> bool {

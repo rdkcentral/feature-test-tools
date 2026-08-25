@@ -784,12 +784,18 @@ bool GlApp::init(const char* waylandDisplay)
     };
 
     EGLint num_configs = 0;
-    if (eglChooseConfig(m_ctx->egl_display, config_attribs, &m_ctx->egl_config, 1, &num_configs) != EGL_TRUE || num_configs == 0) return false;
+    if (eglChooseConfig(m_ctx->egl_display, config_attribs, &m_ctx->egl_config, 1, &num_configs) != EGL_TRUE || num_configs == 0) {
+        log_err("eglChooseConfig failed(now only supports EGL_OPENGL_ES3_BIT_KHR): eglGetError={}, num_configs={}", eglGetError(), num_configs);
+        return false;
+    }
 
     eglBindAPI(EGL_OPENGL_ES_API);
     EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
     m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
-    if (m_ctx->egl_context == EGL_NO_CONTEXT) return false;
+    if (m_ctx->egl_context == EGL_NO_CONTEXT) {
+        log_err("eglCreateContext failed: eglGetError={}", eglGetError());
+        return false;
+    }
 
     m_ctx->surface = wl_compositor_create_surface(m_ctx->compositor);
     if (!m_ctx->surface) return false;
@@ -1053,8 +1059,11 @@ void GlApp::deinit()
     m_ctx->waylandFd = -1;
     release_run_wake_signal(m_ctx);
 
-    if (access("/data/ensure-deinit-free", F_OK) != 0) {
-        log_warn("GlApp::deinit: ensure-deinit-free file not found, deleting AppContext");
+    // WARN: Do not enable this; added only for debugging purposes.
+    // Creating this file bypasses normal AppContext cleanup.
+    if (access("/data/skip-glapp-context-teardown", F_OK) == 0) {
+        log_warn("GlApp::deinit: skip-glapp-context-teardown file FOUND. Skipping AppContext deletion!");
+    } else {
         AppContext* ctx = m_ctx;
         m_ctx = nullptr;
         delete ctx;

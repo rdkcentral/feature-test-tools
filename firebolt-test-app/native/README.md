@@ -133,9 +133,9 @@ Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
 
 ### GL display window (optional)
 
-When `XDG_RUNTIME_DIR` or `WAYLAND_DISPLAY` is set, a Wayland/EGL overlay window launches in a
-background thread automatically after connecting to Firebolt.  It renders the last received key
-code using the bundled Liberation Sans Bold font.  The following environment variables control it:
+When `XDG_RUNTIME_DIR` is set, a Wayland/EGL overlay window launches in a background thread after
+connecting to Firebolt. It renders the last received key code using the bundled Liberation Sans Bold font.
+The following environment variables control it:
 
 | Variable | Default | Description |
 |---|---|---|

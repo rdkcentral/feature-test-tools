@@ -49,7 +49,6 @@ set(GL_MODULE_TARGET gl-module)
 option(GL_MODULE_SHARED "Build gl module as SHARED library (OFF=STATIC)" OFF)
 option(BUILD_FIREBOLT_APP "Build firebolt-test-app executable" ON)
 option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
-option(ENABLE_CORE_DUMP "Enable core dump generation for the test app" OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 add_compile_definitions(
@@ -279,16 +278,6 @@ install(FILES
     assets/OFL.txt
     DESTINATION "${APP_FONT_LIC_DIR}"
 )
-
-# ---------------------------------------------------------------------------
-# Optional core dump generation for the test app
-# ---------------------------------------------------------------------------
-if(ENABLE_CORE_DUMP)
-    message(STATUS "Installing core dump generation script for ${APP_TARGET}")
-    install(PROGRAMS assets/debug-start.sh
-        DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-endif()
 
 # ---------------------------------------------------------------------------
 # Optional standalone GL lifecycle test (no Firebolt connection at runtime)
