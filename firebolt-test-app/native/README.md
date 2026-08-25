@@ -143,6 +143,7 @@ The following environment variables control it:
 | `WIDTH` | `1280` | Window width in pixels |
 | `HEIGHT` | `720` | Window height in pixels |
 | `PATTERN_MODE` | *(none)* | Background pattern: `GRID` or `DOT` |
+| `GLAPP_POLL_NO_TIMEOUT` | NA | If `1` disables GL refresh poll() timeout |
 
 ---
 

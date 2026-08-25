@@ -31,6 +31,7 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -892,6 +893,10 @@ void GlApp::run()
                 timeoutMs = std::min(timeoutMs, inputRenderTimeoutMs);
             }
         }
+
+        // Override to block poll() indefinitely if this environment variable is defined.
+        const char* envTimeout = std::getenv("GLAPP_POLL_NO_TIMEOUT");
+        if (envTimeout && std::strcmp(envTimeout, "1") == 0) timeoutMs = -1;
 
         while (m_ctx && (0 != wl_display_prepare_read(m_ctx->display))) {
             if (wl_display_dispatch_pending(m_ctx->display) < 0) {
