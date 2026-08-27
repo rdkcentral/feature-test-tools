@@ -541,33 +541,32 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.height = app->height;
     frame.keycode = keycode;
 
-    // Allocate / prepare raw destination frame memory buffer
-    frame.rgbaPixels.resize(static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4u, 0);
+int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+
+    // Allocate the vector array backing using the exact stride parameters
+    frame.rgbaPixels.resize(static_cast<size_t>(hardware_stride) * static_cast<size_t>(frame.height), 0);
 
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
-        frame.rgbaPixels.data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, frame.width * 4);
+        frame.rgbaPixels.data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
     cairo_t* cr = cairo_create(surface);
 
-    // Get a continuous monotonic time reference in seconds for real-time animations
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
 
-    // 1. Draw solid sleek dark base background
-    cairo_set_source_rgb(cr, 0.04, 0.05, 0.08);
+    // Clear background smoothly
+    cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
-    // Calculate layout split coordinates based on a 60% / 40% horizontal layout
-    double split_x = frame.width * 0.60;
+    // Compute layout panel splits (1920 * 0.60 = 1152) -> Perfectly divisible by 64 bytes
+    double split_x = 1152.0;
     double left_width = split_x;
-    double right_width = frame.width - split_x;
+    double right_width = 768.0;
 
-    // --- LEFT SECTION: 60% VISUAL EFFECTS & COLOR CORRECTION DISPLAYS ---
+    // --- LEFT SECTION: 60% VISUAL EFFECTS ---
     cairo_save(cr);
-    // Clip drawing operations to strictly isolate the left panel bounds
     cairo_rectangle(cr, 0, 0, left_width, frame.height);
     cairo_clip(cr);
 
-    // Draw background grid pattern across the left section if active
     if (app->background_pattern != PATTERN_NONE) {
         cairo_surface_t* tile = cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 40, 40);
         cairo_t* tile_cr = cairo_create(tile);
@@ -591,16 +590,14 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_surface_destroy(tile);
     }
 
-    // Effect A: Rotating Gamma/Color-Correction Starburst (Tests matrix interpolation)
+    // Effect A: Tuned Chunkier Rotating Color-Correction Starburst
     double center_x = left_width / 2.0;
     double center_y = frame.height / 2.0;
     int total_spokes = 8;
-    double rotation_speed = time_secs * 0.4; // Controlled angular rotation over time
+    double rotation_speed = time_secs * 0.4;
 
     for (int i = 0; i < total_spokes; ++i) {
         double angle = (i * (2.0 * M_PI / total_spokes)) + rotation_speed;
-
-        // Color Correction Sweep: Maps red and green spectrums dynamically across trigonometric wavelengths
         double r_eval = 0.5 + 0.5 * std::sin(angle + time_secs);
         double g_eval = 0.5 + 0.5 * std::sin(angle + time_secs + 2.0 * M_PI / 3.0);
         double b_eval = 0.5 + 0.5 * std::sin(angle + time_secs + 4.0 * M_PI / 3.0);
@@ -609,16 +606,15 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_translate(cr, center_x, center_y);
         cairo_rotate(cr, angle);
 
-        // Define a multi-stop color grading gradient for exposure testing
-        cairo_pattern_t* spoke_grad = cairo_pattern_create_linear(0, 0, 220, 0);
+        cairo_pattern_t* spoke_grad = cairo_pattern_create_linear(0, 0, 300, 0);
         cairo_pattern_add_color_stop_rgba(spoke_grad, 0.0, r_eval, g_eval, b_eval, 0.85);
         cairo_pattern_add_color_stop_rgba(spoke_grad, 0.5, g_eval, b_eval, r_eval, 0.40);
-        cairo_pattern_add_color_stop_rgba(spoke_grad, 1.0, b_eval, r_eval, g_eval, 0.00); // Fades seamlessly out
+        cairo_pattern_add_color_stop_rgba(spoke_grad, 1.0, b_eval, r_eval, g_eval, 0.00);
 
         cairo_set_source(cr, spoke_grad);
         cairo_move_to(cr, 0, 0);
-        cairo_line_to(cr, 220, -35);
-        cairo_line_to(cr, 220, 35);
+        cairo_line_to(cr, 300, -35); // Clean 35px flaring
+        cairo_line_to(cr, 300, 35);
         cairo_close_path(cr);
         cairo_fill(cr);
 
@@ -626,48 +622,42 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_restore(cr);
     }
 
-    // Effect B: Chromatic Sine Wave Overlays (Simulates oscilloscope gamma blending)
+    // Effect B: Chromatic Sine Wave Overlays
     cairo_set_line_width(cr, 3.5);
     for (int wave = 0; wave < 3; ++wave) {
-        cairo_set_operator(cr, CAIRO_OPERATOR_ADD); // Additive color blending mode
-
-        // Isolate RGB channels to test precise hardware monitor calibration
-        if (wave == 0)      cairo_set_source_rgba(cr, 0.9, 0.1, 0.1, 0.6); // Red Channel
-        else if (wave == 1) cairo_set_source_rgba(cr, 0.1, 0.8, 0.2, 0.6); // Green Channel
-        else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6); // Blue Channel
+        cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
+        if (wave == 0)      cairo_set_source_rgba(cr, 0.9, 0.1, 0.1, 0.6);
+        else if (wave == 1) cairo_set_source_rgba(cr, 0.1, 0.8, 0.2, 0.6);
+        else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6);
 
         cairo_move_to(cr, 0, center_y);
         for (double x = 0.0; x <= left_width; x += 8.0) {
-            // Apply unique phase and frequency offsets per color stream channel
-            double frequency = 0.012 + (wave * 0.002);
+            double frequency = 0.008;
             double phase = time_secs * 2.5 + (wave * 0.6);
-            double amplitude = 60.0 + std::sin(time_secs * 0.5) * 20.0;
+            double amplitude = 90.0 + std::sin(time_secs * 0.5) * 30.0;
             double y = center_y + std::sin(x * frequency + phase) * amplitude;
             cairo_line_to(cr, x, y);
         }
         cairo_stroke(cr);
     }
-    cairo_restore(cr); // Pops Left Section isolation clipping boundary safely
+    cairo_restore(cr);
 
-    // --- RIGHT SECTION: 40% USER INPUT DISPLAY PANEL ---
+    // --- RIGHT SECTION: 40% USER INPUT PANEL ---
     cairo_save(cr);
     cairo_rectangle(cr, split_x, 0, right_width, frame.height);
     cairo_clip(cr);
 
-    // Section Separator accent pipeline line
     cairo_set_source_rgb(cr, 0.12, 0.16, 0.26);
     cairo_set_line_width(cr, 4.0);
     cairo_move_to(cr, split_x, 0);
     cairo_line_to(cr, split_x, frame.height);
     cairo_stroke(cr);
 
-    // Clean background tile for right panel metrics card container
     cairo_set_source_rgb(cr, 0.07, 0.09, 0.15);
     cairo_rectangle(cr, split_x + 2, 0, right_width, frame.height);
     cairo_fill(cr);
 
-    // Centered Input Box UI block inside right section area bounds
-    double box_size = 280.0;
+    double box_size = 380.0;
     double box_x = split_x + (right_width - box_size) / 2.0;
     double box_y = (frame.height - box_size) / 2.0;
 
@@ -676,22 +666,21 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_fill(cr);
 
     cairo_set_source_rgb(cr, 0.0, 0.70, 0.95);
-    cairo_set_line_width(cr, 5.0);
+    cairo_set_line_width(cr, 6.0);
     cairo_rectangle(cr, box_x, box_y, box_size, box_size);
     cairo_stroke(cr);
 
-    // Calculate embedded text positions within container metrics framework
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
     else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
-    double content_spacing = 55.0;
-    cairo_set_font_size(cr, 22.0);
+    double content_spacing = 75.0;
+    cairo_set_font_size(cr, 28.0);
     const char* label_text = "LAST KEYCODE";
     cairo_text_extents_t label_extents;
     cairo_text_extents(cr, label_text, &label_extents);
 
-    cairo_set_font_size(cr, 72.0);
+    cairo_set_font_size(cr, 96.0);
     std::string code_str = (frame.keycode != 0) ? std::to_string(frame.keycode) : "?";
     cairo_text_extents_t code_extents;
     cairo_text_extents(cr, code_str.c_str(), &code_extents);
@@ -699,20 +688,18 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     double total_content_height = label_extents.height + content_spacing + code_extents.height;
     double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 15.0;
 
-    cairo_set_font_size(cr, 22.0);
+    cairo_set_font_size(cr, 28.0);
     cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing,
                  baseline_start_y + label_extents.height - label_extents.y_bearing);
     cairo_show_text(cr, label_text);
 
-    cairo_set_font_size(cr, 72.0);
+    cairo_set_font_size(cr, 96.0);
     cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing,
                  baseline_start_y + label_extents.height - label_extents.y_bearing + content_spacing + code_extents.height);
     cairo_show_text(cr, code_str.c_str());
 
-     // Clean right section clipping mask context parameters out
     cairo_restore(cr);
 
-    // Commit Cairo draws down to the thread pipeline buffer array
     cairo_surface_flush(surface);
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
@@ -754,7 +741,11 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) return false;
     if (!ensure_egl_current(app)) return false;
 
-    // One-time BGRA driver probing
+    // DYNAMIC STRIDE EVALUATION: Resolves memory layout differences between platforms at runtime
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+    int pixels_per_row = hardware_stride / 4;
+    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * static_cast<size_t>(frame.height);
+
     if (!is_format_initialized) {
         GLint num_exts = 0;
         glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
@@ -766,26 +757,19 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
                 break;
             }
         }
-        if (has_bgra_extension) {
-            optimal_internal_format = GL_BGRA_EXT;
-        }
+        if (has_bgra_extension) optimal_internal_format = GL_BGRA_EXT;
         is_format_initialized = true;
     }
 
-    // Lazy initialization of PBO storage structures once frame sizes are locked down
     if (app->has_pbo_support && !app->pbo_initialized) {
         glGenBuffers(2, app->pbo_ids);
-        size_t buffer_size = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4;
-
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[0]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, buffer_size, nullptr, GL_STREAM_DRAW);
-
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[1]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, buffer_size, nullptr, GL_STREAM_DRAW);
-
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         app->pbo_initialized = true;
-        log_info("Asynchronous Dual PBO Ring Buffer Allocated Successfully: {} bytes per slot", buffer_size);
+        log_info("Platform-Agnostic PBO Ring Buffer Initialized: {} bytes allocated per slot", total_buffer_bytes);
     }
 
     glViewport(0, 0, frame.width, frame.height);
@@ -795,54 +779,35 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glUseProgram(app->program_id);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
+
+    // Explicitly configure texture unpacking row parameters to handle multi-platform padding
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, pixels_per_row);
 
     GLenum format = has_bgra_extension ? GL_BGRA_EXT : GL_RGBA;
 
     if (app->has_pbo_support && app->pbo_initialized) {
-        // Swap indexes to toggle between buffers (0 -> 1 -> 0)
         int next_idx = app->pbo_index;
         int next_next_idx = (next_idx + 1) % 2;
         app->pbo_index = next_next_idx;
 
-        size_t buffer_size = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4;
-
-        // STEP A: Fire off an asynchronous texture upload from the CURRENT active PBO to the GPU texture
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
-        // By passing "nullptr" as the last parameter here, the driver knows to pull directly from the PBO storage slot asynchronously
         glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, format, GL_UNSIGNED_BYTE, nullptr);
 
-        // STEP B: Unmap and stream the NEXT payload from our CPU memory slice into the NEXT available PBO slot
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_next_idx]);
-        // Orphan the old storage structure to bypass pipeline bubbles (re-allocates internal driver memory)
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, buffer_size, nullptr, GL_STREAM_DRAW);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
 
-        // Map the PBO directly into CPU memory space for a fast, direct-memory dump
-        void* pbo_ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, buffer_size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+        void* pbo_ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
         if (pbo_ptr) {
-            std::memcpy(pbo_ptr, frame.rgbaPixels.data(), buffer_size);
+            std::memcpy(pbo_ptr, frame.rgbaPixels.data(), total_buffer_bytes);
             glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
         }
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0); // Decouple state binding
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
     else {
-        // --- FALLBACK DOUBLE BUFFERING FLOW ---
-        // If driver doesn't support PBOs, process texture streaming synchronously
-        if (!has_bgra_extension) {
-            std::vector<unsigned char> swizzledPixels(frame.rgbaPixels.size());
-            for (size_t i = 0; i < frame.rgbaPixels.size(); i += 4) {
-                swizzledPixels[i + 0] = frame.rgbaPixels[i + 2];
-                swizzledPixels[i + 1] = frame.rgbaPixels[i + 1];
-                swizzledPixels[i + 2] = frame.rgbaPixels[i + 0];
-                swizzledPixels[i + 3] = frame.rgbaPixels[i + 3];
-            }
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
-        } else {
-            glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
-        }
+        glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, format, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
     }
 
-    // Geometry pipeline assembly rendering commands
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glEnableVertexAttribArray(app->positionAttribLocation);
     glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
@@ -850,6 +815,10 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    // Reset pipeline state
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
 }
 
@@ -1029,6 +998,11 @@ bool GlApp::init(const char* waylandDisplay)
 
     glFinish();
     eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (eglSwapInterval(m_ctx->egl_display, 0) == EGL_TRUE) {
+        log_info("EGL swap interval set to 0 (vsync disabled)");
+    } else {
+        log_warn("Failed to set EGL swap interval: eglGetError={}", eglGetError());
+    }
     m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
     return true;
 }
