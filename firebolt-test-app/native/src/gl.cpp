@@ -460,80 +460,178 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.height = app->height;
     frame.keycode = keycode;
 
-    // OPTIMIZATION: Write straight into the destination buffer array to dodge the swizzle loop overhead
+    // Allocate / prepare raw destination frame memory buffer
     frame.rgbaPixels.resize(static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4u, 0);
 
-    cairo_surface_t* surface = cairo_image_surface_create_for_data(frame.rgbaPixels.data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, frame.width * 4);
+    cairo_surface_t* surface = cairo_image_surface_create_for_data(
+        frame.rgbaPixels.data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, frame.width * 4);
     cairo_t* cr = cairo_create(surface);
 
-    cairo_set_source_rgb(cr, 0.05, 0.07, 0.12);
+    // Get a continuous monotonic time reference in seconds for real-time animations
+    auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
+    double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
+
+    // 1. Draw solid sleek dark base background
+    cairo_set_source_rgb(cr, 0.04, 0.05, 0.08);
     cairo_paint(cr);
 
+    // Calculate layout split coordinates based on a 60% / 40% horizontal layout
+    double split_x = frame.width * 0.60;
+    double left_width = split_x;
+    double right_width = frame.width - split_x;
+
+    // --- LEFT SECTION: 60% VISUAL EFFECTS & COLOR CORRECTION DISPLAYS ---
+    cairo_save(cr);
+    // Clip drawing operations to strictly isolate the left panel bounds
+    cairo_rectangle(cr, 0, 0, left_width, frame.height);
+    cairo_clip(cr);
+
+    // Draw background grid pattern across the left section if active
     if (app->background_pattern != PATTERN_NONE) {
         cairo_surface_t* tile = cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 40, 40);
         cairo_t* tile_cr = cairo_create(tile);
-
         if (app->background_pattern == PATTERN_GRID) {
-            cairo_set_source_rgba(tile_cr, 0.0, 0.6, 1.0, 0.09);
+            cairo_set_source_rgba(tile_cr, 0.0, 0.6, 1.0, 0.07);
             cairo_set_line_width(tile_cr, 1.0);
             cairo_move_to(tile_cr, 40, 0); cairo_line_to(tile_cr, 40, 40);
             cairo_move_to(tile_cr, 0, 40); cairo_line_to(tile_cr, 40, 40);
             cairo_stroke(tile_cr);
         } else if (app->background_pattern == PATTERN_DOT) {
-            cairo_set_source_rgba(tile_cr, 0.0, 0.6, 1.0, 0.14);
+            cairo_set_source_rgba(tile_cr, 0.0, 0.6, 1.0, 0.10);
             cairo_arc(tile_cr, 20, 20, 1.5, 0, 2 * M_PI);
             cairo_fill(tile_cr);
         }
-
         cairo_pattern_t* pattern = cairo_pattern_create_for_surface(tile);
         cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
         cairo_set_source(cr, pattern);
         cairo_paint(cr);
-
         cairo_pattern_destroy(pattern);
         cairo_destroy(tile_cr);
         cairo_surface_destroy(tile);
     }
 
-    const double box_size = 350.0;
-    const double box_x = (frame.width - box_size) / 2.0;
-    const double box_y = (frame.height - box_size) / 2.0;
+    // Effect A: Rotating Gamma/Color-Correction Starburst (Tests matrix interpolation)
+    double center_x = left_width / 2.0;
+    double center_y = frame.height / 2.0;
+    int total_spokes = 16;
+    double rotation_speed = time_secs * 0.4; // Controlled angular rotation over time
 
-    cairo_set_source_rgb(cr, 0.10, 0.13, 0.22);
+    for (int i = 0; i < total_spokes; ++i) {
+        double angle = (i * (2.0 * M_PI / total_spokes)) + rotation_speed;
+
+        // Color Correction Sweep: Maps red and green spectrums dynamically across trigonometric wavelengths
+        double r_eval = 0.5 + 0.5 * std::sin(angle + time_secs);
+        double g_eval = 0.5 + 0.5 * std::sin(angle + time_secs + 2.0 * M_PI / 3.0);
+        double b_eval = 0.5 + 0.5 * std::sin(angle + time_secs + 4.0 * M_PI / 3.0);
+
+        cairo_save(cr);
+        cairo_translate(cr, center_x, center_y);
+        cairo_rotate(cr, angle);
+
+        // Define a multi-stop color grading gradient for exposure testing
+        cairo_pattern_t* spoke_grad = cairo_pattern_create_linear(0, 0, 220, 0);
+        cairo_pattern_add_color_stop_rgba(spoke_grad, 0.0, r_eval, g_eval, b_eval, 0.85);
+        cairo_pattern_add_color_stop_rgba(spoke_grad, 0.5, g_eval, b_eval, r_eval, 0.40);
+        cairo_pattern_add_color_stop_rgba(spoke_grad, 1.0, b_eval, r_eval, g_eval, 0.00); // Fades seamlessly out
+
+        cairo_set_source(cr, spoke_grad);
+        cairo_move_to(cr, 0, 0);
+        cairo_line_to(cr, 220, -15);
+        cairo_line_to(cr, 220, 15);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+
+        cairo_pattern_destroy(spoke_grad);
+        cairo_restore(cr);
+    }
+
+    // Effect B: Chromatic Sine Wave Overlays (Simulates oscilloscope gamma blending)
+    cairo_set_line_width(cr, 3.5);
+    for (int wave = 0; wave < 3; ++wave) {
+        cairo_set_operator(cr, CAIRO_OPERATOR_ADD); // Additive color blending mode
+
+        // Isolate RGB channels to test precise hardware monitor calibration
+        if (wave == 0)      cairo_set_source_rgba(cr, 0.9, 0.1, 0.1, 0.6); // Red Channel
+        else if (wave == 1) cairo_set_source_rgba(cr, 0.1, 0.8, 0.2, 0.6); // Green Channel
+        else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6); // Blue Channel
+
+        cairo_move_to(cr, 0, center_y);
+        for (double x = 0.0; x <= left_width; x += 4.0) {
+            // Apply unique phase and frequency offsets per color stream channel
+            double frequency = 0.012 + (wave * 0.002);
+            double phase = time_secs * 2.5 + (wave * 0.6);
+            double amplitude = 60.0 + std::sin(time_secs * 0.5) * 20.0;
+            double y = center_y + std::sin(x * frequency + phase) * amplitude;
+            cairo_line_to(cr, x, y);
+        }
+        cairo_stroke(cr);
+    }
+    cairo_restore(cr); // Pops Left Section isolation clipping boundary safely
+
+    // --- RIGHT SECTION: 40% USER INPUT DISPLAY PANEL ---
+    cairo_save(cr);
+    cairo_rectangle(cr, split_x, 0, right_width, frame.height);
+    cairo_clip(cr);
+
+    // Section Separator accent pipeline line
+    cairo_set_source_rgb(cr, 0.12, 0.16, 0.26);
+    cairo_set_line_width(cr, 4.0);
+    cairo_move_to(cr, split_x, 0);
+    cairo_line_to(cr, split_x, frame.height);
+    cairo_stroke(cr);
+
+    // Clean background tile for right panel metrics card container
+    cairo_set_source_rgb(cr, 0.07, 0.09, 0.15);
+    cairo_rectangle(cr, split_x + 2, 0, right_width, frame.height);
+    cairo_fill(cr);
+
+    // Centered Input Box UI block inside right section area bounds
+    double box_size = 280.0;
+    double box_x = split_x + (right_width - box_size) / 2.0;
+    double box_y = (frame.height - box_size) / 2.0;
+
+    cairo_set_source_rgb(cr, 0.11, 0.14, 0.24);
     cairo_rectangle(cr, box_x, box_y, box_size, box_size);
     cairo_fill(cr);
 
-    cairo_set_source_rgb(cr, 0.0, 0.75, 1.0);
-    cairo_set_line_width(cr, 6.0);
+    cairo_set_source_rgb(cr, 0.0, 0.70, 0.95);
+    cairo_set_line_width(cr, 5.0);
     cairo_rectangle(cr, box_x, box_y, box_size, box_size);
     cairo_stroke(cr);
 
+    // Calculate embedded text positions within container metrics framework
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
     else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
-    const double content_spacing = 65.0;
-    cairo_set_font_size(cr, 28.0);
+    double content_spacing = 55.0;
+    cairo_set_font_size(cr, 22.0);
     const char* label_text = "LAST KEYCODE";
     cairo_text_extents_t label_extents;
     cairo_text_extents(cr, label_text, &label_extents);
 
-    cairo_set_font_size(cr, 84.0);
+    cairo_set_font_size(cr, 72.0);
     std::string code_str = (frame.keycode != 0) ? std::to_string(frame.keycode) : "?";
     cairo_text_extents_t code_extents;
     cairo_text_extents(cr, code_str.c_str(), &code_extents);
 
-    const double total_content_height = label_extents.height + content_spacing + code_extents.height;
-    const double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 20.0;
+    double total_content_height = label_extents.height + content_spacing + code_extents.height;
+    double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 15.0;
 
-    cairo_set_font_size(cr, 28.0);
-    cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing, baseline_start_y + label_extents.height - label_extents.y_bearing);
+    cairo_set_font_size(cr, 22.0);
+    cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing,
+                 baseline_start_y + label_extents.height - label_extents.y_bearing);
     cairo_show_text(cr, label_text);
 
-    cairo_set_font_size(cr, 84.0);
-    cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing, baseline_start_y + label_extents.height - label_extents.y_bearing + content_spacing + code_extents.height);
+    cairo_set_font_size(cr, 72.0);
+    cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing,
+                 baseline_start_y + label_extents.height - label_extents.y_bearing + content_spacing + code_extents.height);
     cairo_show_text(cr, code_str.c_str());
 
+     // Clean right section clipping mask context parameters out
+    cairo_restore(cr);
+
+    // Commit Cairo draws down to the thread pipeline buffer array
     cairo_surface_flush(surface);
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
