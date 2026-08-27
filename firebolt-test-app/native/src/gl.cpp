@@ -617,8 +617,8 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
         cairo_set_source(cr, spoke_grad);
         cairo_move_to(cr, 0, 0);
-        cairo_line_to(cr, 220, -15);
-        cairo_line_to(cr, 220, 15);
+        cairo_line_to(cr, 220, -35);
+        cairo_line_to(cr, 220, 35);
         cairo_close_path(cr);
         cairo_fill(cr);
 
