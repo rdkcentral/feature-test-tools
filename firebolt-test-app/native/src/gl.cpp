@@ -152,6 +152,13 @@ struct AppContext {
     GLint positionAttribLocation = 0;
     GLint texCoordAttribLocation = 1;
 
+    // New design: use PBO for efficiency
+    // PBOs are native in GLES 3.0+ and available via GL_NV_pixel_buffer_object or GL_EXT_pixel_buffer_object in GLES 2.0
+    GLuint pbo_ids[2] = { 0, 0 };
+    int pbo_index = 0;
+    bool has_pbo_support = true;
+    bool pbo_initialized = false;
+
     cairo_font_face_t* embedded_font = nullptr;
 
     int width = DEFAULT_WIDTH;
@@ -350,7 +357,7 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
 
 bool init_gles_pipeline(AppContext* app)
 {
-    log_info("Initializing GLES pipeline");
+    log_info("Initializing GLES pipeline and probing extensions");
     const char* vertex_shader_src =
         "#version 300 es\n"
         "precision mediump float;\n"
@@ -374,6 +381,7 @@ bool init_gles_pipeline(AppContext* app)
     app->positionAttribLocation = 0;
     app->texCoordAttribLocation = 1;
 
+    // Compile and assemble embedded GLES Shaders
     GLuint vs = compile_hardware_shader(GL_VERTEX_SHADER, vertex_shader_src);
     GLuint fs = compile_hardware_shader(GL_FRAGMENT_SHADER, fragment_shader_src);
     if (!vs || !fs) {
@@ -388,13 +396,25 @@ bool init_gles_pipeline(AppContext* app)
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    // Verify program linkage state
+    GLint linked = 0;
+    glGetProgramiv(app->program_id, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        glDeleteProgram(app->program_id);
+        app->program_id = 0;
+        return false;
+    }
+
+    // Configure main texturing targets
     glGenTextures(1, &app->texture_id);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
+    // Map screen-aligned normalized quad vertex configurations
     GLfloat vertices[] = {
         -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
         -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
@@ -404,6 +424,67 @@ bool init_gles_pipeline(AppContext* app)
     glGenBuffers(1, &app->vbo_id);
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // =========================================================================
+    // HARDENED RUNTIME PROBE FOR PIXEL BUFFER OBJECT (PBO) SUPPORT
+    // =========================================================================
+    app->has_pbo_support = false;
+    bool extension_found = false;
+
+    // Step 1: Query string matching registry logs
+    GLint num_exts = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
+    for (GLint i = 0; i < num_exts; ++i) {
+        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
+        if (ext && (std::strstr(ext, "_pixel_buffer_object") != nullptr ||
+                    std::strcmp(ext, "GL_NV_pixel_buffer_object") == 0 ||
+                    std::strcmp(ext, "GL_EXT_pixel_buffer_object") == 0)) {
+            extension_found = true;
+            break;
+        }
+    }
+
+    // If version is 3.0+ or explicit driver extension is claimed, move to Step 2
+    if (app->glesClientVersion >= 3 || extension_found) {
+        // Clear past errors before initiating the hardware test
+        while (glGetError() != GL_NO_ERROR);
+
+        // Step 2: The Hardware Smoke Test
+        // Allocate a small, mock PBO handle to test if the driver's kernel
+        // can handle a token assignment request without throwing a state error.
+        GLuint test_pbo = 0;
+        glGenBuffers(1, &test_pbo);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, test_pbo);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, 16, nullptr, GL_STREAM_DRAW);
+
+        if (glGetError() == GL_NO_ERROR) {
+            // Verify mapping functionality works out-of-band as well
+            void* ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, 16, GL_MAP_WRITE_BIT);
+            if (ptr && glGetError() == GL_NO_ERROR) {
+                glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+                app->has_pbo_support = true; // Confirmed support
+            }
+        }
+
+        // Cleanup test artifacts immediately
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glDeleteBuffers(1, &test_pbo);
+
+        // Clear any residual error states from the test
+        while (glGetError() != GL_NO_ERROR);
+    } else {
+        log_warn("PBO support not claimed by driver or GLES version < 3.0");
+    }
+
+    log_info("Verified Hardware PBO Capability: {}", app->has_pbo_support ? "ACTIVE/SUPPORTED" : "DISABLED/FALLBACK");
+
+    // Reset loop verification safety structures
+    app->pbo_initialized = false;
+    app->pbo_ids[0] = 0;
+    app->pbo_ids[1] = 0;
+    app->pbo_index = 0;
+
     return true;
 }
 
@@ -513,7 +594,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     // Effect A: Rotating Gamma/Color-Correction Starburst (Tests matrix interpolation)
     double center_x = left_width / 2.0;
     double center_y = frame.height / 2.0;
-    int total_spokes = 16;
+    int total_spokes = 8;
     double rotation_speed = time_secs * 0.4; // Controlled angular rotation over time
 
     for (int i = 0; i < total_spokes; ++i) {
@@ -556,7 +637,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6); // Blue Channel
 
         cairo_move_to(cr, 0, center_y);
-        for (double x = 0.0; x <= left_width; x += 4.0) {
+        for (double x = 0.0; x <= left_width; x += 8.0) {
             // Apply unique phase and frequency offsets per color stream channel
             double frequency = 0.012 + (wave * 0.002);
             double phase = time_secs * 2.5 + (wave * 0.6);
@@ -666,19 +747,18 @@ static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame)
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 {
-    // Cache the BGRA extension check and optimal internal format to avoid repeated queries.
     static bool has_bgra_extension = false;
-    static GLint optimal_internal_format = GL_RGBA; // Default fallback layout
+    static GLint optimal_internal_format = GL_RGBA;
     static bool is_format_initialized = false;
 
     if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) return false;
     if (!ensure_egl_current(app)) return false;
 
+    // One-time BGRA driver probing
     if (!is_format_initialized) {
         GLint num_exts = 0;
         glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
         while (glGetError() != GL_NO_ERROR);
-
         for (GLint i = 0; i < num_exts; ++i) {
             const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
             if (ext && std::strcmp(ext, "GL_EXT_texture_format_BGRA8888") == 0) {
@@ -686,29 +766,26 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
                 break;
             }
         }
-
         if (has_bgra_extension) {
-            // One-time driver probe using a temporary texture
-            GLuint test_tex;
-            glGenTextures(1, &test_tex);
-            glBindTexture(GL_TEXTURE_2D, test_tex);
-
-            // Test Method A: Mali/PowerVR style (GL_BGRA_EXT for both parameters)
-            unsigned char dummy_pixel[4] = {0, 0, 0, 0};
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1, 1, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, dummy_pixel);
-
-            if (glGetError() == GL_NO_ERROR) {
-                optimal_internal_format = GL_BGRA_EXT;
-            } else {
-                optimal_internal_format = GL_RGBA;
-                while (glGetError() != GL_NO_ERROR);
-            }
-
-            glDeleteTextures(1, &test_tex);
-            glBindTexture(GL_TEXTURE_2D, 0);
+            optimal_internal_format = GL_BGRA_EXT;
         }
-
         is_format_initialized = true;
+    }
+
+    // Lazy initialization of PBO storage structures once frame sizes are locked down
+    if (app->has_pbo_support && !app->pbo_initialized) {
+        glGenBuffers(2, app->pbo_ids);
+        size_t buffer_size = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4;
+
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[0]);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, buffer_size, nullptr, GL_STREAM_DRAW);
+
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[1]);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, buffer_size, nullptr, GL_STREAM_DRAW);
+
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        app->pbo_initialized = true;
+        log_info("Asynchronous Dual PBO Ring Buffer Allocated Successfully: {} bytes per slot", buffer_size);
     }
 
     glViewport(0, 0, frame.width, frame.height);
@@ -718,23 +795,54 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glUseProgram(app->program_id);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
-
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-    if (!has_bgra_extension) {
-        std::vector<unsigned char> swizzledPixels(frame.rgbaPixels.size());
-        for (size_t i = 0; i < frame.rgbaPixels.size(); i += 4) {
-            swizzledPixels[i + 0] = frame.rgbaPixels[i + 2];
-            swizzledPixels[i + 1] = frame.rgbaPixels[i + 1];
-            swizzledPixels[i + 2] = frame.rgbaPixels[i + 0];
-            swizzledPixels[i + 3] = frame.rgbaPixels[i + 3];
+    GLenum format = has_bgra_extension ? GL_BGRA_EXT : GL_RGBA;
+
+    if (app->has_pbo_support && app->pbo_initialized) {
+        // Swap indexes to toggle between buffers (0 -> 1 -> 0)
+        int next_idx = app->pbo_index;
+        int next_next_idx = (next_idx + 1) % 2;
+        app->pbo_index = next_next_idx;
+
+        size_t buffer_size = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4;
+
+        // STEP A: Fire off an asynchronous texture upload from the CURRENT active PBO to the GPU texture
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
+        // By passing "nullptr" as the last parameter here, the driver knows to pull directly from the PBO storage slot asynchronously
+        glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, format, GL_UNSIGNED_BYTE, nullptr);
+
+        // STEP B: Unmap and stream the NEXT payload from our CPU memory slice into the NEXT available PBO slot
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_next_idx]);
+        // Orphan the old storage structure to bypass pipeline bubbles (re-allocates internal driver memory)
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, buffer_size, nullptr, GL_STREAM_DRAW);
+
+        // Map the PBO directly into CPU memory space for a fast, direct-memory dump
+        void* pbo_ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, buffer_size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+        if (pbo_ptr) {
+            std::memcpy(pbo_ptr, frame.rgbaPixels.data(), buffer_size);
+            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
         }
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
-    } else {
-        // Use the optimal internal format (GL_BGRA_EXT) for better performance on supported drivers
-        glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0); // Decouple state binding
+    }
+    else {
+        // --- FALLBACK DOUBLE BUFFERING FLOW ---
+        // If driver doesn't support PBOs, process texture streaming synchronously
+        if (!has_bgra_extension) {
+            std::vector<unsigned char> swizzledPixels(frame.rgbaPixels.size());
+            for (size_t i = 0; i < frame.rgbaPixels.size(); i += 4) {
+                swizzledPixels[i + 0] = frame.rgbaPixels[i + 2];
+                swizzledPixels[i + 1] = frame.rgbaPixels[i + 1];
+                swizzledPixels[i + 2] = frame.rgbaPixels[i + 0];
+                swizzledPixels[i + 3] = frame.rgbaPixels[i + 3];
+            }
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame.width, frame.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, swizzledPixels.data());
+        } else {
+            glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
+        }
     }
 
+    // Geometry pipeline assembly rendering commands
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glEnableVertexAttribArray(app->positionAttribLocation);
     glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
@@ -950,55 +1058,34 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load()) return;
 
-    // -------------------------------------------------------------------------
-    // Frame Timing & Compositor Maintenance Throttling
-    // -------------------------------------------------------------------------
-    // Used to calculate dynamic timeouts for poll(), allowing the thread to sleep
-    // when idle while ensuring periodic updates and input throttling:
-    //
-    // - Heartbeat (1s): Enforces a low-frequency baseline refresh so the
-    //   compositor doesn't drop the surface during idle states.
-    // - Shell Reapply (2s): Periodically forces simple-shell bounds, visibility,
-    //   and focus. Prevents window state desyncs in containerized environments.
-    // - Input Throttle (25ms / 40 FPS max): Coalesces blast key repeats
-    //   (e.g., holding down a remote button) to stop CPU spikes.
-    // -------------------------------------------------------------------------
-    auto last_heartbeat = std::chrono::steady_clock::now();
-    auto last_shell_reapply = std::chrono::steady_clock::now();
-    auto last_input_render = std::chrono::steady_clock::time_point{};
-    static constexpr auto kInputRenderMinInterval = std::chrono::milliseconds(25);
-    static constexpr auto kHeartbeatInterval = std::chrono::seconds(1);
+    auto last_frame_time = std::chrono::steady_clock::now();
+    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // ~60 FPS (1000ms / 60)
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
+    auto last_shell_reapply = std::chrono::steady_clock::now();
 
-    while (m_ctx && m_ctx->running.load()) {
+     while (m_ctx && m_ctx->running.load()) {
         const auto now = std::chrono::steady_clock::now();
 
-        if (!render_active_work(m_ctx, now, last_heartbeat, last_input_render, kInputRenderMinInterval)) {
-            break;
-        }
-
-        int timeoutMs = -1;
-        if (m_ctx && (RenderLifecycleState::Active == m_ctx->lifecycle_state.load(std::memory_order_acquire))) {
-            timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>((last_heartbeat + kHeartbeatInterval) - now).count());
-            if (timeoutMs < 0) timeoutMs = 0;
-
-            if (m_ctx && m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
-                int inputRenderTimeoutMs = 0;
-                if (last_input_render.time_since_epoch().count() != 0) {
-                    inputRenderTimeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>((last_input_render + kInputRenderMinInterval) - now).count());
-                    if (inputRenderTimeoutMs < 0) inputRenderTimeoutMs = 0;
-                }
-                timeoutMs = std::min(timeoutMs, inputRenderTimeoutMs);
+        // 1. Check if it's time to render a new animation frame
+        if (now - last_frame_time >= kTargetFrameTime) {
+            if (render_cairo_frame(m_ctx) < 0) {
+                break;
             }
+            last_frame_time = now;
         }
 
-        // Override to block poll() indefinitely if this environment variable is defined.
+        // 2. Dynamic Timeout Calculation to keep CPU idle
+        auto next_frame_target = last_frame_time + kTargetFrameTime;
+        int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
+        if (timeoutMs < 0) timeoutMs = 0;
+
+        // Override if environment variable requires blocking
         const char* envTimeout = std::getenv("GLAPP_POLL_NO_TIMEOUT");
         if (envTimeout && std::strcmp(envTimeout, "1") == 0) timeoutMs = -1;
 
         while (m_ctx && (0 != wl_display_prepare_read(m_ctx->display))) {
             if (wl_display_dispatch_pending(m_ctx->display) < 0) {
-                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed while preparing read");
+                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
                 break;
             }
         }
@@ -1014,6 +1101,7 @@ void GlApp::run()
         fds[1].events = POLLIN;
         fds[1].revents = 0;
 
+        // The thread completely sleeps here until 16.6ms elapses OR a keypress/signal arrives
         const int pollResult = poll(fds, 2, timeoutMs);
         if (pollResult < 0) {
             wl_display_cancel_read(m_ctx->display);
@@ -1044,24 +1132,12 @@ void GlApp::run()
         if (m_ctx && (wl_display_dispatch_pending(m_ctx->display) < 0)) break;
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        const RenderLifecycleState postDispatchState = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+        // Periodic maintenance task
         const auto postDispatchNow = std::chrono::steady_clock::now();
-        if (RenderLifecycleState::Closing == postDispatchState) break;
-
-        if (!render_active_work(m_ctx, postDispatchNow, last_heartbeat, last_input_render, kInputRenderMinInterval)) {
-            break;
-        }
-
-        if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_heartbeat >= kHeartbeatInterval) {
-            render_cairo_frame(m_ctx);
-            last_heartbeat = std::chrono::steady_clock::now();
-        }
-
-        if (RenderLifecycleState::Active == postDispatchState && postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
-            //apply_simple_shell_state(m_ctx, "periodic", false);
+        if (postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
             if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
             if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
-            last_shell_reapply = std::chrono::steady_clock::now();
+            last_shell_reapply = postDispatchNow;
         }
     }
 
@@ -1113,6 +1189,7 @@ void GlApp::deinit()
 
     if (m_ctx->egl_display != EGL_NO_DISPLAY && m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_surface != EGL_NO_SURFACE) {
         if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
+            if (m_ctx->pbo_initialized) glDeleteBuffers(2, m_ctx->pbo_ids);
             if (m_ctx->texture_id) glDeleteTextures(1, &m_ctx->texture_id);
             if (m_ctx->vbo_id) glDeleteBuffers(1, &m_ctx->vbo_id);
             if (m_ctx->program_id) glDeleteProgram(m_ctx->program_id);
