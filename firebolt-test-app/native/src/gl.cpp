@@ -1050,9 +1050,11 @@ void GlApp::run()
     log_info("Starting Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
+    // Initial configuration block handshake; wait until the Wayland compositor has
+    //fully configured our surface and assigned a valid surface ID.
     while (m_ctx && m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
-            stop_run_loop(m_ctx, "wl_display_dispatch failed while waiting for initial configure");
+            stop_run_loop(m_ctx, "wl_display_dispatch failed");
             break;
         }
     }
@@ -1063,40 +1065,22 @@ void GlApp::run()
     // Transition to Active and force render the initial frame right here!
     if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Paused ||
         m_ctx->lifecycle_state.load() == RenderLifecycleState::Bootstrapping) {
-
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
-
         // Render and display the split-screen graphics panel directly on this thread
         render_cairo_frame(m_ctx);
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
-    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // ~60 FPS (1000ms / 60)
+    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Strict ~60 FPS cap
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
-     while (m_ctx && m_ctx->running.load()) {
-        const auto now = std::chrono::steady_clock::now();
-
-        // 1. Check if it's time to render a new animation frame
-        if (now - last_frame_time >= kTargetFrameTime) {
-            if (render_cairo_frame(m_ctx) < 0) {
-                break;
-            }
-            last_frame_time = now;
-        }
-
-        // 2. Dynamic Timeout Calculation to keep CPU idle
-        auto next_frame_target = last_frame_time + kTargetFrameTime;
-        int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
-        if (timeoutMs < 0) timeoutMs = 0;
-
-        // Override if environment variable requires blocking
-        const char* envTimeout = std::getenv("GLAPP_POLL_NO_TIMEOUT");
-        if (envTimeout && std::strcmp(envTimeout, "1") == 0) timeoutMs = -1;
-
-        while (m_ctx && (0 != wl_display_prepare_read(m_ctx->display))) {
+    while (m_ctx && m_ctx->running.load()) {
+        // --- 1. CONCURRENT DISPLAY PIPELINE MAINTENANCE ---
+        // Always flush out pending requests to the compositor before reading events
+        while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
+            // Drain anything outstanding in the queues right now
             if (wl_display_dispatch_pending(m_ctx->display) < 0) {
                 stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
                 break;
@@ -1106,51 +1090,83 @@ void GlApp::run()
 
         wl_display_flush(m_ctx->display);
 
+        // --- 2. CALC TIME BUDGET REMAINING ---
+        const auto now = std::chrono::steady_clock::now();
+        auto next_frame_target = last_frame_time + kTargetFrameTime;
+
+        int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
+        if (timeoutMs < 0) timeoutMs = 0;
+
+        const char* envTimeout = std::getenv("GLAPP_POLL_NO_TIMEOUT");
+        if (envTimeout && std::strcmp(envTimeout, "1") == 0) timeoutMs = -1;
+
+        // --- 3. THE THREAD SLEEP SLEEVE ---
         pollfd fds[2];
         fds[0].fd = m_ctx->waylandFd;
         fds[0].events = POLLIN;
         fds[0].revents = 0;
+
         fds[1].fd = m_ctx->wakeEventFd;
         fds[1].events = POLLIN;
         fds[1].revents = 0;
 
-        // The thread completely sleeps here until 16.6ms elapses OR a keypress/signal arrives
+        // Thread safely drops to 0% CPU use right here until timeout or signal hits
         const int pollResult = poll(fds, 2, timeoutMs);
+
         if (pollResult < 0) {
             wl_display_cancel_read(m_ctx->display);
             if (EINTR == errno) continue;
             break;
         }
 
-        if (0 == pollResult) {
+        // --- 4. STREAM HANDLING AND EVENT EXTRACTION ---
+        if (pollResult == 0) {
+            // Timeout hit! Complete the read cycle safely without reading socket data
             wl_display_cancel_read(m_ctx->display);
         } else {
+            // Check cross-thread loop signals (eventfd)
+            if ((fds[1].revents & POLLIN) != 0) {
+                drain_run_signal(m_ctx);
+            }
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
                 wl_display_cancel_read(m_ctx->display);
                 break;
             }
-            if ((fds[1].revents & POLLIN) != 0) drain_run_signal(m_ctx);
+
+            // Check incoming Wayland network socket descriptors
+            if ((fds[0].revents & POLLIN) != 0) {
+                if (wl_display_read_events(m_ctx->display) < 0) {
+                    break;
+                }
+            } else {
+                wl_display_cancel_read(m_ctx->display);
+            }
 
             if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                wl_display_cancel_read(m_ctx->display);
                 break;
-            }
-            if ((fds[0].revents & POLLIN) != 0) {
-                if (m_ctx && (wl_display_read_events(m_ctx->display) < 0)) break;
-            } else {
-                if (m_ctx) wl_display_cancel_read(m_ctx->display);
             }
         }
 
-        if (m_ctx && (wl_display_dispatch_pending(m_ctx->display) < 0)) break;
+        // CRITICAL DRAINING STEP: Clear out EVERYTHING read from the socket
+        // looping through until the internal queue is fully vacant.
+        while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
+
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        // Periodic maintenance task
-        const auto postDispatchNow = std::chrono::steady_clock::now();
-        if (postDispatchNow - last_shell_reapply >= kShellReapplyInterval) {
+        // --- 5. RENDER PROCESSING FRAME GRAPHICS CAPS ---
+        const auto render_now = std::chrono::steady_clock::now();
+        if (render_now - last_frame_time >= kTargetFrameTime) {
+            if (render_cairo_frame(m_ctx) < 0) {
+                break;
+            }
+            last_frame_time = render_now;
+        }
+
+        // Periodic maintenance tasks
+        if (render_now - last_shell_reapply >= kShellReapplyInterval) {
             if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
             if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
-            last_shell_reapply = postDispatchNow;
+            last_shell_reapply = render_now;
         }
     }
 
