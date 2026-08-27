@@ -1044,6 +1044,7 @@ void GlApp::renderInitialFrame()
     signal_run_loop(m_ctx);
 }
 
+// Must run as a thread that owns the EGL context and has access to the Wayland display file descriptor.
 void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
@@ -1057,6 +1058,18 @@ void GlApp::run()
     }
 
     if (!m_ctx || !m_ctx->running.load()) return;
+
+    // The background thread is now fully configured and owns the EGL context.
+    // Transition to Active and force render the initial frame right here!
+    if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Paused ||
+        m_ctx->lifecycle_state.load() == RenderLifecycleState::Bootstrapping) {
+
+        m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
+        m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+
+        // Render and display the split-screen graphics panel directly on this thread
+        render_cairo_frame(m_ctx);
+    }
 
     auto last_frame_time = std::chrono::steady_clock::now();
     static constexpr std::chrono::milliseconds kTargetFrameTime(16); // ~60 FPS (1000ms / 60)
