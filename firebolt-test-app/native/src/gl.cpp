@@ -159,7 +159,6 @@ struct AppContext {
     bool has_pbo_support = true;
     bool pbo_initialized = false;
     bool swap_interval_calibrated = false;
-    GLsync frame_render_fence = nullptr;
 
     cairo_font_face_t* embedded_font = nullptr;
 
@@ -829,27 +828,18 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    if (app->frame_render_fence) {
-        glDeleteSync(app->frame_render_fence);
-        app->frame_render_fence = nullptr;
-    }
-    app->frame_render_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    // Reset pipeline state
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
 }
 
-/**
- * @brief Render a frame using Cairo and present it using OpenGL ES.
- * @param app Pointer to the application context.
- * @return 0 on success, -1 on failure or if the application is not running.
- */
 int render_cairo_frame(AppContext* app)
 {
     if (!app || !app->running.load(std::memory_order_acquire)) return -1;
     const PreparedFrame frame = prepare_cairo_frame(app, app->current_keycode.load(std::memory_order_acquire));
     if (frame.rgbaPixels.empty()) return 0;
-    if (!present_prepared_frame(app, frame)) { app->running.store(false); return -1; }
+    if (!present_prepared_frame(app, frame)) app->running.store(false);
     return 0;
 }
 
@@ -1047,24 +1037,22 @@ void GlApp::run()
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
     // 1. Initial surface configure handshake
-    while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
-        if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
+    while (m_ctx && m_ctx->running.load() && !m_ctx->configured) {
+        if (wl_display_dispatch(m_ctx->display) < 0) {
             stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
             break;
         }
     }
 
-    if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
+    if (!m_ctx || !m_ctx->running.load()) return;
 
-    if ( m_ctx && (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
-        m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping)) {
+    if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Paused ||
+        m_ctx->lifecycle_state.load() == RenderLifecycleState::Bootstrapping) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
         // Render an initial frame immediately to avoid a black screen on startup
-        log_info("Rendering initial frame on run() entry");
-        if (render_cairo_frame(m_ctx) != 0) {
-            stop_run_loop(m_ctx, "render_cairo_frame failed");
-        }
+        log_dbg("Rendering initial frame on run() entry");
+        render_cairo_frame(m_ctx);
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
@@ -1072,7 +1060,7 @@ void GlApp::run()
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
-    while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
+    while (m_ctx && m_ctx->running.load()) {
         // --- STEP 1: PRE-FLUSH WAYLAND HANDSHAKES ---
         while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
             if (m_ctx && wl_display_dispatch_pending(m_ctx->display) < 0) {
@@ -1080,22 +1068,17 @@ void GlApp::run()
                 break;
             }
         }
-
-        if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
+        if (!m_ctx || !m_ctx->running.load()) break;
 
         if (m_ctx) wl_display_flush(m_ctx->display);
 
-        // --- STEP 2: CALCULATE HARD TIME-BUDGET TARGETS & ANTI-SPIN SAFEGUARDS ---
+        // --- STEP 2: CALCULATE HARD TIME-BUDGET TARGETS ---
         const auto now = std::chrono::steady_clock::now();
         auto next_frame_target = last_frame_time + kTargetFrameTime;
-        int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
 
-        // ANTI-SPIN SAFETY THROTTLE: If Cairo rendering or GPU upload drops past the 16.6ms window,
-        // timeoutMs locks down to 0, which bypasses poll() sleeping and pins the CPU core to 100%.
-        // Force 4ms hardware sleep minimum if the frame loop falls into a time-debt.
-        if (timeoutMs <= 0) {
-            timeoutMs = 4;
-        }
+        int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
+        if (timeoutMs < 0) timeoutMs = 0;
+        log_dbg("Wayland dispatch loop: timeoutMs={}", timeoutMs);
 
         // --- STEP 3: THE STRUCTURAL MULTI-DESCRIPTOR POLL ARRANGEMENT ---
         pollfd fds[2];
@@ -1110,100 +1093,82 @@ void GlApp::run()
         const int pollResult = poll(fds, 2, timeoutMs);
         if (pollResult < 0) {
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
-            if (EINTR == errno) continue;
+            if (EINTR == errno) {
+                log_dbg("Wayland dispatch loop poll interrupted by signal, retrying");
+                continue;
+            }
             break;
         }
 
-        // --- STEP 4: SIGNAL PROCESSING & HARDENED DRAINING ---
+        // --- STEP 4: SIGNAL PROCESSING & DRAINING ---
         if (pollResult == 0) {
+            log_dbg("Wayland dispatch loop: Timeout hit successfully.");
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
         } else {
             // Check cross-thread wake eventfd signals
             if ((fds[1].revents & POLLIN) != 0) {
                 uint64_t wakeValue = 0;
+                log_dbg("Wayland dispatch loop: wake eventfd signaled, draining");
                 while (m_ctx) {
                     ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
                     if (bytesRead < 0) {
-                        // DRIFT CORRECTION: EAGAIN means the eventfd buffer is completely empty.
-                        // Break safely out of the read loop to stop unthrottled non-blocking spinning.
+                        // CRITICAL DRIFT CORRECTION: EAGAIN means the eventfd buffer is completely empty.
+                        // Break out of the read loop normally instead of crashing or spinning.
                         if (errno == EAGAIN || errno == EWOULDBLOCK) {
                             break;
                         }
                         log_err("EventFd read hardware error encountered: errno={}", errno);
                         break;
                     }
-                    if (bytesRead == 0) break; // EOF check
+                    if (bytesRead == 0) break; // End of file conditions
                 }
             }
 
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                log_err("Wayland dispatch loop: wake eventfd error detected, cancelling read");
                 if (m_ctx) wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
             // Check incoming Wayland proxy network socket descriptors
             if ((fds[0].revents & POLLIN) != 0) {
+                log_dbg("Wayland dispatch loop: Wayland socket signaled, reading events");
                 if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
                     break;
                 }
             } else {
+                log_dbg("Wayland dispatch loop: Wayland socket not signaled, cancelling read");
                 if (m_ctx) wl_display_cancel_read(m_ctx->display);
             }
 
             if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                log_err("Wayland dispatch loop: Wayland socket error detected, cancelling read");
                 break;
             }
         }
 
-        // --- STEP 5: DRAIN PENDING WAYLAND EVENTS (RDK / RIALTO HARMONIZATION) ---
+        // --- STEP 5: DRAIN PENDING WAYLAND EVENTS ---
+        log_dbg("Wayland dispatch loop: draining pending events");
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
-
-        // EXTRA CONTAINER PROXY GUARD: Clears unhandled proxy internal framework events
-        // (like sync fences/heartbeats) from the default queue pipeline so the socket unblocks.
-        if (m_ctx && (fds[0].revents & POLLIN) != 0) {
-            wl_display_dispatch_queue_pending(m_ctx->display, nullptr);
-        }
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        // --- STEP 6: ASYNC RENDERING COMPLETE TRIGGER GUARD ---
-        bool gpu_is_vacant = true;
-        if (m_ctx->frame_render_fence) {
-            // Check status of previous frame with an instantaneous 0-nanosecond wait timeout
-            GLenum sync_status = glClientWaitSync(m_ctx->frame_render_fence, 0, 0);
-            if (sync_status == GL_ALREADY_SIGNALED || sync_status == GL_CONDITION_SATISFIED) {
-                glDeleteSync(m_ctx->frame_render_fence);
-                m_ctx->frame_render_fence = nullptr;
-                gpu_is_vacant = true;
-            } else {
-                // GPU is still rendering. Do not queue a new frame yet to avoid bottlenecking.
-                gpu_is_vacant = false;
+        // --- STEP 6: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
+        const auto render_now = std::chrono::steady_clock::now();
+        if (render_now - last_frame_time >= kTargetFrameTime) {
+            log_dbg("Wayland dispatch loop: rendering animation frame");
+            if (render_cairo_frame(m_ctx) < 0) {
+                break;
             }
-        }
-
-        // --- STEP 7: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
-        if (gpu_is_vacant) {
-            const auto render_now = std::chrono::steady_clock::now();
-            if (render_now - last_frame_time >= kTargetFrameTime) {
-                if (render_cairo_frame(m_ctx) < 0) {
-                    break;
-                }
-                // Step forward precisely to fix cumulative time drift
-                last_frame_time += kTargetFrameTime;
-
-                // Safety reset if system experiences deep container stalls
-                if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
-                    last_frame_time = render_now;
-                }
-            }
+            last_frame_time = render_now;
         }
 
         // Periodic container shell maintenance tasks
-        const auto final_now = std::chrono::steady_clock::now();
-        if (final_now - last_shell_reapply >= kShellReapplyInterval) {
+        if (render_now - last_shell_reapply >= kShellReapplyInterval) {
+            log_dbg("Wayland dispatch loop: performing periodic container shell maintenance tasks");
             if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
             if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
-            last_shell_reapply = final_now;
+            last_shell_reapply = render_now;
         }
     }
 
