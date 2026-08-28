@@ -50,9 +50,26 @@ option(GL_MODULE_SHARED "Build gl module as SHARED library (OFF=STATIC)" OFF)
 option(BUILD_FIREBOLT_APP "Build firebolt-test-app executable" ON)
 option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
 
-add_compile_options(-Wall -Wextra -Wpedantic)
 add_compile_definitions(
     PROJECT_VERSION="${PROJECT_VERSION}"
+)
+
+set(SECURE_COMPILER_FLAGS
+    "-fstack-protector-strong"
+    "-D_FORTIFY_SOURCE=2"
+    "-Wformat"
+    "-Wformat-security"
+    "-fPIE"
+    "-Werror"
+    "-Wall"
+    "-Wextra"
+    "-Wpedantic"
+)
+
+set(SECURE_LINKER_FLAGS
+    "-pie"
+    "-Wl,-z,relro"
+    "-Wl,-z,now"
 )
 
 # ---------------------------------------------------------------------------
@@ -186,6 +203,9 @@ add_library(${GL_MODULE_TARGET} ${GL_MODULE_TYPE}
     src/logger.hpp
 )
 
+target_compile_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+target_link_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
+
 target_link_libraries(${GL_MODULE_TARGET}
     PUBLIC
         ${WAYLAND_LINK_LIBS}
@@ -261,6 +281,9 @@ if(BUILD_FIREBOLT_APP)
             APP_FONT_DIR=\"${APP_FONT_DIR}\"
     )
 
+    target_compile_options(${APP_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    target_link_options(${APP_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
+
     set_target_properties(${APP_TARGET} PROPERTIES
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED YES
@@ -305,6 +328,9 @@ if(BUILD_GL_TEST)
         PRIVATE
             APP_FONT_DIR=\"${APP_FONT_DIR}\"
     )
+
+    target_compile_options(${GL_TEST_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    target_link_options(${GL_TEST_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
 
     set_target_properties(${GL_TEST_TARGET} PROPERTIES
         CXX_STANDARD 17

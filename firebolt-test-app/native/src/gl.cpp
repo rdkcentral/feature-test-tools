@@ -543,7 +543,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.height = app->height;
     frame.keycode = keycode;
 
-int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
 
     // Allocate the vector array backing using the exact stride parameters
     frame.rgbaPixels.resize(static_cast<size_t>(hardware_stride) * static_cast<size_t>(frame.height), 0);
@@ -827,19 +827,23 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    // Reset pipeline state
+    glFinish();
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
 }
 
+/**
+ * Renders a single frame using Cairo and presents it via OpenGL ES.
+ * @param app Pointer to the application context.
+ * @return 0 on success, -1 if the application is not running or if an error occurs during rendering.
+ */
 int render_cairo_frame(AppContext* app)
 {
     if (!app || !app->running.load(std::memory_order_acquire)) return -1;
     const PreparedFrame frame = prepare_cairo_frame(app, app->current_keycode.load(std::memory_order_acquire));
     if (frame.rgbaPixels.empty()) return 0;
-    if (!present_prepared_frame(app, frame)) app->running.store(false);
+    if (!present_prepared_frame(app, frame)) { app->running.store(false); return -1; }
     return 0;
 }
 
@@ -1052,7 +1056,10 @@ void GlApp::run()
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
         // Render an initial frame immediately to avoid a black screen on startup
         log_dbg("Rendering initial frame on run() entry");
-        render_cairo_frame(m_ctx);
+        if (render_cairo_frame(m_ctx) != 0) {
+            stop_run_loop(m_ctx, "Failed to render initial frame");
+            return;
+        }
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
