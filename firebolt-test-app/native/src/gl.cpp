@@ -120,7 +120,6 @@ struct AppContext {
     std::atomic<bool> keyFrameDirty{ false };
     std::atomic<uint32_t> current_keycode{ 0 };
     std::mutex preparedFrameMutex;
-    std::vector<unsigned char> pendingPreparedRgbaPixels;
     int pendingPreparedWidth = 0;
     int pendingPreparedHeight = 0;
     uint32_t pendingPreparedKeycode = 0;
@@ -138,6 +137,11 @@ struct AppContext {
     bool has_pbo_support = true;
     bool pbo_initialized = false;
     bool swap_interval_calibrated = false;
+    uint8_t* pbo_mapped_ptrs[2] = { nullptr, nullptr };
+    cairo_surface_t* persistent_surfaces[2] = { nullptr, nullptr };
+    cairo_t* persistent_contexts[2] = { nullptr, nullptr };
+    bool ring_allocated = false;
+    int current_ring_index = 0;
 
     cairo_font_face_t* embedded_font = nullptr;
 
@@ -153,7 +157,6 @@ struct PreparedFrame {
     int width = 0;
     int height = 0;
     uint32_t keycode = 0;
-    std::vector<unsigned char> rgbaPixels;
 };
 
 struct FontResourceBundle {
@@ -467,21 +470,16 @@ static bool ensure_egl_current(AppContext* app)
 static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 {
     PreparedFrame frame;
-    if (!app || app->width <= 0 || app->height <= 0) return frame;
+    if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
 
-    // PLATFORM AGNOSTIC STRIDE PADDING: Ensures optimal zero-copy cache alignment
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
-
-    // Allocate the vector array backing using the exact stride parameters
-    frame.rgbaPixels.resize(static_cast<size_t>(hardware_stride) * static_cast<size_t>(frame.height), 0);
-
-    cairo_surface_t* surface = cairo_image_surface_create_for_data(
-        frame.rgbaPixels.data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
-    cairo_t* cr = cairo_create(surface);
+    // Reuse the current ring index for PBO mapping if available
+    int idx = app->current_ring_index;
+    cairo_t* cr = app->persistent_contexts[idx];
+    cairo_surface_t* surface = app->persistent_surfaces[idx];
 
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
@@ -638,74 +636,55 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_restore(cr);
 
     cairo_surface_flush(surface);
-    cairo_destroy(cr);
-    cairo_surface_destroy(surface);
+
     return frame;
 }
 
 static void queue_prepared_frame(AppContext* app, PreparedFrame&& frame)
 {
-    if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) return;
+    if (!app || frame.width <= 0 || frame.height <= 0) return;
     std::lock_guard<std::mutex> lock(app->preparedFrameMutex);
     app->pendingPreparedWidth = frame.width;
     app->pendingPreparedHeight = frame.height;
     app->pendingPreparedKeycode = frame.keycode;
-    app->pendingPreparedRgbaPixels = std::move(frame.rgbaPixels);
     app->hasPendingPreparedFrame = true;
     signal_run_loop(app);
 }
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 {
-    static bool has_bgra_extension = false;
-    static GLint optimal_internal_format = GL_RGBA;
-    static bool is_format_initialized = false;
-
-    if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) return false;
+    if (!app) return false;
     if (!ensure_egl_current(app)) return false;
 
-    // V-sync calibration: Attempt to decouple EGL swap interval to 0 for low-latency rendering
-    if (!app->swap_interval_calibrated) {
-        if (eglSwapInterval(app->egl_display, 0) == EGL_TRUE) {
-            log_info("Successfully decoupled EGL V-Sync Swap Interval to 0.");
-        } else {
-            log_warn("Forced EGL Swap Interval modification rejected: eglGetError={}", eglGetError());
-        }
-        app->swap_interval_calibrated = true;
-    }
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, 1920);
+    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * 1080;
 
-    // DYNAMIC STRIDE EVALUATION: Resolves memory layout differences between platforms at runtime
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
-    int pixels_per_row = hardware_stride / 4;
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * static_cast<size_t>(frame.height);
-
-    if (!is_format_initialized) {
-        GLint num_exts = 0;
-        glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
-        while (glGetError() != GL_NO_ERROR);
-        for (GLint i = 0; i < num_exts; ++i) {
-            const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
-            if (ext && std::strcmp(ext, "GL_EXT_texture_format_BGRA8888") == 0) {
-                has_bgra_extension = true;
-                break;
-            }
-        }
-        if (has_bgra_extension) optimal_internal_format = GL_BGRA_EXT;
-        is_format_initialized = true;
-    }
-
-    if (app->has_pbo_support && !app->pbo_initialized) {
+    // ONE-TIME INITIALIZATION: Allocate and map the persistent PBO rings
+    if (app->has_pbo_support && !app->ring_allocated) {
         glGenBuffers(2, app->pbo_ids);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[0]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[1]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
+
+        for (int i = 0; i < 2; ++i) {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
+            // Allocate persistent driver-backed memory
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
+
+            // Map the PBO directly into userspace memory permanently
+            app->pbo_mapped_ptrs[i] = static_cast<uint8_t*>(glMapBufferRange(
+                GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
+                GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT_EXT | GL_MAP_COHERENT_BIT_EXT));
+
+            // Bind a permanent Cairo surface straight over the hardware DMA memory pointer!
+            app->persistent_surfaces[i] = cairo_image_surface_create_for_data(
+                app->pbo_mapped_ptrs[i], CAIRO_FORMAT_ARGB32, 1920, 1080, hardware_stride);
+            app->persistent_contexts[i] = cairo_create(app->persistent_surfaces[i]);
+        }
+
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-        app->pbo_initialized = true;
-        log_info("Platform-Agnostic PBO Ring Buffer Initialized: {} bytes allocated per slot", total_buffer_bytes);
+        app->ring_allocated = true;
+        log_info("Zero-Copy Hardware DMA Canvas Pipeline fully locked down.");
     }
 
-    glViewport(0, 0, frame.width, frame.height);
+    glViewport(0, 0, 1920, 1080);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -713,34 +692,21 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
 
-    // Explicitly configure texture unpacking row parameters to handle multi-platform padding
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, pixels_per_row);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
-    GLenum format = has_bgra_extension ? GL_BGRA_EXT : GL_RGBA;
+    if (app->has_pbo_support && app->ring_allocated) {
+        // Ping-pong between the persistent buffers
+        int draw_idx = app->current_ring_index;
+        app->current_ring_index = (draw_idx + 1) % 2;
 
-    if (app->has_pbo_support && app->pbo_initialized) {
-        int next_idx = app->pbo_index;
-        int next_next_idx = (next_idx + 1) % 2;
-        app->pbo_index = next_next_idx;
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
-        glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, format, GL_UNSIGNED_BYTE, nullptr);
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_next_idx]);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
-
-        void* pbo_ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-        if (pbo_ptr) {
-            std::memcpy(pbo_ptr, frame.rgbaPixels.data(), total_buffer_bytes);
-            glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-        }
+        // Asynchronously upload the frame from the PBO directly into the texture
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1920, 1080, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
-    else {
-        glTexImage2D(GL_TEXTURE_2D, 0, optimal_internal_format, frame.width, frame.height, 0, format, GL_UNSIGNED_BYTE, frame.rgbaPixels.data());
-    }
 
+    // Geometry Draw Call
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glEnableVertexAttribArray(app->positionAttribLocation);
     glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
@@ -748,9 +714,11 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    glFinish();
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
+    // Core pipeline complete barrier
+    glFinish();
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
 }
 
@@ -763,7 +731,6 @@ int render_cairo_frame(AppContext* app)
 {
     if (!app || !app->running.load(std::memory_order_acquire)) return -1;
     const PreparedFrame frame = prepare_cairo_frame(app, app->current_keycode.load(std::memory_order_acquire));
-    if (frame.rgbaPixels.empty()) return 0;
     if (!present_prepared_frame(app, frame)) { app->running.store(false); return -1; }
     return 0;
 }
@@ -1240,13 +1207,50 @@ void GlApp::deinit()
     m_ctx->running.store(false);
     signal_run_loop(m_ctx);
 
+    // Lock down context targeting to this cleanup thread safely
     if (m_ctx->egl_display != EGL_NO_DISPLAY && m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_surface != EGL_NO_SURFACE) {
         if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
-            if (m_ctx->pbo_initialized) glDeleteBuffers(2, m_ctx->pbo_ids);
-            if (m_ctx->texture_id) glDeleteTextures(1, &m_ctx->texture_id);
-            if (m_ctx->vbo_id) glDeleteBuffers(1, &m_ctx->vbo_id);
-            if (m_ctx->program_id) glDeleteProgram(m_ctx->program_id);
+
+            // STEP 1: TEARDOWN CAIRO ENGULS & DETACH HARDWARE MEMORY MAPS FIRST
+            // This must execute while the PBO buffer indices are still valid and the EGL context is current.
+            if (m_ctx->ring_allocated) {
+                for (int i = 0; i < 2; ++i) {
+                    if (m_ctx->persistent_contexts[i]) {
+                        cairo_destroy(m_ctx->persistent_contexts[i]);
+                        m_ctx->persistent_contexts[i] = nullptr;
+                    }
+                    if (m_ctx->persistent_surfaces[i]) {
+                        cairo_surface_destroy(m_ctx->persistent_surfaces[i]);
+                        m_ctx->persistent_surfaces[i] = nullptr;
+                    }
+
+                    // Safe unmapping inside a valid buffer boundary framework context
+                    if (m_ctx->pbo_ids[i] != 0) {
+                        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_ctx->pbo_ids[i]);
+                        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+                        m_ctx->pbo_mapped_ptrs[i] = nullptr;
+                    }
+                }
+                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+                m_ctx->ring_allocated = false;
+            }
+
+            // STEP 2: SAFELY DELETE HARDWARE STORAGE BUFFERS FROM THE GPU
+            if (m_ctx->pbo_initialized || m_ctx->pbo_ids[0] != 0) {
+                glDeleteBuffers(2, m_ctx->pbo_ids);
+                m_ctx->pbo_ids[0] = 0;
+                m_ctx->pbo_ids[1] = 0;
+                m_ctx->pbo_initialized = false;
+            }
+
+            // Clean up basic pipeline resources
+            if (m_ctx->texture_id) { glDeleteTextures(1, &m_ctx->texture_id); m_ctx->texture_id = 0; }
+            if (m_ctx->vbo_id) { glDeleteBuffers(1, &m_ctx->vbo_id); m_ctx->vbo_id = 0; }
+            if (m_ctx->program_id) { glDeleteProgram(m_ctx->program_id); m_ctx->program_id = 0; }
+
             glFinish();
+
+            // Safely unbind the thread context ownership state model
             eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         }
     }
