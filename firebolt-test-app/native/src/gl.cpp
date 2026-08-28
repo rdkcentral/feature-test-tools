@@ -1169,15 +1169,26 @@ void GlApp::run()
         // --- STEP 6: ASYNC RENDERING COMPLETE TRIGGER GUARD ---
         bool gpu_is_vacant = true;
         if (m_ctx->frame_render_fence) {
-            // Check status of previous frame with an instantaneous 0-nanosecond wait timeout
-            GLenum sync_status = glClientWaitSync(m_ctx->frame_render_fence, 0, 0);
-            if (sync_status == GL_ALREADY_SIGNALED || sync_status == GL_CONDITION_SATISFIED) {
-                glDeleteSync(m_ctx->frame_render_fence);
-                m_ctx->frame_render_fence = nullptr;
-                gpu_is_vacant = true;
+            if (ensure_egl_current(m_ctx)) {
+                // Check status of previous frame with an instantaneous 0-nanosecond wait timeout
+                GLenum sync_status = glClientWaitSync(m_ctx->frame_render_fence, 0, 0);
+                if (sync_status == GL_ALREADY_SIGNALED || sync_status == GL_CONDITION_SATISFIED) {
+                    glDeleteSync(m_ctx->frame_render_fence);
+                    m_ctx->frame_render_fence = nullptr;
+                    gpu_is_vacant = true;
+                } else if (sync_status == GL_WAIT_FAILED) {
+                    // If the fence becomes corrupt or invalid, clear it to avoid a deadlock
+                    log_warn("GLES Sync Fence validation failed. Resetting fence state tracking.");
+                    glDeleteSync(m_ctx->frame_render_fence);
+                    m_ctx->frame_render_fence = nullptr;
+                    gpu_is_vacant = true;
+                } else {
+                    // GPU is still rendering. Do not queue a new frame yet to avoid bottlenecking.
+                    gpu_is_vacant = false;
+                }
             } else {
-                // GPU is still rendering. Do not queue a new frame yet to avoid bottlenecking.
-                gpu_is_vacant = false;
+                // If EGL context failed to bind on this loop cycle, defer rendering to next tick
+                gpu_is_vacant = true;
             }
         }
 
