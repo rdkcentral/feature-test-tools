@@ -83,6 +83,7 @@ extern "C" {
 #define DEFAULT_DISPLAY "wayland-0"
 #define DEFAULT_WIDTH   1920
 #define DEFAULT_HEIGHT  1080
+
 enum class RenderLifecycleState {
     Bootstrapping,
     Paused,
@@ -130,10 +131,8 @@ struct AppContext {
     GLint positionAttribLocation = 0;
     GLint texCoordAttribLocation = 1;
 
-    // New design: use PBO for efficiency
-    // PBOs are native in GLES 3.0+ and available via GL_NV_pixel_buffer_object or GL_EXT_pixel_buffer_object in GLES 2.0
+    // Platform-Agnostic Optimized PBO Ring Infrastructure
     GLuint pbo_ids[2] = { 0, 0 };
-    int pbo_index = 0;
     bool has_pbo_support = true;
     bool pbo_initialized = false;
     bool swap_interval_calibrated = false;
@@ -267,7 +266,6 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
     return true;
 }
 
-// Hardware compilation assistant for embedded GLES vertex and fragment shaders
 GLuint compile_hardware_shader(GLenum type, const char* source)
 {
     GLuint shader = glCreateShader(type);
@@ -313,7 +311,6 @@ bool init_gles_pipeline(AppContext* app)
     app->positionAttribLocation = 0;
     app->texCoordAttribLocation = 1;
 
-    // Compile and assemble embedded GLES Shaders
     GLuint vs = compile_hardware_shader(GL_VERTEX_SHADER, vertex_shader_src);
     GLuint fs = compile_hardware_shader(GL_FRAGMENT_SHADER, fragment_shader_src);
     if (!vs || !fs) {
@@ -328,7 +325,6 @@ bool init_gles_pipeline(AppContext* app)
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    // Verify program linkage state
     GLint linked = 0;
     glGetProgramiv(app->program_id, GL_LINK_STATUS, &linked);
     if (!linked) {
@@ -337,7 +333,6 @@ bool init_gles_pipeline(AppContext* app)
         return false;
     }
 
-    // Configure screen-aligned normalized quad vertex configurations (VBO)
     GLfloat vertices[] = {
         -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
         -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
@@ -349,14 +344,14 @@ bool init_gles_pipeline(AppContext* app)
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // HARDENED RUNTIME PROBE FOR PIXEL BUFFER OBJECT (PBO) SUPPORT
+    // Hardened PBO Extension Probing
     app->has_pbo_support = false;
     bool extension_found = false;
 
     GLint num_exts = 0;
     glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
     for (GLint i = 0; i < num_exts; ++i) {
-        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
+        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_NUM_EXTENSIONS, i));
         if (ext && (std::strstr(ext, "_pixel_buffer_object") != nullptr ||
                     std::strcmp(ext, "GL_NV_pixel_buffer_object") == 0 ||
                     std::strcmp(ext, "GL_EXT_pixel_buffer_object") == 0)) {
@@ -366,7 +361,7 @@ bool init_gles_pipeline(AppContext* app)
     }
 
     if (app->glesClientVersion >= 3 || extension_found) {
-        while (glGetError() != GL_NO_ERROR); // Clear past errors
+        while (glGetError() != GL_NO_ERROR);
 
         GLuint test_pbo = 0;
         glGenBuffers(1, &test_pbo);
@@ -380,7 +375,6 @@ bool init_gles_pipeline(AppContext* app)
                 app->has_pbo_support = true;
             }
         }
-
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         glDeleteBuffers(1, &test_pbo);
         while (glGetError() != GL_NO_ERROR);
@@ -391,11 +385,10 @@ bool init_gles_pipeline(AppContext* app)
     app->pbo_initialized = false;
     app->pbo_ids[0] = 0;
     app->pbo_ids[1] = 0;
-    app->pbo_index = 0;
     app->ring_allocated = false;
-    app->current_ring_index = 0; // Lock structural index initialization bounds
+    app->current_ring_index = 0;
 
-    // Initialize texturing textures
+    // Optimized Single-Pass Texture Allocations (Prevents redundancy)
     glGenTextures(1, &app->texture_id);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -403,36 +396,28 @@ bool init_gles_pipeline(AppContext* app)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Hardcode baseline 1080p geometry sizes
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, DEFAULT_WIDTH);
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * DEFAULT_HEIGHT;
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
+    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * app->height;
 
-    // HARDENED BUFFER ALLOCATION GUARD: Instead of leaving memory uninitialized,
-    // we allocate a local temporary zero-filled vector array on the CPU stack.
-    // We use this to seed the texture allocation upfront, preventing driver page faults.
+    // Seeding texture allocation prevents GPU runtime allocation failures
     std::vector<unsigned char> seed_buffer(total_buffer_bytes, 0);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, DEFAULT_WIDTH, DEFAULT_HEIGHT, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, seed_buffer.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, app->width, app->height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, seed_buffer.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 
     if (app->has_pbo_support) {
         glGenBuffers(2, app->pbo_ids);
         for (int i = 0; i < 2; ++i) {
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-            // Force seed both hardware PBO channels with structural byte footprints upfront.
-            // This guarantees the GPU always samples valid memory structures starting on loop 1.
             glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, seed_buffer.data(), GL_DYNAMIC_DRAW);
         }
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
         app->ring_allocated = true;
         app->pbo_initialized = true;
-        log_info("Pre-Allocated {}x{} PBO Streaming Rings Initialized and Pre-Seeded: {} bytes per slot", DEFAULT_WIDTH, DEFAULT_HEIGHT, total_buffer_bytes);
+        log_info("Pre-Allocated PBO Streaming Rings Initialized: {} bytes per slot", total_buffer_bytes);
     }
 
     return true;
 }
-
 static EGLDisplay get_wayland_egl_display(wl_display* display)
 {
     using PFNEGLGETPLATFORMDISPLAYEXTPROC_LOCAL = EGLDisplay (*)(EGLenum platform, void* native_display, const EGLint* attrib_list);
@@ -463,24 +448,28 @@ static bool ensure_egl_current(AppContext* app)
         return true;
     }
 
-    // Kept for debugging. We shall not see this happen in normal operation.
-    EGLContext currentCtx = eglGetCurrentContext();
-    EGLSurface currentDraw = eglGetCurrentSurface(EGL_DRAW);
-    EGLSurface currentRead = eglGetCurrentSurface(EGL_READ);
-    log_dbg("ensure_egl_current: currentCtx={}/ExpectedCtx={}, currentDraw={} & currentRead={}/Expected={}",
-        reinterpret_cast<uintptr_t>(currentCtx),
-        reinterpret_cast<uintptr_t>(app->egl_context),
-        reinterpret_cast<uintptr_t>(currentDraw),
-        reinterpret_cast<uintptr_t>(currentRead),
-        reinterpret_cast<uintptr_t>(app->egl_surface));
-
     return (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) == EGL_TRUE);
 }
-
 static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 {
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
+
+    // HARDENED THREAD VERIFICATION GUARD: Ensure EGL context remains exclusive to the current thread
+    if (!ensure_egl_current(app)) return frame;
+
+    // Dynamically look up the extension function to map CPU cache lines safely
+    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
+    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
+    static bool barrier_probed = false;
+
+    if (!barrier_probed) {
+        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
+        if (!glMemoryBarrierEXT_ptr) {
+            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
+        }
+        barrier_probed = true;
+    }
 
     frame.width = app->width;
     frame.height = app->height;
@@ -489,27 +478,21 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
-    // Determine the next target ring index for our double buffering setup
+    // Determine the target loop index (0 -> 1 -> 0)
     int next_idx = (app->current_ring_index + 1) % 2;
 
-    if (!ensure_egl_current(app)) return frame;
-
-    // STEP A: Map the pre-allocated PBO space securely using standard commands
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
 
-    // REMOVED: glBufferData(..., nullptr) is gone! This stops the driver crashes.
-    // Instead, map the buffer range directly with memory invalidation flags.
     uint8_t* pbo_ptr = static_cast<uint8_t*>(glMapBufferRange(
         GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
         GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT));
 
     if (!pbo_ptr) {
-        log_err("Fatal: Streaming buffer mapping failed on index slot {}", next_idx);
+        log_err("Fatal: Streaming buffer mapping failed on slot {}", next_idx);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         return frame;
     }
 
-    // STEP B: Bind your temporary Cairo context straight onto the mapped pointer address space
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
         pbo_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
     cairo_t* cr = cairo_create(surface);
@@ -521,7 +504,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
-    // Compute exact panel split points (1920 * 0.60 = 1152) -> Perfectly divisible by 64 bytes
     double split_x = frame.width * 0.60;
     double left_width = split_x;
     double right_width = frame.width - split_x;
@@ -663,12 +645,18 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     cairo_restore(cr);
 
-    // STEP C: Flush and destroy temporary surface drawing handles
     cairo_surface_flush(surface);
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 
-    // STEP D: Unmap the PBO memory range cleanly to hand data tracking back to the GPU
+    // Sync memory caches via dynamic function lookup before texture submission
+    if (glMemoryBarrierEXT_ptr) {
+        #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
+        #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
+        #endif
+        glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
+    }
+
     glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
@@ -679,19 +667,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 {
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
-
-    // Dynamically look up the memory barrier extension function pointer address
-    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-    static bool barrier_probed = false;
-
-    if (!barrier_probed) {
-        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) {
-            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        }
-        barrier_probed = true;
-    }
 
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
 
@@ -707,26 +682,14 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
     if (app->has_pbo_support && app->ring_allocated) {
-        // Ping-pong between our pre-allocated buffers (0 -> 1 -> 0)
         int draw_idx = app->current_ring_index;
         app->current_ring_index = (draw_idx + 1) % 2;
 
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
-
-        // Execute a driver-level cache flush statement if supported
-        if (glMemoryBarrierEXT_ptr) {
-            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
-            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
-            #endif
-            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
-        }
-
-        // Asynchronously update the texture using our mapped pixel arrays
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame.width, frame.height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
-    // Geometry Draw Call Assembly
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glEnableVertexAttribArray(app->positionAttribLocation);
     glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
@@ -741,11 +704,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
 }
 
-/**
- * Renders a single frame using Cairo and presents it via OpenGL ES.
- * @param app Pointer to the application context.
- * @return 0 on success, -1 if the application is not running or if an error occurs during rendering.
- */
 int render_cairo_frame(AppContext* app)
 {
     if (!app || !app->running.load(std::memory_order_acquire)) return -1;
@@ -756,63 +714,39 @@ int render_cairo_frame(AppContext* app)
 
 static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s)
 {
-    // to resolve -Werror=unused-parameter
-    (void)d;
-    (void)kb;
-    (void)f;
-    (void)s;
-    log_dbg("Received keymap file descriptor: {}", fd);
+    (void)d; (void)kb; (void)f; (void)s;
     close(fd);
 }
 
 static void keyboard_handle_enter(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf, wl_array* k)
 {
-    // to resolve -Werror=unused-parameter
-    (void)d;
-    (void)kb;
-    (void)s;
-    (void)k;
-    log_dbg("Keyboard focus entered surface: {}", reinterpret_cast<uintptr_t>(surf));
+    (void)d; (void)kb; (void)s; (void)k; (void)surf;
 }
 
 static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf)
 {
-    // to resolve -Werror=unused-parameter
-    (void)d;
-    (void)kb;
-    (void)s;
-    log_dbg("Keyboard focus left surface: {}", reinterpret_cast<uintptr_t>(surf));
+    (void)d; (void)kb; (void)s; (void)surf;
 }
-
 static void keyboard_handle_modifiers(void* d, wl_keyboard* kb, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lck, uint32_t g)
 {
-    // to resolve -Werror=unused-parameter
-    (void)d;
-    (void)kb;
-    log_dbg("Keyboard modifiers changed: serial={}, depressed={}, latched={}, locked={}, group={}", s, dep, lat, lck, g);
+    (void)d; (void)kb; (void)s; (void)dep; (void)lat; (void)lck; (void)g;
 }
 
 static void keyboard_handle_repeat_info(void* d, wl_keyboard* kb, int32_t r, int32_t dly)
 {
-    // to resolve -Werror=unused-parameter
-    (void)d;
-    (void)kb;
-    log_dbg("Keyboard repeat info: rate={}, delay={}", r, dly);
+    (void)d; (void)kb; (void)r; (void)dly;
 }
 
 static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
-    // to resolve -Werror=unused-parameter
-    (void)keyboard;
-    (void)serial;
-    (void)time;
+    (void)keyboard; (void)serial; (void)time;
 
     AppContext* app = static_cast<AppContext*>(data);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         app->current_keycode.store(key, std::memory_order_release);
         app->keyFrameDirty.store(true, std::memory_order_release);
         if (app->keycodeCallback) app->keycodeCallback(key);
-        signal_run_loop(app); // Instant interactive wake
+        signal_run_loop(app);
     }
 }
 
@@ -830,17 +764,12 @@ static void seat_handle_capabilities(void* data, wl_seat* seat, uint32_t caps)
 }
 
 static const wl_seat_listener seat_listener = { seat_handle_capabilities, [](void* d, wl_seat* s, const char* n) {
-       // to resolve -Werror=unused-parameter
-       (void)d;
-       (void)s;
-       (void)n;
+       (void)d; (void)s; (void)n;
    } };
 
 static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surface* surface, uint32_t surface_id)
 {
-    // to resolve -Werror=unused-parameter
     (void)shell;
-
     AppContext* app = static_cast<AppContext*>(data);
     if (surface != app->surface) return;
 
@@ -851,10 +780,7 @@ static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surfa
 
 static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name)
 {
-    // to resolve -Werror=unused-parameter
-    (void)shell;
-    (void)name;
-
+    (void)shell; (void)name;
     AppContext* app = static_cast<AppContext*>(data);
     if (app) {
         app->simple_shell_created_id = surface_id;
@@ -864,36 +790,17 @@ static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uin
 
 static const wl_simple_shell_listener simple_shell_listener = {
     simple_shell_surface_id, simple_shell_surface_created, [](void* d, wl_simple_shell* s, uint32_t id, const char* n){
-        // to resolve -Werror=unused-parameter
-        (void)d;
-        (void)s;
-        (void)id;
-        (void)n;
+        (void)d; (void)s; (void)id; (void)n;
     }, [](void* d, wl_simple_shell* s, uint32_t id, const char* n, uint32_t v, int32_t x, int32_t y, int32_t w, int32_t h, wl_fixed_t o, wl_fixed_t z){
-        // to resolve -Werror=unused-parameter
-        (void)d;
-        (void)s;
-        (void)id;
-        (void)n;
-        (void)v;
-        (void)x;
-        (void)y;
-        (void)w;
-        (void)h;
-        (void)o;
-        (void)z;
+        (void)d; (void)s; (void)id; (void)n; (void)v; (void)x; (void)y; (void)w; (void)h; (void)o; (void)z;
     }, [](void* d, wl_simple_shell* s){
-        // to resolve -Werror=unused-parameter
-        (void)d;
-        (void)s;
+        (void)d; (void)s;
     }
 };
 
 static void global_registry_handler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
 {
-    // to resolve -Werror=unused-parameter
     (void)version;
-
     AppContext* app = static_cast<AppContext*>(data);
     if (std::strcmp(interface, "wl_compositor") == 0) {
         app->compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, id, &wl_compositor_interface, 1));
@@ -907,15 +814,9 @@ static void global_registry_handler(void* data, wl_registry* registry, uint32_t 
 }
 
 static const wl_registry_listener registry_listener = { global_registry_handler, [](void* d, wl_registry* r, uint32_t id){
-    // to resolve -Werror=unused-parameter
-    (void)d;
-    (void)r;
-    (void)id;
+    (void)d; (void)r; (void)id;
 } };
 
-// ---------------------------------------------------------------------------
-// GlApp implementation
-// ---------------------------------------------------------------------------
 GlApp::GlApp(int width, int height, const std::string& fontPath, BackgroundPatternMode pattern)
     : m_ctx(new AppContext())
 {
@@ -972,12 +873,12 @@ bool GlApp::init(const char* waylandDisplay)
 
     EGLint num_configs = 0;
     if (eglChooseConfig(m_ctx->egl_display, config_attribs, &m_ctx->egl_config, 1, &num_configs) != EGL_TRUE || num_configs == 0) {
-        log_err("eglChooseConfig failed(now only supports EGL_OPENGL_ES3_BIT_KHR): eglGetError={}, num_configs={}", eglGetError(), num_configs);
+        log_err("eglChooseConfig failed: eglGetError={}, num_configs={}", eglGetError(), num_configs);
         return false;
     }
 
     eglBindAPI(EGL_OPENGL_ES_API);
-    EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+    EGLint context_attribs[] = { CMAKE_CXX_STANDARD, 3, EGL_NONE };
     m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
     if (m_ctx->egl_context == EGL_NO_CONTEXT) {
         log_err("eglCreateContext failed: eglGetError={}", eglGetError());
@@ -1005,32 +906,32 @@ bool GlApp::init(const char* waylandDisplay)
     m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE || eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) != EGL_TRUE) return false;
 
+    // Optimized: EGL Swap Interval is applied once safely here during initialization
     if (eglSwapInterval(m_ctx->egl_display, 0) == EGL_TRUE) {
         log_info("Platform EGL Swap Interval calibrated successfully to 0 (Unbound Async Mode).");
     } else {
-        log_warn("Forced EGL Swap Interval modification rejected by the SoC graphics driver.");
+        log_warn("Forced EGL Swap Interval modification rejected: eglGetError={}", eglGetError());
     }
 
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
     glFinish();
+
+    // EXCLUSIVE RELEASE LAYER: Context is detached immediately to prevent shared thread ownership conflicts
     eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    if (eglSwapInterval(m_ctx->egl_display, 0) == EGL_TRUE) {
-        log_info("EGL swap interval set to 0 (vsync disabled)");
-    } else {
-        log_warn("Failed to set EGL swap interval: eglGetError={}", eglGetError());
-    }
+
     m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
     return true;
 }
 
 void GlApp::renderInitialFrame()
 {
+    // Redundancy Fixed: Deleted main thread drawing execution layers completely.
+    // Instead, change the thread lifecycle flags to Active and signal the run loop to handle it.
     if (!m_ctx || m_ctx->lifecycle_state.load() == RenderLifecycleState::Closing) return;
     resume();
 }
 
-// Must run as a thread that owns the EGL context and has access to the Wayland display file descriptor.
 void GlApp::run()
 {
     log_info("Starting Wayland dispatch loop");
@@ -1046,12 +947,18 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
-    if (m_ctx && (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
-        m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping)) {
+    // EXCLUSIVE ANCHOR POINT: Background thread claims exclusive EGL context ownership here
+    if (!ensure_egl_current(m_ctx)) {
+        log_err("Render Thread failed to claim EGL context ownership.");
+        return;
+    }
+
+    if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
+        m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
 
-        log_info("Rendering initial frame on run() entry");
+        log_info("Rendering initial frame on run() entry safely on the background thread context.");
         if (render_cairo_frame(m_ctx) != 0) {
             stop_run_loop(m_ctx, "render_cairo_frame failed");
         }
@@ -1080,7 +987,6 @@ void GlApp::run()
         auto next_frame_target = last_frame_time + kTargetFrameTime;
         int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
 
-        // Recalculate timeoutMs if rendering overran the target frame time
         if (timeoutMs <= 0) {
             auto missed_by = std::chrono::duration_cast<std::chrono::milliseconds>(now - next_frame_target).count();
             timeoutMs = static_cast<int>(kTargetFrameTime.count() - (missed_by % kTargetFrameTime.count()));
@@ -1110,7 +1016,6 @@ void GlApp::run()
         if (pollResult == 0) {
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
         } else {
-            // Check cross-thread wake eventfd signals independently
             if ((fds[1].revents & POLLIN) != 0) {
                 uint64_t wakeValue = 0;
                 while (m_ctx) {
@@ -1126,7 +1031,7 @@ void GlApp::run()
                 }
             }
 
-            // Verify break conditions AFTER draining the descriptor but BEFORE updating socket pipelines
+            // Fixed: De-coupled early break checks prevent Wayland socket lockout states
             if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) {
                 if (m_ctx) wl_display_cancel_read(m_ctx->display);
                 break;
@@ -1137,7 +1042,6 @@ void GlApp::run()
                 break;
             }
 
-            // Check incoming Wayland proxy network socket descriptors independently
             if ((fds[0].revents & POLLIN) != 0) {
                 if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
                     break;
@@ -1154,8 +1058,6 @@ void GlApp::run()
         // --- STEP 5: DRAIN PENDING WAYLAND EVENTS (RDK / RIALTO HARMONIZATION) ---
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
 
-        // EXTRA CONTAINER PROXY GUARD: Clears unhandled proxy internal framework events
-        // (like sync fences/heartbeats) from the default queue pipeline so the socket unblocks.
         if (m_ctx && (fds[0].revents & POLLIN) != 0) {
             wl_display_dispatch_queue_pending(m_ctx->display, nullptr);
         }
@@ -1164,16 +1066,16 @@ void GlApp::run()
 
         // --- STEP 6: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
         const auto render_now = std::chrono::steady_clock::now();
-        if (render_now - last_frame_time >= kTargetFrameTime) {
-            if (render_cairo_frame(m_ctx) < 0) {
-                break;
-            }
-            // Step forward precisely to fix cumulative time drift
-            last_frame_time += kTargetFrameTime;
+        if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) {
+            if (render_now - last_frame_time >= kTargetFrameTime) {
+                if (render_cairo_frame(m_ctx) < 0) {
+                    break;
+                }
+                last_frame_time += kTargetFrameTime;
 
-            // Safety reset if system experiences deep container stalls
-            if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
-                last_frame_time = render_now;
+                if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
+                    last_frame_time = render_now;
+                }
             }
         }
 
@@ -1234,7 +1136,7 @@ void GlApp::deinit()
     if (m_ctx->egl_display != EGL_NO_DISPLAY && m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_surface != EGL_NO_SURFACE) {
         if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
 
-            // Delete standard PBO buffers safely
+            // De-allocate standard PBO buffers safely
             if (m_ctx->pbo_initialized || m_ctx->pbo_ids[0] != 0) {
                 glDeleteBuffers(2, m_ctx->pbo_ids);
                 m_ctx->pbo_ids[0] = 0;
@@ -1293,8 +1195,6 @@ void GlApp::deinit()
     m_ctx->waylandFd = -1;
     release_run_wake_signal(m_ctx);
 
-    // WARN: Do not enable this; added only for debugging purposes.
-    // Creating this file bypasses normal AppContext cleanup.
     if (access("/data/skip-glapp-context-teardown", F_OK) == 0) {
         log_warn("GlApp::deinit: skip-glapp-context-teardown file FOUND. Skipping AppContext deletion!");
     } else {
