@@ -144,6 +144,9 @@ struct AppContext {
     bool swap_interval_calibrated = false;
     bool ring_allocated = false;
     int current_ring_index = 0;
+    std::vector<uint8_t> staging_buffers[2];
+    bool ring_allocated = false;
+    int current_ring_index = 0;
 
     cairo_font_face_t* embedded_font = nullptr;
 
@@ -410,15 +413,23 @@ bool init_gles_pipeline(AppContext* app)
     glBindTexture(GL_TEXTURE_2D, 0);
 
     if (app->has_pbo_support) {
+        int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
+        size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * app->height;
+
         glGenBuffers(2, app->pbo_ids);
         for (int i = 0; i < 2; ++i) {
+            // 1. Allocate the persistent CPU staging buffer once
+            app->staging_buffers[i].resize(total_buffer_bytes, 0);
+
+            // 2. Allocate the matching GPU hardware storage slot
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, seed_buffer.data(), GL_DYNAMIC_DRAW);
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, app->staging_buffers[i].data(), GL_DYNAMIC_DRAW);
         }
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
         app->ring_allocated = true;
         app->pbo_initialized = true;
-        log_info("Pre-Allocated {}x{} PBO Streaming Rings Pre-Seeded: {} bytes per slot", app->width, app->height, total_buffer_bytes);
+        log_info("Pre-Allocated 1080p Staging Pools Initialized: {} bytes per slot", total_buffer_bytes);
     }
     return true;
 }
@@ -459,17 +470,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
-    if (!ensure_egl_current(app)) return frame;
-
-    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-    static bool barrier_probed = false;
-    if (!barrier_probed) {
-        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        barrier_probed = true;
-    }
-
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
@@ -477,39 +477,18 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
-    // Pull straight from the active ring index
-    int active_idx = app->current_ring_index;
+    // Determine the next target ring index for our double buffering setup
+    int next_idx = (app->current_ring_index + 1) % 2;
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[active_idx]);
-
-    // 1. Inject GL_MAP_READ_BIT. This gives Cairo permission to safely
-    //    evaluate antialiasing alphas and blend text layers directly inside the pointer.
-    // 2. Use GL_MAP_UNSYNCHRONIZED_BIT to prevent the driver from
-    //    dropping or re-allocating memory pages mid-render.
-    uint8_t* pbo_ptr = static_cast<uint8_t*>(glMapBufferRange(
-        GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
-        GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT));
-
-    if (!pbo_ptr) {
-        log_err("Fatal: Streaming buffer mapping failed on index slot {}", active_idx);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-        return frame;
-    }
-
-    // MEMORY ALIGNMENT VERIFICATION:
-    // If the driver returns an unaligned pointer, log it instantly to catch hardware constraints.
-    if (reinterpret_cast<uintptr_t>(pbo_ptr) % 64 != 0) {
-        log_warn("Driver warning: Mapped PBO pointer address is not aligned to a 64-byte cache boundary!");
-    }
-
+    // STEP A: Bind Cairo directly over our safe, persistent CPU system RAM block
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
-        pbo_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
+        app->staging_buffers[next_idx].data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
     cairo_t* cr = cairo_create(surface);
 
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
 
-    // Solid base paint clear
+    // Solid base clear
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
@@ -658,15 +637,11 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 
-    if (glMemoryBarrierEXT_ptr) {
-        #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
-        #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
-        #endif
-        glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
+    if (ensure_egl_current(app)) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
+        glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, app->staging_buffers[next_idx].data());
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
-
-    glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
     return frame;
 }
