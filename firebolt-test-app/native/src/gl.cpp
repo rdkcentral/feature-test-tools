@@ -74,27 +74,6 @@ struct GlLoggerConfig {
 };
 using LocalLogger = RuntimeLogger<GlLoggerConfig>;
 
-static std::string egl_error_string(EGLint error)
-{
-    switch (error) {
-        case EGL_SUCCESS: return "EGL_SUCCESS";
-        case EGL_NOT_INITIALIZED: return "EGL_NOT_INITIALIZED";
-        case EGL_BAD_ACCESS: return "EGL_BAD_ACCESS";
-        case EGL_BAD_ALLOC: return "EGL_BAD_ALLOC";
-        case EGL_BAD_ATTRIBUTE: return "EGL_BAD_ATTRIBUTE";
-        case EGL_BAD_CONTEXT: return "EGL_BAD_CONTEXT";
-        case EGL_BAD_CONFIG: return "EGL_BAD_CONFIG";
-        case EGL_BAD_CURRENT_SURFACE: return "EGL_BAD_CURRENT_SURFACE";
-        case EGL_BAD_DISPLAY: return "EGL_BAD_DISPLAY";
-        case EGL_BAD_SURFACE: return "EGL_BAD_SURFACE";
-        case EGL_BAD_MATCH: return "EGL_BAD_MATCH";
-        case EGL_BAD_PARAMETER: return "EGL_BAD_PARAMETER";
-        case EGL_BAD_NATIVE_PIXMAP: return "EGL_BAD_NATIVE_PIXMAP";
-        case EGL_BAD_NATIVE_WINDOW: return "EGL_BAD_NATIVE_WINDOW";
-        default: return "EGL_ERROR_0x" + std::to_string(static_cast<unsigned long long>(error));
-    }
-}
-
 extern "C" {
     #include <wayland-client.h>
     #include <wayland-egl.h>
@@ -182,13 +161,6 @@ struct FontResourceBundle {
     FT_Face face = nullptr;
 };
 
-static std::string current_thread_string()
-{
-    std::ostringstream oss;
-    oss << std::this_thread::get_id();
-    return oss.str();
-}
-
 static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame);
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
 int render_cairo_frame(AppContext* app);
@@ -216,13 +188,6 @@ static void signal_run_loop(AppContext* app)
     }
 }
 
-static void drain_run_signal(AppContext* app)
-{
-    if (!app || app->wakeEventFd < 0) return;
-    uint64_t wakeValue = 0;
-    while (read(app->wakeEventFd, &wakeValue, sizeof(wakeValue)) > 0);
-}
-
 static void release_run_wake_signal(AppContext* app)
 {
     if (!app) return;
@@ -238,40 +203,6 @@ static void stop_run_loop(AppContext* app, const char* reason)
     log_warn("{}", reason ? reason : "run loop stopping");
     app->running.store(false);
     signal_run_loop(app);
-}
-
-static bool render_active_work(AppContext* app,
-                               const std::chrono::steady_clock::time_point& now,
-                               std::chrono::steady_clock::time_point& lastHeartbeat,
-                               std::chrono::steady_clock::time_point& lastInputRender,
-                               const std::chrono::milliseconds& inputMinInterval)
-{
-    if (!app) return false;
-
-    const RenderLifecycleState state = app->lifecycle_state.load(std::memory_order_acquire);
-    if (RenderLifecycleState::Active != state) return true;
-
-    PreparedFrame queuedFrame;
-    if (take_pending_prepared_frame(app, queuedFrame)) {
-        if (!present_prepared_frame(app, queuedFrame)) {
-            stop_run_loop(app, "present_prepared_frame failed");
-            return false;
-        }
-        lastHeartbeat = now;
-    }
-
-    if (app->running.load(std::memory_order_acquire) && app->keyFrameDirty.load(std::memory_order_acquire) &&
-        (lastInputRender.time_since_epoch().count() == 0 || now - lastInputRender >= inputMinInterval)) {
-        if (render_cairo_frame(app) < 0) {
-            stop_run_loop(app, "render_cairo_frame failed while processing input-driven frame");
-            return false;
-        }
-        app->keyFrameDirty.store(false, std::memory_order_release);
-        lastInputRender = now;
-        lastHeartbeat = now;
-    }
-
-    return true;
 }
 
 static bool apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true, bool setName = false)
@@ -847,14 +778,59 @@ int render_cairo_frame(AppContext* app)
     return 0;
 }
 
-static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s) { close(fd); }
-static void keyboard_handle_enter(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf, wl_array* k) {}
-static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf) {}
-static void keyboard_handle_modifiers(void* d, wl_keyboard* kb, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lck, uint32_t g) {}
-static void keyboard_handle_repeat_info(void* d, wl_keyboard* kb, int32_t r, int32_t dly) {}
+static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s)
+{
+    // to resolve -Werror=unused-parameter
+    (void)d;
+    (void)kb;
+    (void)f;
+    (void)s;
+    log_dbg("Received keymap file descriptor: {}", fd);
+    close(fd);
+}
+
+static void keyboard_handle_enter(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf, wl_array* k)
+{
+    // to resolve -Werror=unused-parameter
+    (void)d;
+    (void)kb;
+    (void)s;
+    (void)k;
+    log_dbg("Keyboard focus entered surface: {}", reinterpret_cast<uintptr_t>(surf));
+}
+
+static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf)
+{
+    // to resolve -Werror=unused-parameter
+    (void)d;
+    (void)kb;
+    (void)s;
+    log_dbg("Keyboard focus left surface: {}", reinterpret_cast<uintptr_t>(surf));
+}
+
+static void keyboard_handle_modifiers(void* d, wl_keyboard* kb, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lck, uint32_t g)
+{
+    // to resolve -Werror=unused-parameter
+    (void)d;
+    (void)kb;
+    log_dbg("Keyboard modifiers changed: serial={}, depressed={}, latched={}, locked={}, group={}", s, dep, lat, lck, g);
+}
+
+static void keyboard_handle_repeat_info(void* d, wl_keyboard* kb, int32_t r, int32_t dly)
+{
+    // to resolve -Werror=unused-parameter
+    (void)d;
+    (void)kb;
+    log_dbg("Keyboard repeat info: rate={}, delay={}", r, dly);
+}
 
 static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
+    // to resolve -Werror=unused-parameter
+    (void)keyboard;
+    (void)serial;
+    (void)time;
+
     AppContext* app = static_cast<AppContext*>(data);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         app->current_keycode.store(key, std::memory_order_release);
@@ -877,10 +853,18 @@ static void seat_handle_capabilities(void* data, wl_seat* seat, uint32_t caps)
     }
 }
 
-static const wl_seat_listener seat_listener = { seat_handle_capabilities, [](void* d, wl_seat* s, const char* n){} };
+static const wl_seat_listener seat_listener = { seat_handle_capabilities, [](void* d, wl_seat* s, const char* n) {
+       // to resolve -Werror=unused-parameter
+       (void)d;
+       (void)s;
+       (void)n;
+   } };
 
 static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surface* surface, uint32_t surface_id)
 {
+    // to resolve -Werror=unused-parameter
+    (void)shell;
+
     AppContext* app = static_cast<AppContext*>(data);
     if (surface != app->surface) return;
 
@@ -891,6 +875,10 @@ static void simple_shell_surface_id(void* data, wl_simple_shell* shell, wl_surfa
 
 static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uint32_t surface_id, const char* name)
 {
+    // to resolve -Werror=unused-parameter
+    (void)shell;
+    (void)name;
+
     AppContext* app = static_cast<AppContext*>(data);
     if (app) {
         app->simple_shell_created_id = surface_id;
@@ -899,11 +887,37 @@ static void simple_shell_surface_created(void* data, wl_simple_shell* shell, uin
 }
 
 static const wl_simple_shell_listener simple_shell_listener = {
-    simple_shell_surface_id, simple_shell_surface_created, [](void* d, wl_simple_shell* s, uint32_t id, const char* n){}, [](void* d, wl_simple_shell* s, uint32_t id, const char* n, uint32_t v, int32_t x, int32_t y, int32_t w, int32_t h, wl_fixed_t o, wl_fixed_t z){}, [](void* d, wl_simple_shell* s){}
+    simple_shell_surface_id, simple_shell_surface_created, [](void* d, wl_simple_shell* s, uint32_t id, const char* n){
+        // to resolve -Werror=unused-parameter
+        (void)d;
+        (void)s;
+        (void)id;
+        (void)n;
+    }, [](void* d, wl_simple_shell* s, uint32_t id, const char* n, uint32_t v, int32_t x, int32_t y, int32_t w, int32_t h, wl_fixed_t o, wl_fixed_t z){
+        // to resolve -Werror=unused-parameter
+        (void)d;
+        (void)s;
+        (void)id;
+        (void)n;
+        (void)v;
+        (void)x;
+        (void)y;
+        (void)w;
+        (void)h;
+        (void)o;
+        (void)z;
+    }, [](void* d, wl_simple_shell* s){
+        // to resolve -Werror=unused-parameter
+        (void)d;
+        (void)s;
+    }
 };
 
 static void global_registry_handler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
 {
+    // to resolve -Werror=unused-parameter
+    (void)version;
+
     AppContext* app = static_cast<AppContext*>(data);
     if (std::strcmp(interface, "wl_compositor") == 0) {
         app->compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, id, &wl_compositor_interface, 1));
@@ -916,7 +930,12 @@ static void global_registry_handler(void* data, wl_registry* registry, uint32_t 
     }
 }
 
-static const wl_registry_listener registry_listener = { global_registry_handler, [](void* d, wl_registry* r, uint32_t id){} };
+static const wl_registry_listener registry_listener = { global_registry_handler, [](void* d, wl_registry* r, uint32_t id){
+    // to resolve -Werror=unused-parameter
+    (void)d;
+    (void)r;
+    (void)id;
+} };
 
 // ---------------------------------------------------------------------------
 // GlApp implementation
