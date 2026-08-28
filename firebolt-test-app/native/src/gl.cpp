@@ -943,40 +943,38 @@ bool GlApp::init(const char* waylandDisplay)
 
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
-    log_info("GlApp::init: Awaiting compositor layout confirmation...");
-    int handshake_timeout_attempts = 0;
-    bool initial_handshake_successful = false;
+    log_info("GlApp::init: Synchronizing surface configuration with compositor...");
 
-    while (handshake_timeout_attempts < 500) {
-        wl_display_flush(m_ctx->display);
-        if (wl_display_dispatch_pending(m_ctx->display) < 0) {
-            log_err("GlApp::init: Wayland connection error detected during handshake.");
+    int handshake_attempts = 0;
+    bool handshake_confirmed = false;
+
+    while (handshake_attempts < 20) {
+        // Flush outbound data and block until incoming socket data is explicitly read and dispatched
+        if (wl_display_roundtrip(m_ctx->display) < 0) {
+            log_err("GlApp::init: Wayland connection broken during roundtrip sync.");
             return false;
         }
 
         {
             std::lock_guard<std::mutex> lock(m_ctx->configuration_lock);
             if (m_ctx->configuration_complete) {
-                initial_handshake_successful = true;
+                handshake_confirmed = true;
                 break;
             }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        handshake_timeout_attempts++;
+        handshake_attempts++;
     }
 
-    if (!initial_handshake_successful) {
-        log_warn("GlApp::init: Compositor handshake timed out. Forcing fallback startup.");
-        m_ctx->configured = true;
-    } else {
-        log_info("GlApp::init: Compositor handshake confirmed. Initializing hand-off.");
+    if (!handshake_confirmed) {
+        log_err("Fatal: Compositor failed to map the surface window layer. Aborting initialization.");
+        return false;
     }
 
-    // Commit any outstanding changes and verify pipeline visibility
+    log_info("GlApp::init: Compositor handshake confirmed. Initializing hand-off.");
+
     glFinish();
 
-    // Now that the system is fully configured, safely release the context from the main thread.
     eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
