@@ -656,8 +656,8 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
 
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, 1920);
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * 1080;
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
     // ONE-TIME INITIALIZATION: Allocate and map the persistent PBO rings
     if (app->has_pbo_support && !app->ring_allocated) {
@@ -675,7 +675,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
             // Bind a permanent Cairo surface straight over the hardware DMA memory pointer!
             app->persistent_surfaces[i] = cairo_image_surface_create_for_data(
-                app->pbo_mapped_ptrs[i], CAIRO_FORMAT_ARGB32, 1920, 1080, hardware_stride);
+                app->pbo_mapped_ptrs[i], CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
             app->persistent_contexts[i] = cairo_create(app->persistent_surfaces[i]);
         }
 
