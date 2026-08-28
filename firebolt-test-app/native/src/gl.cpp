@@ -1039,11 +1039,9 @@ void GlApp::renderInitialFrame()
 {
     if (!m_ctx || m_ctx->lifecycle_state.load() == RenderLifecycleState::Closing) return;
 
-    PreparedFrame frame = prepare_cairo_frame(m_ctx, 0);
-    queue_prepared_frame(m_ctx, std::move(frame));
-    m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
-    m_ctx->keyFrameDirty.store(true, std::memory_order_release);
-    signal_run_loop(m_ctx);
+    //PreparedFrame frame = prepare_cairo_frame(m_ctx, 0);
+    //queue_prepared_frame(m_ctx, std::move(frame));
+    resume();
 }
 
 // Must run as a thread that owns the EGL context and has access to the Wayland display file descriptor.
