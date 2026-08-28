@@ -161,7 +161,6 @@ struct FontResourceBundle {
     FT_Face face = nullptr;
 };
 
-static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame);
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
 int render_cairo_frame(AppContext* app);
 
@@ -649,20 +648,6 @@ static void queue_prepared_frame(AppContext* app, PreparedFrame&& frame)
     app->pendingPreparedRgbaPixels = std::move(frame.rgbaPixels);
     app->hasPendingPreparedFrame = true;
     signal_run_loop(app);
-}
-
-static bool take_pending_prepared_frame(AppContext* app, PreparedFrame& frame)
-{
-    if (!app) return false;
-    std::lock_guard<std::mutex> lock(app->preparedFrameMutex);
-    if (!app->hasPendingPreparedFrame || app->pendingPreparedRgbaPixels.empty()) return false;
-
-    frame.width = app->pendingPreparedWidth;
-    frame.height = app->pendingPreparedHeight;
-    frame.keycode = app->pendingPreparedKeycode;
-    frame.rgbaPixels = std::move(app->pendingPreparedRgbaPixels);
-    app->hasPendingPreparedFrame = false;
-    return true;
 }
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)

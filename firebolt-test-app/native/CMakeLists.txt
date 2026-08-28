@@ -281,8 +281,9 @@ if(BUILD_FIREBOLT_APP)
             APP_FONT_DIR=\"${APP_FONT_DIR}\"
     )
 
-    target_compile_options(${APP_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
-    target_link_options(${APP_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
+    # Enable later when the app is ready to support the Firebolt test modules.
+    #target_compile_options(${APP_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    #target_link_options(${APP_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
 
     set_target_properties(${APP_TARGET} PROPERTIES
         CXX_STANDARD 17
