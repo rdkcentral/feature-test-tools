@@ -1088,7 +1088,8 @@ void GlApp::run()
         auto next_frame_target = last_frame_time + kTargetFrameTime;
 
         int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
-        if (timeoutMs < 0) timeoutMs = 0;
+         // Minimum poll timeout to avoid busy-waiting
+        if (timeoutMs < 0) timeoutMs = 4;
         log_dbg("Wayland dispatch loop: timeoutMs={}", timeoutMs);
 
         // --- STEP 3: THE STRUCTURAL MULTI-DESCRIPTOR POLL ARRANGEMENT ---
