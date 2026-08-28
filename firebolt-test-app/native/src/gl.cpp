@@ -704,14 +704,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
         barrier_probed = true;
     }
 
-    // Call eglSwapInterval(0) dynamically on the render thread to avoid EGL_BAD_SURFACE (12294)
-    if (!app->swap_interval_calibrated) {
-        if (eglSwapInterval(app->egl_display, 0) == EGL_TRUE) {
-            log_info("Successfully decoupled EGL V-Sync Swap Interval to 0.");
-        }
-        app->swap_interval_calibrated = true;
-    }
-
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
 
     glViewport(0, 0, frame.width, frame.height);
@@ -1023,6 +1015,12 @@ bool GlApp::init(const char* waylandDisplay)
 
     m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE || eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) != EGL_TRUE) return false;
+
+    if (eglSwapInterval(m_ctx->egl_display, 0) == EGL_TRUE) {
+        log_info("Platform EGL Swap Interval calibrated successfully to 0 (Unbound Async Mode).");
+    } else {
+        log_warn("Forced EGL Swap Interval modification rejected by the SoC graphics driver.");
+    }
 
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
