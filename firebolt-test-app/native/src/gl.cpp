@@ -127,6 +127,7 @@ struct AppContext {
     std::mutex configuration_lock;
     std::condition_variable configuration_cv;
     bool configuration_complete = false;
+    std::mutex state_interlock_mutex;
 
     bool configured = false;
     std::atomic<bool> keyFrameDirty{ false };
@@ -328,6 +329,7 @@ bool init_gles_pipeline(AppContext* app)
     app->positionAttribLocation = 0;
     app->texCoordAttribLocation = 1;
 
+    // Compile and assemble shaders
     GLuint vs = compile_hardware_shader(GL_VERTEX_SHADER, vertex_shader_src);
     GLuint fs = compile_hardware_shader(GL_FRAGMENT_SHADER, fragment_shader_src);
     if (!vs || !fs) {
@@ -350,6 +352,7 @@ bool init_gles_pipeline(AppContext* app)
         return false;
     }
 
+    // Configure screen quad coordinates (VBO)
     GLfloat vertices[] = {
         -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
         -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
@@ -361,13 +364,14 @@ bool init_gles_pipeline(AppContext* app)
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+    // Hardened PBO extension probing
     app->has_pbo_support = false;
     bool extension_found = false;
 
     GLint num_exts = 0;
     glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
     for (GLint i = 0; i < num_exts; ++i) {
-        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_NUM_EXTENSIONS, i));
+        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
         if (ext && (std::strstr(ext, "_pixel_buffer_object") != nullptr ||
                     std::strcmp(ext, "GL_NV_pixel_buffer_object") == 0 ||
                     std::strcmp(ext, "GL_EXT_pixel_buffer_object") == 0)) {
@@ -401,10 +405,11 @@ bool init_gles_pipeline(AppContext* app)
     app->pbo_initialized = false;
     app->pbo_ids[0] = 0;
     app->pbo_ids[1] = 0;
+    app->pbo_index = 0;
     app->ring_allocated = false;
     app->current_ring_index = 0;
 
-    // Fixed Texture Doubling Redundancy
+    // Single-pass core texture generation with solid sizing bounds
     glGenTextures(1, &app->texture_id);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -415,22 +420,21 @@ bool init_gles_pipeline(AppContext* app)
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * app->height;
 
-    // Seeding texture memory avoids first-frame page faults
+    // Pre-seed texture backing allocation via standard formats
     std::vector<unsigned char> seed_buffer(total_buffer_bytes, 0);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, app->width, app->height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, seed_buffer.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, app->width, app->height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, seed_buffer.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 
     if (app->has_pbo_support) {
-        int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
-        size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * app->height;
-
-        // Force allocate memory for BOTH lanes back-to-back in one flat contiguous heap array
+        // ONE-TIME ALLOCATION FIX: Allocate the unified flat buffer pool EXACTLY ONCE,
+        // outside of the ring generation loop to stop pointer stride corruption crashes.
         app->staging_buffer_pool.resize(total_buffer_bytes * 2, 0);
 
         glGenBuffers(2, app->pbo_ids);
         for (int i = 0; i < 2; ++i) {
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-            // Seed the PBO channel pulling directly from the flat pool offset addresses
+
+            // Map the PBO channel pulling directly from the flat vector offset positions
             uint8_t* seed_ptr = app->staging_buffer_pool.data() + (i * total_buffer_bytes);
             glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, seed_ptr, GL_DYNAMIC_DRAW);
         }
@@ -438,8 +442,9 @@ bool init_gles_pipeline(AppContext* app)
 
         app->ring_allocated = true;
         app->pbo_initialized = true;
-        log_info("Pre-Allocated 1080p Unified Staging Pool Initialized: {} bytes allocated", total_buffer_bytes * 2);
+        log_info("Pre-Allocated {}x{} PBO Streaming Rings Pre-Seeded: {} bytes per slot", app->width, app->height, total_buffer_bytes);
     }
+
     return true;
 }
 
@@ -965,6 +970,9 @@ void GlApp::run()
     log_info("Starting Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
+    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE Loop ---
+    // Safely reads and dispatches socket events until the simple-shell protocol
+    // acknowledges the surface creation on the background thread context.
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
         if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
             stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
@@ -974,40 +982,45 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
+    // EXCLUSIVE ANCHOR POINT: Background render thread claims isolated context control
     if (!ensure_egl_current(m_ctx)) {
         log_err("Background render thread failed to claim EGL context ownership.");
         return;
     }
 
-    if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
-        m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping) {
-        m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
-        m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+    // --- PHASE 2: SAFE BOUNDED INITIAL BOOTSTRAP FRAME ---
+    // Enforce lock containment over the AppContext state before invoking Cairo drawing
+    {
+        std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
+        if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
+            m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping) {
+            m_ctx->lifecycle_state.store(RenderLifecycleState::Active, std::memory_order_release);
+            m_ctx->keyFrameDirty.store(true, std::memory_order_release);
 
-        log_info("Rendering initial frame on run() entry safely on the background thread context.");
-        if (render_cairo_frame(m_ctx) != 0) {
-            stop_run_loop(m_ctx, "render_cairo_frame failed");
+            log_info("Rendering initial frame on run() entry safely on the background thread context.");
+            if (render_cairo_frame(m_ctx) != 0) {
+                stop_run_loop(m_ctx, "render_cairo_frame failed");
+            }
         }
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
-    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // ~60 FPS Target
+    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Strict ~60 FPS Cadence
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
+    // --- PHASE 3: MAIN DISPATCH & RENDERING LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
-        if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
-            RenderLifecycleState next_state = m_ctx->target_lifecycle_state.load(std::memory_order_acquire);
-            m_ctx->lifecycle_state.store(next_state, std::memory_order_release);
-            m_ctx->state_transition_pending.store(false, std::memory_order_release);
 
-            log_info("Render loop safely synchronized state transition: {}", static_cast<int>(next_state));
-
-            if (next_state == RenderLifecycleState::Closing) {
+        // 🔒 TRANSACTION BARRIER: Handle potential lifecycle changes under lock before processing event loops
+        {
+            std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
+            if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Closing) {
                 break;
             }
         }
 
+        // --- STEP 1: PRE-FLUSH WAYLAND EVENTS ---
         while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
             if (m_ctx && wl_display_dispatch_pending(m_ctx->display) < 0) {
                 stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
@@ -1018,11 +1031,17 @@ void GlApp::run()
 
         if (m_ctx) wl_display_flush(m_ctx->display);
 
+        // --- STEP 2: CALCULATE HARD TIMEOUT BUDGETS ---
         const auto now = std::chrono::steady_clock::now();
         auto next_frame_target = last_frame_time + kTargetFrameTime;
-
         int timeoutMs = 0;
-        const RenderLifecycleState active_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+
+        // Ensure state checking remains thread-isolated
+        RenderLifecycleState active_state;
+        {
+            std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
+            active_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+        }
 
         if (active_state == RenderLifecycleState::Active) {
             timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
@@ -1032,9 +1051,10 @@ void GlApp::run()
                 if (timeoutMs <= 0) timeoutMs = 4; // Anti-spin backoff protection
             }
         } else {
-            timeoutMs = 16;
+            timeoutMs = 50; // Low-power sleep fallback if app context enters Paused state
         }
 
+        // --- STEP 3: CONSTRUCT STRUCTURAL MULTI-DESCRIPTOR POLL ATTRIBUTES ---
         pollfd fds[2];
         fds[0].fd = m_ctx->waylandFd;
         fds[0].events = POLLIN;
@@ -1051,11 +1071,13 @@ void GlApp::run()
             break;
         }
 
+        // --- STEP 4: SIGNAL PROCESSING & HARDENED MULTI-THREAD DRAINING ---
         bool wayland_socket_has_data = false;
 
         if (pollResult == 0) {
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
         } else {
+            // Handle cross-thread manual eventfd wake signals
             if ((fds[1].revents & POLLIN) != 0) {
                 uint64_t wakeValue = 0;
                 while (m_ctx) {
@@ -1081,6 +1103,7 @@ void GlApp::run()
                 break;
             }
 
+            // Handle native Wayland protocol stream events
             if ((fds[0].revents & POLLIN) != 0) {
                 if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
                     break;
@@ -1095,6 +1118,7 @@ void GlApp::run()
             }
         }
 
+        // --- STEP 5: PURGE PENDING QUEUE MESSAGES ---
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         if (m_ctx && wayland_socket_has_data) {
@@ -1103,28 +1127,36 @@ void GlApp::run()
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        if (active_state == RenderLifecycleState::Active) {
-            const auto render_now = std::chrono::steady_clock::now();
-            if ((render_now - last_frame_time >= kTargetFrameTime) ||
-                 m_ctx->keycode_dirty.load(std::memory_order_acquire)) {
+        // --- STEP 6: CADENCE-DRIVEN ANIMATION CADENCE TRIGGER ---
+        // Wrap frame generation strictly inside the mutex block boundary to guarantee stability
+        {
+            std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
+            const RenderLifecycleState loop_current_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
 
-                m_ctx->keycode_dirty.store(false, std::memory_order_release);
+            if (loop_current_state == RenderLifecycleState::Active) {
+                const auto render_now = std::chrono::steady_clock::now();
 
-                if (render_cairo_frame(m_ctx) < 0) {
-                    break;
+                if ((render_now - last_frame_time >= kTargetFrameTime) ||
+                     m_ctx->keycode_dirty.load(std::memory_order_acquire)) {
+
+                    m_ctx->keycode_dirty.store(false, std::memory_order_release);
+
+                    if (render_cairo_frame(m_ctx) < 0) {
+                        break;
+                    }
+                    last_frame_time += kTargetFrameTime;
+                    if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
+                        last_frame_time = render_now;
+                    }
                 }
-                last_frame_time += kTargetFrameTime;
-                if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
-                    last_frame_time = render_now;
-                }
-            }
 
-            // Periodic compositor maintenance tasks (Only execute when active)
-            const auto final_now = std::chrono::steady_clock::now();
-            if (final_now - last_shell_reapply >= kShellReapplyInterval) {
-                if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
-                if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
-                last_shell_reapply = final_now;
+                // Periodic container shell maintenance tasks
+                const auto final_now = std::chrono::steady_clock::now();
+                if (final_now - last_shell_reapply >= kShellReapplyInterval) {
+                    if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
+                    if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
+                    last_shell_reapply = final_now;
+                }
             }
         }
     }
@@ -1134,6 +1166,7 @@ void GlApp::run()
 void GlApp::resume()
 {
     if (m_ctx) {
+        std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
         m_ctx->target_lifecycle_state.store(RenderLifecycleState::Active, std::memory_order_release);
         m_ctx->state_transition_pending.store(true, std::memory_order_release);
         signal_run_loop(m_ctx);
@@ -1143,6 +1176,7 @@ void GlApp::resume()
 void GlApp::pause()
 {
     if (m_ctx) {
+        std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
         m_ctx->target_lifecycle_state.store(RenderLifecycleState::Paused, std::memory_order_release);
         m_ctx->state_transition_pending.store(true, std::memory_order_release);
         signal_run_loop(m_ctx);
