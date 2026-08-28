@@ -1086,10 +1086,16 @@ void GlApp::run()
         // --- STEP 2: CALCULATE HARD TIME-BUDGET TARGETS ---
         const auto now = std::chrono::steady_clock::now();
         auto next_frame_target = last_frame_time + kTargetFrameTime;
-
         int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
-         // Minimum poll timeout to avoid busy-waiting
-        if (timeoutMs < 0) timeoutMs = 4;
+
+        // Recalculate timeoutMs if rendering overran the target frame time
+        if (timeoutMs <= 0) {
+            auto missed_by = std::chrono::duration_cast<std::chrono::milliseconds>(now - next_frame_target).count();
+            timeoutMs = static_cast<int>(kTargetFrameTime.count() - (missed_by % kTargetFrameTime.count()));
+            if (timeoutMs <= 0) {
+                timeoutMs = 1;
+            }
+        }
         log_dbg("Wayland dispatch loop: timeoutMs={}", timeoutMs);
 
         // --- STEP 3: THE STRUCTURAL MULTI-DESCRIPTOR POLL ARRANGEMENT ---
