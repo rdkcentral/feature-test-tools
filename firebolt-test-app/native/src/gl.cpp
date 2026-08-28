@@ -1035,50 +1035,49 @@ void GlApp::run()
     log_info("Starting Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
-    // 1. Block and handle initial surface setup handshakes
+    // 1. Initial surface configure handshake
     while (m_ctx && m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
-            stop_run_loop(m_ctx, "wl_display_dispatch failed while waiting for initial configure");
+            stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
             break;
         }
     }
 
     if (!m_ctx || !m_ctx->running.load()) return;
 
-    // Transition to active state if paused on initialization
     if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Paused ||
         m_ctx->lifecycle_state.load() == RenderLifecycleState::Bootstrapping) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+        // Render an initial frame immediately to avoid a black screen on startup
         render_cairo_frame(m_ctx);
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
-    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Target ~60 FPS
+    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Strict ~60 FPS cap
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
     while (m_ctx && m_ctx->running.load()) {
         // --- STEP 1: PRE-FLUSH WAYLAND HANDSHAKES ---
-        // Push any outbound draw commands to the proxy compositor server before reading
         while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
-            if (wl_display_dispatch_pending(m_ctx->display) < 0) {
-                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed during pre-flush");
+            if (m_ctx && wl_display_dispatch_pending(m_ctx->display) < 0) {
+                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
                 break;
             }
         }
         if (!m_ctx || !m_ctx->running.load()) break;
 
-        wl_display_flush(m_ctx->display);
+        if (m_ctx) wl_display_flush(m_ctx->display);
 
-        // --- STEP 2: CALCULATE TIME BUDGET OR FORCE 60 FPS SLEEP ---
+        // --- STEP 2: CALCULATE HARD TIME-BUDGET TARGETS ---
         const auto now = std::chrono::steady_clock::now();
         auto next_frame_target = last_frame_time + kTargetFrameTime;
 
         int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
         if (timeoutMs < 0) timeoutMs = 0;
 
-        // --- STEP 3: CONSTRUCT STRUCTURAL POLL ARRAY ---
+        // --- STEP 3: THE STRUCTURAL MULTI-DESCRIPTOR POLL ARRANGEMENT ---
         pollfd fds[2];
         fds[0].fd = m_ctx->waylandFd;
         fds[0].events = POLLIN;
@@ -1088,40 +1087,48 @@ void GlApp::run()
         fds[1].events = POLLIN;
         fds[1].revents = 0;
 
-        // The thread should sleep here. If it returns immediately, an FD is flooded.
         const int pollResult = poll(fds, 2, timeoutMs);
-
         if (pollResult < 0) {
-            wl_display_cancel_read(m_ctx->display);
+            if (m_ctx) wl_display_cancel_read(m_ctx->display);
             if (EINTR == errno) continue;
             break;
         }
 
-        // --- STEP 4: HARDENED INTERRUPT AND SIGNAL DRAINING ---
+        // --- STEP 4: SIGNAL PROCESSING & DRAINING ---
         if (pollResult == 0) {
-            // Timeout hit successfully. Complete the read cycle safely without picking up socket elements.
-            wl_display_cancel_read(m_ctx->display);
+            // Timeout hit successfully. Complete the read cycle safely without reading socket data.
+            if (m_ctx) wl_display_cancel_read(m_ctx->display);
         } else {
             // Check cross-thread wake eventfd signals
             if ((fds[1].revents & POLLIN) != 0) {
-                // HARDENED FIX: Read the 8-byte eventfd buffer completely until empty.
-                // If left unread, poll() will return instantly on the next loop.
                 uint64_t wakeValue = 0;
-                while (read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue)) > 0);
+                while (m_ctx) {
+                    ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
+                    if (bytesRead < 0) {
+                        // CRITICAL DRIFT CORRECTION: EAGAIN means the eventfd buffer is completely empty.
+                        // Break out of the read loop normally instead of crashing or spinning.
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                            break;
+                        }
+                        log_err("EventFd read hardware error encountered: errno={}", errno);
+                        break;
+                    }
+                    if (bytesRead == 0) break; // End of file conditions
+                }
             }
 
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                wl_display_cancel_read(m_ctx->display);
+                if (m_ctx) wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
             // Check incoming Wayland proxy network socket descriptors
             if ((fds[0].revents & POLLIN) != 0) {
-                if (wl_display_read_events(m_ctx->display) < 0) {
+                if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
                     break;
                 }
             } else {
-                wl_display_cancel_read(m_ctx->display);
+                if (m_ctx) wl_display_cancel_read(m_ctx->display);
             }
 
             if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
@@ -1129,14 +1136,12 @@ void GlApp::run()
             }
         }
 
-        // --- STEP 5: CLEAR OUT WAYLAND EVENT QUEUES COMPLETELY ---
-        // Force the app to process everything read from the socket.
-        // This stops the proxy compositor from flooding the socket with unhandled events.
+        // --- STEP 5: DRAIN PENDING WAYLAND EVENTS ---
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        // --- STEP 6: RENDER THE NEXT ANIMATION FRAME ---
+        // --- STEP 6: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
         const auto render_now = std::chrono::steady_clock::now();
         if (render_now - last_frame_time >= kTargetFrameTime) {
             if (render_cairo_frame(m_ctx) < 0) {
