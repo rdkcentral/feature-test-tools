@@ -159,7 +159,6 @@ struct AppContext {
     bool has_pbo_support = true;
     bool pbo_initialized = false;
     bool swap_interval_calibrated = false;
-    GLsync frame_render_fence = nullptr;
 
     cairo_font_face_t* embedded_font = nullptr;
 
@@ -828,12 +827,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    if (app->frame_render_fence) {
-        glDeleteSync(app->frame_render_fence);
-        app->frame_render_fence = nullptr;
-    }
-    app->frame_render_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glFinish();
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
@@ -1056,11 +1050,11 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
-    if ( m_ctx && (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
+    if (m_ctx && (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
         m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping)) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
-        // Render an initial frame immediately to avoid a black screen on startup
+
         log_info("Rendering initial frame on run() entry");
         if (render_cairo_frame(m_ctx) != 0) {
             stop_run_loop(m_ctx, "render_cairo_frame failed");
@@ -1092,7 +1086,7 @@ void GlApp::run()
 
         // ANTI-SPIN SAFETY THROTTLE: If Cairo rendering or GPU upload drops past the 16.6ms window,
         // timeoutMs locks down to 0, which bypasses poll() sleeping and pins the CPU core to 100%.
-        // Force 4ms hardware sleep minimum if the frame loop falls into a time-debt.
+        // We force a strict 4ms hardware sleep minimum if the frame loop falls into a time-debt.
         if (timeoutMs <= 0) {
             timeoutMs = 4;
         }
@@ -1118,14 +1112,12 @@ void GlApp::run()
         if (pollResult == 0) {
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
         } else {
-            // Check cross-thread wake eventfd signals
+            // Check cross-thread wake eventfd signals independently
             if ((fds[1].revents & POLLIN) != 0) {
                 uint64_t wakeValue = 0;
                 while (m_ctx) {
                     ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
                     if (bytesRead < 0) {
-                        // DRIFT CORRECTION: EAGAIN means the eventfd buffer is completely empty.
-                        // Break safely out of the read loop to stop unthrottled non-blocking spinning.
                         if (errno == EAGAIN || errno == EWOULDBLOCK) {
                             break;
                         }
@@ -1136,12 +1128,18 @@ void GlApp::run()
                 }
             }
 
+            // Verify break conditions AFTER draining the descriptor but BEFORE updating socket pipelines
+            if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) {
+                if (m_ctx) wl_display_cancel_read(m_ctx->display);
+                break;
+            }
+
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
                 if (m_ctx) wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
-            // Check incoming Wayland proxy network socket descriptors
+            // Check incoming Wayland proxy network socket descriptors independently
             if ((fds[0].revents & POLLIN) != 0) {
                 if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
                     break;
@@ -1166,46 +1164,18 @@ void GlApp::run()
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        // --- STEP 6: ASYNC RENDERING COMPLETE TRIGGER GUARD ---
-        bool gpu_is_vacant = true;
-        if (m_ctx->frame_render_fence) {
-            if (ensure_egl_current(m_ctx)) {
-                // Check status of previous frame with an instantaneous 0-nanosecond wait timeout
-                GLenum sync_status = glClientWaitSync(m_ctx->frame_render_fence, 0, 0);
-                if (sync_status == GL_ALREADY_SIGNALED || sync_status == GL_CONDITION_SATISFIED) {
-                    glDeleteSync(m_ctx->frame_render_fence);
-                    m_ctx->frame_render_fence = nullptr;
-                    gpu_is_vacant = true;
-                } else if (sync_status == GL_WAIT_FAILED) {
-                    // If the fence becomes corrupt or invalid, clear it to avoid a deadlock
-                    log_warn("GLES Sync Fence validation failed. Resetting fence state tracking.");
-                    glDeleteSync(m_ctx->frame_render_fence);
-                    m_ctx->frame_render_fence = nullptr;
-                    gpu_is_vacant = true;
-                } else {
-                    // GPU is still rendering. Do not queue a new frame yet to avoid bottlenecking.
-                    gpu_is_vacant = false;
-                }
-            } else {
-                // If EGL context failed to bind on this loop cycle, defer rendering to next tick
-                gpu_is_vacant = true;
+        // --- STEP 6: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
+        const auto render_now = std::chrono::steady_clock::now();
+        if (render_now - last_frame_time >= kTargetFrameTime) {
+            if (render_cairo_frame(m_ctx) < 0) {
+                break;
             }
-        }
+            // Step forward precisely to fix cumulative time drift
+            last_frame_time += kTargetFrameTime;
 
-        // --- STEP 7: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
-        if (gpu_is_vacant) {
-            const auto render_now = std::chrono::steady_clock::now();
-            if (render_now - last_frame_time >= kTargetFrameTime) {
-                if (render_cairo_frame(m_ctx) < 0) {
-                    break;
-                }
-                // Step forward precisely to fix cumulative time drift
-                last_frame_time += kTargetFrameTime;
-
-                // Safety reset if system experiences deep container stalls
-                if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
-                    last_frame_time = render_now;
-                }
+            // Safety reset if system experiences deep container stalls
+            if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
+                last_frame_time = render_now;
             }
         }
 
