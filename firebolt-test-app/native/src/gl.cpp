@@ -144,9 +144,7 @@ struct AppContext {
     bool swap_interval_calibrated = false;
     bool ring_allocated = false;
     int current_ring_index = 0;
-    std::vector<uint8_t> staging_buffers[2];
-    bool ring_allocated = false;
-    int current_ring_index = 0;
+    std::vector<uint8_t> staging_buffer_pool;
 
     cairo_font_face_t* embedded_font = nullptr;
 
@@ -416,20 +414,21 @@ bool init_gles_pipeline(AppContext* app)
         int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
         size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * app->height;
 
+        // Force allocate memory for BOTH lanes back-to-back in one flat contiguous heap array
+        app->staging_buffer_pool.resize(total_buffer_bytes * 2, 0);
+
         glGenBuffers(2, app->pbo_ids);
         for (int i = 0; i < 2; ++i) {
-            // 1. Allocate the persistent CPU staging buffer once
-            app->staging_buffers[i].resize(total_buffer_bytes, 0);
-
-            // 2. Allocate the matching GPU hardware storage slot
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, app->staging_buffers[i].data(), GL_DYNAMIC_DRAW);
+            // Seed the PBO channel pulling directly from the flat pool offset addresses
+            uint8_t* seed_ptr = app->staging_buffer_pool.data() + (i * total_buffer_bytes);
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, seed_ptr, GL_DYNAMIC_DRAW);
         }
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
         app->ring_allocated = true;
         app->pbo_initialized = true;
-        log_info("Pre-Allocated 1080p Staging Pools Initialized: {} bytes per slot", total_buffer_bytes);
+        log_info("Pre-Allocated 1080p Unified Staging Pool Initialized: {} bytes allocated", total_buffer_bytes * 2);
     }
     return true;
 }
@@ -470,6 +469,20 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
+    using PFNGLBUFFERSUBDATAPROC_LOCAL = void (*)(GLenum target, GLintptr offset, GLsizeiptr size, const void* data);
+    static PFNGLBUFFERSUBDATAPROC_LOCAL glBufferSubData_ptr = nullptr;
+
+    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
+    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
+    static bool symbols_probed = false;
+
+    if (!symbols_probed) {
+        glBufferSubData_ptr = reinterpret_cast<PFNGLBUFFERSUBDATAPROC_LOCAL>(eglGetProcAddress("glBufferSubData"));
+        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
+        if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
+        symbols_probed = true;
+    }
+
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
@@ -480,15 +493,17 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     // Determine the next target ring index for our double buffering setup
     int next_idx = (app->current_ring_index + 1) % 2;
 
-    // STEP A: Bind Cairo directly over our safe, persistent CPU system RAM block
+    // DYNAMIC OFFSET CALCULATION: Points directly to the safe contiguous memory segment
+    uint8_t* active_staging_ptr = app->staging_buffer_pool.data() + (next_idx * total_buffer_bytes);
+
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
-        app->staging_buffers[next_idx].data(), CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
+        active_staging_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
     cairo_t* cr = cairo_create(surface);
 
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
 
-    // Solid base clear
+    // Solid paint clear
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
@@ -639,7 +654,19 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     if (ensure_egl_current(app)) {
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
-        glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, app->staging_buffers[next_idx].data());
+
+        if (glBufferSubData_ptr) {
+            glBufferSubData_ptr(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, active_staging_ptr);
+        } else {
+            glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, active_staging_ptr);
+        }
+
+        if (glMemoryBarrierEXT_ptr) {
+            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
+            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
+            #endif
+            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
+        }
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
