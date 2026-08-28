@@ -675,17 +675,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     return frame;
 }
 
-static void queue_prepared_frame(AppContext* app, PreparedFrame&& frame)
-{
-    if (!app || frame.width <= 0 || frame.height <= 0) return;
-    std::lock_guard<std::mutex> lock(app->preparedFrameMutex);
-    app->pendingPreparedWidth = frame.width;
-    app->pendingPreparedHeight = frame.height;
-    app->pendingPreparedKeycode = frame.keycode;
-    app->hasPendingPreparedFrame = true;
-    signal_run_loop(app);
-}
-
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 {
     if (!app) return false;
@@ -1038,9 +1027,6 @@ bool GlApp::init(const char* waylandDisplay)
 void GlApp::renderInitialFrame()
 {
     if (!m_ctx || m_ctx->lifecycle_state.load() == RenderLifecycleState::Closing) return;
-
-    //PreparedFrame frame = prepare_cairo_frame(m_ctx, 0);
-    //queue_prepared_frame(m_ctx, std::move(frame));
     resume();
 }
 
