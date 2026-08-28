@@ -878,7 +878,7 @@ bool GlApp::init(const char* waylandDisplay)
     }
 
     eglBindAPI(EGL_OPENGL_ES_API);
-    EGLint context_attribs[] = { CMAKE_CXX_STANDARD, 3, EGL_NONE };
+    EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
     m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
     if (m_ctx->egl_context == EGL_NO_CONTEXT) {
         log_err("eglCreateContext failed: eglGetError={}", eglGetError());
