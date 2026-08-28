@@ -137,9 +137,6 @@ struct AppContext {
     bool has_pbo_support = true;
     bool pbo_initialized = false;
     bool swap_interval_calibrated = false;
-    uint8_t* pbo_mapped_ptrs[2] = { nullptr, nullptr };
-    cairo_surface_t* persistent_surfaces[2] = { nullptr, nullptr };
-    cairo_t* persistent_contexts[2] = { nullptr, nullptr };
     bool ring_allocated = false;
     int current_ring_index = 0;
 
@@ -472,28 +469,40 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
-    // Dynamically look up the memory barrier extension function address at runtime
-    // to bypass GLES 3.0 compile-time header definition limitations.
-    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-    static bool barrier_probed = false;
-
-    if (!barrier_probed) {
-        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) {
-            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        }
-        barrier_probed = true;
-    }
-
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
 
-    // Reuse the current ring index for PBO mapping if available
-    int idx = app->current_ring_index;
-    cairo_t* cr = app->persistent_contexts[idx];
-    cairo_surface_t* surface = app->persistent_surfaces[idx];
+    // Calculate layout variables matching our 1080p target profile bounds
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
+
+    // Determine the next target ring index for our double buffering setup
+    int next_idx = (app->current_ring_index + 1) % 2;
+
+    // Ensure the EGL surface context is bound before calling OpenGL memory mapping commands
+    if (!ensure_egl_current(app)) return frame;
+
+    // STEP A: Map the PBO memory range using standard, cross-platform GLES 3.0 commands
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
+
+    // Invalidate the old storage lane to prevent pipeline stalling and keep loops fast
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
+
+    uint8_t* pbo_ptr = static_cast<uint8_t*>(glMapBufferRange(
+        GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
+        GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT));
+
+    if (!pbo_ptr) {
+        log_err("Fatal: Streaming memory map allocation failed on slot {}", next_idx);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        return frame;
+    }
+
+    // STEP B: Bind a temporary Cairo canvas directly on top of our mapped memory pointer
+    cairo_surface_t* surface = cairo_image_surface_create_for_data(
+        pbo_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
+    cairo_t* cr = cairo_create(surface);
 
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
@@ -502,7 +511,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
-    // Dynamic Split Engine: Anchors coordinates safely to the specified display size
+    // Compute exact panel split points (1920 * 0.60 = 1152) -> Perfectly divisible by 64 bytes
     double split_x = frame.width * 0.60;
     double left_width = split_x;
     double right_width = frame.width - split_x;
@@ -620,7 +629,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
     double content_spacing = 75.0;
-
     double label_width = 208.0;
     double label_height = 22.0;
     const char* label_text = "LAST KEYCODE";
@@ -647,21 +655,14 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     cairo_restore(cr);
 
-    // Flush your drawing changes out to the surface memory buffer
+    // STEP C: Flush and destroy temporary drawing handles
     cairo_surface_flush(surface);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
 
-    // Use the extension function pointer to sync the CPU cache line safely.
-    // This removes the un-declared symbol error and allows compilation to pass.
-    if (glMemoryBarrierEXT_ptr) {
-        #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
-        #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
-        #endif
-
-        // Re-bind the active PBO ring slot context before setting the memory barrier
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[idx]);
-        glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    }
+    // STEP D: Unmap the PBO memory region cleanly to make it available for the GPU
+    glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
     return frame;
 }
@@ -682,57 +683,31 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
 
-    // Dynamically look up the memory barrier extension function address at runtime
-    // to bypass GLES 3.0 compile-time header definition limitations.
-    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-    static bool barrier_probed = false;
-
-    if (!barrier_probed) {
-        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) {
-            // Fallback try: check for the core GLES 3.1 layout symbol location names
-            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        }
-        barrier_probed = true;
-        if (glMemoryBarrierEXT_ptr) {
-            log_info("Hardware DMA memory cache barrier synchronization interface: ACTIVE");
+    // Call eglSwapInterval(0) dynamically on the render thread to avoid EGL_BAD_SURFACE (12294)
+    if (!app->swap_interval_calibrated) {
+        if (eglSwapInterval(app->egl_display, 0) == EGL_TRUE) {
+            log_info("Successfully decoupled EGL V-Sync Swap Interval to 0.");
         } else {
-            log_warn("Hardware DMA memory barrier missing. Fallback double-buffering profiles may experience tearing.");
+            log_warn("Forced EGL Swap Interval modification rejected: eglGetError={}", eglGetError());
         }
+        app->swap_interval_calibrated = true;
     }
 
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
-    // ONE-TIME INITIALIZATION: Allocate and permanently map the persistent PBO rings
+    // ONE-TIME INITIALIZATION: Generate the standard PBO rings inside the hardware context
     if (app->has_pbo_support && !app->ring_allocated) {
         glGenBuffers(2, app->pbo_ids);
-
         for (int i = 0; i < 2; ++i) {
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-
+            // Allocate standard data layouts safely supported by all GLES 3.0 drivers
             glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
-
-            // Permanently map hardware buffer ranges using the standard vendor EXT flags
-            app->pbo_mapped_ptrs[i] = static_cast<uint8_t*>(glMapBufferRange(
-                GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
-                GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT_EXT | GL_MAP_COHERENT_BIT_EXT));
-
-            if (!app->pbo_mapped_ptrs[i]) {
-                log_err("Fatal: Hardware memory map allocation failed on PBO slice index {}", i);
-                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-                return false;
-            }
-
-            app->persistent_surfaces[i] = cairo_image_surface_create_for_data(
-                app->pbo_mapped_ptrs[i], CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
-            app->persistent_contexts[i] = cairo_create(app->persistent_surfaces[i]);
         }
-
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         app->ring_allocated = true;
-        log_info("Zero-Copy Hardware DMA Canvas Pipeline fully locked down.");
+        app->pbo_initialized = true;
+        log_info("Platform-Agnostic PBO Ring Buffer allocated successfully.");
     }
 
     glViewport(0, 0, 1920, 1080);
@@ -747,25 +722,17 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
     if (app->has_pbo_support && app->ring_allocated) {
+        // Ping-pong between our buffers (0 -> 1 -> 0)
         int draw_idx = app->current_ring_index;
         app->current_ring_index = (draw_idx + 1) % 2;
 
+        // Asynchronously update texture data fields pulling directly from the mapped PBO allocation slot
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
-
-        // If the driver exposes the cache flush function pointer, execute it safely
-        if (glMemoryBarrierEXT_ptr) {
-            // Using the macro definition specified by GL_EXT_buffer_storage header specifications
-            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
-            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
-            #endif
-            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
-        }
-
         glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1920, 1080, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
-    // Geometry Draw Call
+    // Geometry Draw Call Assembly
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glEnableVertexAttribArray(app->positionAttribLocation);
     glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
@@ -774,6 +741,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
+    // Block thread until draw operations clear out completely
     glFinish();
 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
@@ -1269,50 +1237,23 @@ void GlApp::deinit()
     m_ctx->running.store(false);
     signal_run_loop(m_ctx);
 
-    // Lock down context targeting to this cleanup thread safely
     if (m_ctx->egl_display != EGL_NO_DISPLAY && m_ctx->egl_context != EGL_NO_CONTEXT && m_ctx->egl_surface != EGL_NO_SURFACE) {
         if (eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) == EGL_TRUE) {
 
-            // STEP 1: TEARDOWN CAIRO ENGULS & DETACH HARDWARE MEMORY MAPS FIRST
-            // This must execute while the PBO buffer indices are still valid and the EGL context is current.
-            if (m_ctx->ring_allocated) {
-                for (int i = 0; i < 2; ++i) {
-                    if (m_ctx->persistent_contexts[i]) {
-                        cairo_destroy(m_ctx->persistent_contexts[i]);
-                        m_ctx->persistent_contexts[i] = nullptr;
-                    }
-                    if (m_ctx->persistent_surfaces[i]) {
-                        cairo_surface_destroy(m_ctx->persistent_surfaces[i]);
-                        m_ctx->persistent_surfaces[i] = nullptr;
-                    }
-
-                    // Safe unmapping inside a valid buffer boundary framework context
-                    if (m_ctx->pbo_ids[i] != 0) {
-                        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_ctx->pbo_ids[i]);
-                        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-                        m_ctx->pbo_mapped_ptrs[i] = nullptr;
-                    }
-                }
-                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-                m_ctx->ring_allocated = false;
-            }
-
-            // STEP 2: SAFELY DELETE HARDWARE STORAGE BUFFERS FROM THE GPU
+            // Delete standard PBO buffers safely
             if (m_ctx->pbo_initialized || m_ctx->pbo_ids[0] != 0) {
                 glDeleteBuffers(2, m_ctx->pbo_ids);
                 m_ctx->pbo_ids[0] = 0;
                 m_ctx->pbo_ids[1] = 0;
                 m_ctx->pbo_initialized = false;
+                m_ctx->ring_allocated = false;
             }
 
-            // Clean up basic pipeline resources
             if (m_ctx->texture_id) { glDeleteTextures(1, &m_ctx->texture_id); m_ctx->texture_id = 0; }
             if (m_ctx->vbo_id) { glDeleteBuffers(1, &m_ctx->vbo_id); m_ctx->vbo_id = 0; }
             if (m_ctx->program_id) { glDeleteProgram(m_ctx->program_id); m_ctx->program_id = 0; }
 
             glFinish();
-
-            // Safely unbind the thread context ownership state model
             eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         }
     }
