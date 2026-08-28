@@ -337,16 +337,7 @@ bool init_gles_pipeline(AppContext* app)
         return false;
     }
 
-    // Configure main texturing targets
-    glGenTextures(1, &app->texture_id);
-    glBindTexture(GL_TEXTURE_2D, app->texture_id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    // Map screen-aligned normalized quad vertex configurations
+    // Configure screen-aligned normalized quad vertex configurations (VBO)
     GLfloat vertices[] = {
         -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
         -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
@@ -379,43 +370,70 @@ bool init_gles_pipeline(AppContext* app)
 
     // If version is 3.0+ or explicit driver extension is claimed, move to Step 2
     if (app->glesClientVersion >= 3 || extension_found) {
-        // Clear past errors before initiating the hardware test
-        while (glGetError() != GL_NO_ERROR);
+        while (glGetError() != GL_NO_ERROR); // Clear past errors
 
         // Step 2: The Hardware Smoke Test
-        // Allocate a small, mock PBO handle to test if the driver's kernel
-        // can handle a token assignment request without throwing a state error.
         GLuint test_pbo = 0;
         glGenBuffers(1, &test_pbo);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, test_pbo);
         glBufferData(GL_PIXEL_UNPACK_BUFFER, 16, nullptr, GL_STREAM_DRAW);
 
         if (glGetError() == GL_NO_ERROR) {
-            // Verify mapping functionality works out-of-band as well
             void* ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, 16, GL_MAP_WRITE_BIT);
             if (ptr && glGetError() == GL_NO_ERROR) {
                 glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-                app->has_pbo_support = true; // Confirmed support
+                app->has_pbo_support = true; // Confirmed native hardware capability
             }
         }
 
-        // Cleanup test artifacts immediately
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         glDeleteBuffers(1, &test_pbo);
-
-        // Clear any residual error states from the test
-        while (glGetError() != GL_NO_ERROR);
+        while (glGetError() != GL_NO_ERROR); // Clear validation residue
     } else {
         log_warn("PBO support not claimed by driver or GLES version < 3.0");
     }
 
     log_info("Verified Hardware PBO Capability: {}", app->has_pbo_support ? "ACTIVE/SUPPORTED" : "DISABLED/FALLBACK");
 
-    // Reset loop verification safety structures
+    // =========================================================================
+    // PRODUCTION HARDWARE STORAGE PRE-ALLOCATION
+    // =========================================================================
+    // Reset loop tracking states
     app->pbo_initialized = false;
     app->pbo_ids[0] = 0;
     app->pbo_ids[1] = 0;
     app->pbo_index = 0;
+    app->ring_allocated = false;
+
+    // Fix: Unified single setup for texturing targets with explicit 1080p sizing
+    glGenTextures(1, &app->texture_id);
+    glBindTexture(GL_TEXTURE_2D, app->texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Force driver VRAM geometry allocation upfront to stop runtime re-allocations
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1920, 1080, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Pre-allocate Streaming PBO Pools matching our platform-agnostic stride parameters
+    if (app->has_pbo_support) {
+        int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, 1920);
+        size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * 1080;
+
+        glGenBuffers(2, app->pbo_ids);
+        for (int i = 0; i < 2; ++i) {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
+            // Allocate the 8.3MB slots using GL_DYNAMIC_DRAW for low-overhead streaming loops
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_DYNAMIC_DRAW);
+        }
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+        app->ring_allocated = true;
+        app->pbo_initialized = true;
+        log_info("Pre-Allocated 1080p PBO Streaming Rings Locked Down: {} bytes per slot", total_buffer_bytes);
+    }
 
     return true;
 }
@@ -473,33 +491,30 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.height = app->height;
     frame.keycode = keycode;
 
-    // Calculate layout variables matching our 1080p target profile bounds
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
     // Determine the next target ring index for our double buffering setup
     int next_idx = (app->current_ring_index + 1) % 2;
 
-    // Ensure the EGL surface context is bound before calling OpenGL memory mapping commands
     if (!ensure_egl_current(app)) return frame;
 
-    // STEP A: Map the PBO memory range using standard, cross-platform GLES 3.0 commands
+    // STEP A: Map the pre-allocated PBO space securely using standard commands
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
 
-    // Invalidate the old storage lane to prevent pipeline stalling and keep loops fast
-    glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
-
+    // REMOVED: glBufferData(..., nullptr) is gone! This stops the driver crashes.
+    // Instead, map the buffer range directly with memory invalidation flags.
     uint8_t* pbo_ptr = static_cast<uint8_t*>(glMapBufferRange(
         GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
         GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT));
 
     if (!pbo_ptr) {
-        log_err("Fatal: Streaming memory map allocation failed on slot {}", next_idx);
+        log_err("Fatal: Streaming buffer mapping failed on index slot {}", next_idx);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         return frame;
     }
 
-    // STEP B: Bind a temporary Cairo canvas directly on top of our mapped memory pointer
+    // STEP B: Bind your temporary Cairo context straight onto the mapped pointer address space
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
         pbo_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
     cairo_t* cr = cairo_create(surface);
@@ -642,12 +657,10 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     double total_content_height = label_height + content_spacing + code_extents.height;
     double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 15.0;
 
-    // Layer 1: Render the Static Text Header
     cairo_set_font_size(cr, 28.0);
     cairo_move_to(cr, box_x + (box_size - label_width) / 2.0, baseline_start_y + label_height);
     cairo_show_text(cr, label_text);
 
-    // Layer 2: Render the Dynamic Numeric Keycode Sequence
     cairo_set_font_size(cr, 96.0);
     cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing,
                  baseline_start_y + label_height + content_spacing + code_extents.height);
@@ -655,12 +668,12 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     cairo_restore(cr);
 
-    // STEP C: Flush and destroy temporary drawing handles
+    // STEP C: Flush and destroy temporary surface drawing handles
     cairo_surface_flush(surface);
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 
-    // STEP D: Unmap the PBO memory region cleanly to make it available for the GPU
+    // STEP D: Unmap the PBO memory range cleanly to hand data tracking back to the GPU
     glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
@@ -683,32 +696,28 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
 
+    // Dynamically look up the memory barrier extension function pointer address
+    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
+    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
+    static bool barrier_probed = false;
+
+    if (!barrier_probed) {
+        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
+        if (!glMemoryBarrierEXT_ptr) {
+            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
+        }
+        barrier_probed = true;
+    }
+
     // Call eglSwapInterval(0) dynamically on the render thread to avoid EGL_BAD_SURFACE (12294)
     if (!app->swap_interval_calibrated) {
         if (eglSwapInterval(app->egl_display, 0) == EGL_TRUE) {
             log_info("Successfully decoupled EGL V-Sync Swap Interval to 0.");
-        } else {
-            log_warn("Forced EGL Swap Interval modification rejected: eglGetError={}", eglGetError());
         }
         app->swap_interval_calibrated = true;
     }
 
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
-
-    // ONE-TIME INITIALIZATION: Generate the standard PBO rings inside the hardware context
-    if (app->has_pbo_support && !app->ring_allocated) {
-        glGenBuffers(2, app->pbo_ids);
-        for (int i = 0; i < 2; ++i) {
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-            // Allocate standard data layouts safely supported by all GLES 3.0 drivers
-            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
-        }
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-        app->ring_allocated = true;
-        app->pbo_initialized = true;
-        log_info("Platform-Agnostic PBO Ring Buffer allocated successfully.");
-    }
 
     glViewport(0, 0, 1920, 1080);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
@@ -722,13 +731,22 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
     if (app->has_pbo_support && app->ring_allocated) {
-        // Ping-pong between our buffers (0 -> 1 -> 0)
+        // Ping-pong between our pre-allocated buffers (0 -> 1 -> 0)
         int draw_idx = app->current_ring_index;
         app->current_ring_index = (draw_idx + 1) % 2;
 
-        // Asynchronously update texture data fields pulling directly from the mapped PBO allocation slot
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1920, 1080, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
+
+        // Execute a driver-level cache flush statement if supported
+        if (glMemoryBarrierEXT_ptr) {
+            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
+            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
+            #endif
+            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
+        }
+
+        // Asynchronously update the texture using our mapped pixel arrays
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1920, 1080, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
@@ -741,7 +759,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    // Block thread until draw operations clear out completely
     glFinish();
 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
