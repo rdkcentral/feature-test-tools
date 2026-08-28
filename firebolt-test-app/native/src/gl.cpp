@@ -1024,39 +1024,35 @@ void GlApp::run()
     log_info("Starting Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
-    // Initial configuration block handshake; wait until the Wayland compositor has
-    //fully configured our surface and assigned a valid surface ID.
+    // 1. Block and handle initial surface setup handshakes
     while (m_ctx && m_ctx->running.load() && !m_ctx->configured) {
         if (wl_display_dispatch(m_ctx->display) < 0) {
-            stop_run_loop(m_ctx, "wl_display_dispatch failed");
+            stop_run_loop(m_ctx, "wl_display_dispatch failed while waiting for initial configure");
             break;
         }
     }
 
     if (!m_ctx || !m_ctx->running.load()) return;
 
-    // The background thread is now fully configured and owns the EGL context.
-    // Transition to Active and force render the initial frame right here!
+    // Transition to active state if paused on initialization
     if (m_ctx->lifecycle_state.load() == RenderLifecycleState::Paused ||
         m_ctx->lifecycle_state.load() == RenderLifecycleState::Bootstrapping) {
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
-        // Render and display the split-screen graphics panel directly on this thread
         render_cairo_frame(m_ctx);
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
-    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Strict ~60 FPS cap
+    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Target ~60 FPS
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
     while (m_ctx && m_ctx->running.load()) {
-        // --- 1. CONCURRENT DISPLAY PIPELINE MAINTENANCE ---
-        // Always flush out pending requests to the compositor before reading events
+        // --- STEP 1: PRE-FLUSH WAYLAND HANDSHAKES ---
+        // Push any outbound draw commands to the proxy compositor server before reading
         while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
-            // Drain anything outstanding in the queues right now
             if (wl_display_dispatch_pending(m_ctx->display) < 0) {
-                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
+                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed during pre-flush");
                 break;
             }
         }
@@ -1064,17 +1060,14 @@ void GlApp::run()
 
         wl_display_flush(m_ctx->display);
 
-        // --- 2. CALC TIME BUDGET REMAINING ---
+        // --- STEP 2: CALCULATE TIME BUDGET OR FORCE 60 FPS SLEEP ---
         const auto now = std::chrono::steady_clock::now();
         auto next_frame_target = last_frame_time + kTargetFrameTime;
 
         int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
         if (timeoutMs < 0) timeoutMs = 0;
 
-        const char* envTimeout = std::getenv("GLAPP_POLL_NO_TIMEOUT");
-        if (envTimeout && std::strcmp(envTimeout, "1") == 0) timeoutMs = -1;
-
-        // --- 3. THE THREAD SLEEP SLEEVE ---
+        // --- STEP 3: CONSTRUCT STRUCTURAL POLL ARRAY ---
         pollfd fds[2];
         fds[0].fd = m_ctx->waylandFd;
         fds[0].events = POLLIN;
@@ -1084,7 +1077,7 @@ void GlApp::run()
         fds[1].events = POLLIN;
         fds[1].revents = 0;
 
-        // Thread safely drops to 0% CPU use right here until timeout or signal hits
+        // The thread should sleep here. If it returns immediately, an FD is flooded.
         const int pollResult = poll(fds, 2, timeoutMs);
 
         if (pollResult < 0) {
@@ -1093,21 +1086,25 @@ void GlApp::run()
             break;
         }
 
-        // --- 4. STREAM HANDLING AND EVENT EXTRACTION ---
+        // --- STEP 4: HARDENED INTERRUPT AND SIGNAL DRAINING ---
         if (pollResult == 0) {
-            // Timeout hit! Complete the read cycle safely without reading socket data
+            // Timeout hit successfully. Complete the read cycle safely without picking up socket elements.
             wl_display_cancel_read(m_ctx->display);
         } else {
-            // Check cross-thread loop signals (eventfd)
+            // Check cross-thread wake eventfd signals
             if ((fds[1].revents & POLLIN) != 0) {
-                drain_run_signal(m_ctx);
+                // HARDENED FIX: Read the 8-byte eventfd buffer completely until empty.
+                // If left unread, poll() will return instantly on the next loop.
+                uint64_t wakeValue = 0;
+                while (read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue)) > 0);
             }
+
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
                 wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
-            // Check incoming Wayland network socket descriptors
+            // Check incoming Wayland proxy network socket descriptors
             if ((fds[0].revents & POLLIN) != 0) {
                 if (wl_display_read_events(m_ctx->display) < 0) {
                     break;
@@ -1121,13 +1118,14 @@ void GlApp::run()
             }
         }
 
-        // CRITICAL DRAINING STEP: Clear out EVERYTHING read from the socket
-        // looping through until the internal queue is fully vacant.
+        // --- STEP 5: CLEAR OUT WAYLAND EVENT QUEUES COMPLETELY ---
+        // Force the app to process everything read from the socket.
+        // This stops the proxy compositor from flooding the socket with unhandled events.
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        // --- 5. RENDER PROCESSING FRAME GRAPHICS CAPS ---
+        // --- STEP 6: RENDER THE NEXT ANIMATION FRAME ---
         const auto render_now = std::chrono::steady_clock::now();
         if (render_now - last_frame_time >= kTargetFrameTime) {
             if (render_cairo_frame(m_ctx) < 0) {
@@ -1136,7 +1134,7 @@ void GlApp::run()
             last_frame_time = render_now;
         }
 
-        // Periodic maintenance tasks
+        // Periodic container shell maintenance tasks
         if (render_now - last_shell_reapply >= kShellReapplyInterval) {
             if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
             if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
@@ -1144,8 +1142,7 @@ void GlApp::run()
         }
     }
 
-    // deinit() handles the glFinish and eglMakeCurrent perfectly and safely out-of-band.
-    log_warn("Wayland dispatch loop exited");
+    log_warn("Wayland dispatch loop exited cleanly");
 }
 
 void GlApp::resume()
