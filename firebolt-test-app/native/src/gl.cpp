@@ -102,8 +102,8 @@ extern "C" {
 }
 
 #define DEFAULT_DISPLAY "wayland-0"
-#define DEFAULT_WIDTH   1280
-#define DEFAULT_HEIGHT  720
+#define DEFAULT_WIDTH   1920
+#define DEFAULT_HEIGHT  1080
 enum class RenderLifecycleState {
     Bootstrapping,
     Paused,
@@ -158,6 +158,7 @@ struct AppContext {
     int pbo_index = 0;
     bool has_pbo_support = true;
     bool pbo_initialized = false;
+    bool swap_interval_calibrated = false;
 
     cairo_font_face_t* embedded_font = nullptr;
 
@@ -740,6 +741,16 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 
     if (!app || frame.width <= 0 || frame.height <= 0 || frame.rgbaPixels.empty()) return false;
     if (!ensure_egl_current(app)) return false;
+
+    // V-sync calibration: Attempt to decouple EGL swap interval to 0 for low-latency rendering
+    if (!app->swap_interval_calibrated) {
+        if (eglSwapInterval(app->egl_display, 0) == EGL_TRUE) {
+            log_info("Successfully decoupled EGL V-Sync Swap Interval to 0.");
+        } else {
+            log_warn("Forced EGL Swap Interval modification rejected: eglGetError={}", eglGetError());
+        }
+        app->swap_interval_calibrated = true;
+    }
 
     // DYNAMIC STRIDE EVALUATION: Resolves memory layout differences between platforms at runtime
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
