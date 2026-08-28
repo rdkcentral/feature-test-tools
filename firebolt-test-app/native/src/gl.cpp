@@ -123,6 +123,10 @@ struct AppContext {
     std::atomic<bool> state_transition_pending{ false };
     std::atomic<bool> keycode_dirty{ false };
 
+    std::mutex configuration_lock;
+    std::condition_variable configuration_cv;
+    bool configuration_complete = false;
+
     bool configured = false;
     std::atomic<bool> keyFrameDirty{ false };
     std::atomic<uint32_t> current_keycode{ 0 };
@@ -239,6 +243,11 @@ static void update_simple_shell_configured_state(AppContext* app, const char* re
             app->configured = true;
             log_info("simple-shell ready: id={}, reason={}", app->simple_shell_surface_id, reason ? reason : "unknown");
             wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
+            {
+                std::lock_guard<std::mutex> lock(app->configuration_lock);
+                app->configuration_complete = true;
+            }
+            app->configuration_cv.notify_all();
         }
     }
 }
@@ -908,8 +917,6 @@ bool GlApp::init(const char* waylandDisplay)
     }
 
     eglBindAPI(EGL_OPENGL_ES_API);
-
-    // Fixed CMAKE_CXX_STANDARD scoping compile-error -> Restored EGL native property key
     EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
     m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
     if (m_ctx->egl_context == EGL_NO_CONTEXT) {
@@ -923,36 +930,35 @@ bool GlApp::init(const char* waylandDisplay)
     wl_surface_commit(m_ctx->surface);
     wl_display_roundtrip(m_ctx->display);
 
-    for (int attempt = 0; m_ctx->simple_shell_surface_id == 0 && attempt < 20; ++attempt) {
-        wl_display_dispatch_pending(m_ctx->display);
-        wl_display_flush(m_ctx->display);
-        wl_display_roundtrip(m_ctx->display);
-        if (m_ctx->simple_shell_surface_id != 0) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (m_ctx->simple_shell_surface_id == 0) return false;
-
     m_ctx->egl_window = wl_egl_window_create(m_ctx->surface, m_ctx->width, m_ctx->height);
     if (!m_ctx->egl_window) return false;
 
     m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE || eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) != EGL_TRUE) return false;
 
-    // Purged duplicate swap intervals -> Applied once safely here
     if (eglSwapInterval(m_ctx->egl_display, 0) == EGL_TRUE) {
         log_info("Platform EGL Swap Interval calibrated successfully to 0 (Unbound Async Mode).");
-    } else {
-        log_warn("Forced EGL Swap Interval modification rejected by the SoC graphics driver.");
     }
 
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
+    log_info("GlApp::init: Awaiting compositor layout confirmation...");
+    std::unique_lock<std::mutex> config_lock(m_ctx->configuration_lock);
+    while (!m_ctx->configuration_complete) {
+        if (wl_display_dispatch(m_ctx->display) < 0) {
+            log_err("GlApp::init: Wayland connection broken during initial handshake.");
+            return false;
+        }
+    }
+    log_info("GlApp::init: Compositor handshake confirmed. Initializing hand-off.");
+
+    // Commit any outstanding changes and verify pipeline visibility
     glFinish();
 
-    // Explicit release unblocks background render thread ownership claim immediately
+    // Now that the system is fully configured, safely release the context from the main thread.
     eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
-    m_ctx->lifecycle_state.store(RenderLifecycleState::Paused, std::memory_order_release);
+    m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
     return true;
 }
 
