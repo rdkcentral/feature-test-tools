@@ -35,6 +35,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <condition_variable>
 
 #include <errno.h>
 #include <poll.h>
@@ -943,14 +944,34 @@ bool GlApp::init(const char* waylandDisplay)
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
     log_info("GlApp::init: Awaiting compositor layout confirmation...");
-    std::unique_lock<std::mutex> config_lock(m_ctx->configuration_lock);
-    while (!m_ctx->configuration_complete) {
-        if (wl_display_dispatch(m_ctx->display) < 0) {
-            log_err("GlApp::init: Wayland connection broken during initial handshake.");
+    int handshake_timeout_attempts = 0;
+    bool initial_handshake_successful = false;
+
+    while (handshake_timeout_attempts < 500) {
+        wl_display_flush(m_ctx->display);
+        if (wl_display_dispatch_pending(m_ctx->display) < 0) {
+            log_err("GlApp::init: Wayland connection error detected during handshake.");
             return false;
         }
+
+        {
+            std::lock_guard<std::mutex> lock(m_ctx->configuration_lock);
+            if (m_ctx->configuration_complete) {
+                initial_handshake_successful = true;
+                break;
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        handshake_timeout_attempts++;
     }
-    log_info("GlApp::init: Compositor handshake confirmed. Initializing hand-off.");
+
+    if (!initial_handshake_successful) {
+        log_warn("GlApp::init: Compositor handshake timed out. Forcing fallback startup.");
+        m_ctx->configured = true;
+    } else {
+        log_info("GlApp::init: Compositor handshake confirmed. Initializing hand-off.");
+    }
 
     // Commit any outstanding changes and verify pipeline visibility
     glFinish();
