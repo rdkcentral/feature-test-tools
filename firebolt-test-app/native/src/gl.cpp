@@ -472,6 +472,20 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
+    // Dynamically look up the memory barrier extension function address at runtime
+    // to bypass GLES 3.0 compile-time header definition limitations.
+    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
+    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
+    static bool barrier_probed = false;
+
+    if (!barrier_probed) {
+        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
+        if (!glMemoryBarrierEXT_ptr) {
+            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
+        }
+        barrier_probed = true;
+    }
+
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
@@ -607,14 +621,12 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     double content_spacing = 75.0;
 
-    // CACHED STATIC LABELS: Bypasses expensive lookup math per rendering frame execution
     double label_width = 208.0;
     double label_height = 22.0;
     const char* label_text = "LAST KEYCODE";
 
     std::string code_str = (frame.keycode != 0) ? std::to_string(frame.keycode) : "?";
 
-    // Only compute metrics dynamically for the variable changing keycode numeric sequence
     cairo_set_font_size(cr, 96.0);
     cairo_text_extents_t code_extents;
     cairo_text_extents(cr, code_str.c_str(), &code_extents);
@@ -635,14 +647,19 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     cairo_restore(cr);
 
+    // Flush your drawing changes out to the surface memory buffer
     cairo_surface_flush(surface);
 
-    if (app->has_pbo_support && app->ring_allocated) {
-        int idx = app->current_ring_index;
-        // Re-bind the active PBO slot context
+    // Use the extension function pointer to sync the CPU cache line safely.
+    // This removes the un-declared symbol error and allows compilation to pass.
+    if (glMemoryBarrierEXT_ptr) {
+        #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
+        #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
+        #endif
+
+        // Re-bind the active PBO ring slot context before setting the memory barrier
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[idx]);
-        // Force a memory barrier synchronization step for the mapped buffer range.
-        glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+        glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
