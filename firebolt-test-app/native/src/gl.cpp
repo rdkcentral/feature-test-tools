@@ -239,6 +239,7 @@ static void stop_run_loop(AppContext* app, const char* reason)
     app->running.store(false);
     signal_run_loop(app);
 }
+
 static bool render_active_work(AppContext* app,
                                const std::chrono::steady_clock::time_point& now,
                                std::chrono::steady_clock::time_point& lastHeartbeat,
@@ -1050,6 +1051,7 @@ void GlApp::run()
         m_ctx->lifecycle_state.store(RenderLifecycleState::Active);
         m_ctx->keyFrameDirty.store(true, std::memory_order_release);
         // Render an initial frame immediately to avoid a black screen on startup
+        log_dbg("Rendering initial frame on run() entry");
         render_cairo_frame(m_ctx);
     }
 
@@ -1076,6 +1078,7 @@ void GlApp::run()
 
         int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
         if (timeoutMs < 0) timeoutMs = 0;
+        log_dbg("Wayland dispatch loop: timeoutMs={}", timeoutMs);
 
         // --- STEP 3: THE STRUCTURAL MULTI-DESCRIPTOR POLL ARRANGEMENT ---
         pollfd fds[2];
@@ -1090,18 +1093,22 @@ void GlApp::run()
         const int pollResult = poll(fds, 2, timeoutMs);
         if (pollResult < 0) {
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
-            if (EINTR == errno) continue;
+            if (EINTR == errno) {
+                log_dbg("Wayland dispatch loop poll interrupted by signal, retrying");
+                continue;
+            }
             break;
         }
 
         // --- STEP 4: SIGNAL PROCESSING & DRAINING ---
         if (pollResult == 0) {
-            // Timeout hit successfully. Complete the read cycle safely without reading socket data.
+            log_dbg("Wayland dispatch loop: Timeout hit successfully.");
             if (m_ctx) wl_display_cancel_read(m_ctx->display);
         } else {
             // Check cross-thread wake eventfd signals
             if ((fds[1].revents & POLLIN) != 0) {
                 uint64_t wakeValue = 0;
+                log_dbg("Wayland dispatch loop: wake eventfd signaled, draining");
                 while (m_ctx) {
                     ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
                     if (bytesRead < 0) {
@@ -1118,25 +1125,30 @@ void GlApp::run()
             }
 
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                log_err("Wayland dispatch loop: wake eventfd error detected, cancelling read");
                 if (m_ctx) wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
             // Check incoming Wayland proxy network socket descriptors
             if ((fds[0].revents & POLLIN) != 0) {
+                log_dbg("Wayland dispatch loop: Wayland socket signaled, reading events");
                 if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
                     break;
                 }
             } else {
+                log_dbg("Wayland dispatch loop: Wayland socket not signaled, cancelling read");
                 if (m_ctx) wl_display_cancel_read(m_ctx->display);
             }
 
             if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                log_err("Wayland dispatch loop: Wayland socket error detected, cancelling read");
                 break;
             }
         }
 
         // --- STEP 5: DRAIN PENDING WAYLAND EVENTS ---
+        log_dbg("Wayland dispatch loop: draining pending events");
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
@@ -1144,6 +1156,7 @@ void GlApp::run()
         // --- STEP 6: RENDER ANIMATION FRAME BASED ON THE TIMING CADENCE ---
         const auto render_now = std::chrono::steady_clock::now();
         if (render_now - last_frame_time >= kTargetFrameTime) {
+            log_dbg("Wayland dispatch loop: rendering animation frame");
             if (render_cairo_frame(m_ctx) < 0) {
                 break;
             }
@@ -1152,6 +1165,7 @@ void GlApp::run()
 
         // Periodic container shell maintenance tasks
         if (render_now - last_shell_reapply >= kShellReapplyInterval) {
+            log_dbg("Wayland dispatch loop: performing periodic container shell maintenance tasks");
             if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
             if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
             last_shell_reapply = render_now;
