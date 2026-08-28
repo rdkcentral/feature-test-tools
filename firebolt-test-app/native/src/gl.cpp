@@ -450,24 +450,20 @@ static bool ensure_egl_current(AppContext* app)
 
     return (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) == EGL_TRUE);
 }
+
 static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 {
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
-    // HARDENED THREAD VERIFICATION GUARD: Ensure EGL context remains exclusive to the current thread
     if (!ensure_egl_current(app)) return frame;
 
-    // Dynamically look up the extension function to map CPU cache lines safely
     using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
     static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
     static bool barrier_probed = false;
-
     if (!barrier_probed) {
         glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) {
-            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        }
+        if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
         barrier_probed = true;
     }
 
@@ -478,17 +474,16 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
-    // Determine the target loop index (0 -> 1 -> 0)
-    int next_idx = (app->current_ring_index + 1) % 2;
+    int active_idx = app->current_ring_index;
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[active_idx]);
 
     uint8_t* pbo_ptr = static_cast<uint8_t*>(glMapBufferRange(
         GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
-        GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT));
+        GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT));
 
     if (!pbo_ptr) {
-        log_err("Fatal: Streaming buffer mapping failed on slot {}", next_idx);
+        log_err("Fatal: Streaming buffer mapping failed on index slot {}", active_idx);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         return frame;
     }
@@ -500,7 +495,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
 
-    // Clear background smoothly
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
@@ -508,7 +502,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     double left_width = split_x;
     double right_width = frame.width - split_x;
 
-    // --- LEFT SECTION: 60% VISUAL EFFECTS ---
     cairo_save(cr);
     cairo_rectangle(cr, 0, 0, left_width, frame.height);
     cairo_clip(cr);
@@ -536,7 +529,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_surface_destroy(tile);
     }
 
-    // Effect A: Tuned Chunkier Rotating Color-Correction Starburst
     double center_x = left_width / 2.0;
     double center_y = frame.height / 2.0;
     int total_spokes = 8;
@@ -568,7 +560,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_restore(cr);
     }
 
-    // Effect B: Chromatic Sine Wave Overlays
     cairo_set_line_width(cr, 3.5);
     for (int wave = 0; wave < 3; ++wave) {
         cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
@@ -588,7 +579,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     }
     cairo_restore(cr);
 
-    // --- RIGHT SECTION: 40% USER INPUT PANEL ---
     cairo_save(cr);
     cairo_rectangle(cr, split_x, 0, right_width, frame.height);
     cairo_clip(cr);
@@ -649,7 +639,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 
-    // Sync memory caches via dynamic function lookup before texture submission
     if (glMemoryBarrierEXT_ptr) {
         #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
         #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
