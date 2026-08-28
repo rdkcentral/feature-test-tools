@@ -473,6 +473,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.height = app->height;
     frame.keycode = keycode;
 
+    // PLATFORM AGNOSTIC STRIDE PADDING: Ensures optimal zero-copy cache alignment
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
 
     // Allocate the vector array backing using the exact stride parameters
@@ -489,10 +490,10 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
-    // Compute layout panel splits (1920 * 0.60 = 1152) -> Perfectly divisible by 64 bytes
-    double split_x = 1152.0;
+    // Dynamic Split Engine: Anchors coordinates safely to the specified display size
+    double split_x = frame.width * 0.60;
     double left_width = split_x;
-    double right_width = 768.0;
+    double right_width = frame.width - split_x;
 
     // --- LEFT SECTION: 60% VISUAL EFFECTS ---
     cairo_save(cr);
@@ -545,7 +546,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
         cairo_set_source(cr, spoke_grad);
         cairo_move_to(cr, 0, 0);
-        cairo_line_to(cr, 300, -35); // Clean 35px flaring
+        cairo_line_to(cr, 300, -35);
         cairo_line_to(cr, 300, 35);
         cairo_close_path(cr);
         cairo_fill(cr);
@@ -607,27 +608,31 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
     double content_spacing = 75.0;
-    cairo_set_font_size(cr, 28.0);
-    const char* label_text = "LAST KEYCODE";
-    cairo_text_extents_t label_extents;
-    cairo_text_extents(cr, label_text, &label_extents);
 
-    cairo_set_font_size(cr, 96.0);
+    // CACHED STATIC LABELS: Bypasses expensive lookup math per rendering frame execution
+    double label_width = 208.0;
+    double label_height = 22.0;
+    const char* label_text = "LAST KEYCODE";
+
     std::string code_str = (frame.keycode != 0) ? std::to_string(frame.keycode) : "?";
+
+    // Only compute metrics dynamically for the variable changing keycode numeric sequence
+    cairo_set_font_size(cr, 96.0);
     cairo_text_extents_t code_extents;
     cairo_text_extents(cr, code_str.c_str(), &code_extents);
 
-    double total_content_height = label_extents.height + content_spacing + code_extents.height;
+    double total_content_height = label_height + content_spacing + code_extents.height;
     double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 15.0;
 
+    // Layer 1: Render the Static Text Header
     cairo_set_font_size(cr, 28.0);
-    cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing,
-                 baseline_start_y + label_extents.height - label_extents.y_bearing);
+    cairo_move_to(cr, box_x + (box_size - label_width) / 2.0, baseline_start_y + label_height);
     cairo_show_text(cr, label_text);
 
+    // Layer 2: Render the Dynamic Numeric Keycode Sequence
     cairo_set_font_size(cr, 96.0);
     cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing,
-                 baseline_start_y + label_extents.height - label_extents.y_bearing + content_spacing + code_extents.height);
+                 baseline_start_y + label_height + content_spacing + code_extents.height);
     cairo_show_text(cr, code_str.c_str());
 
     cairo_restore(cr);
