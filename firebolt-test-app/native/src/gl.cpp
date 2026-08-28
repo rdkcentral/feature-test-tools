@@ -665,22 +665,39 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
 
+    // Dynamically look up the memory barrier extension function address at runtime
+    // to bypass GLES 3.0 compile-time header definition limitations.
+    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
+    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
+    static bool barrier_probed = false;
+
+    if (!barrier_probed) {
+        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
+        if (!glMemoryBarrierEXT_ptr) {
+            // Fallback try: check for the core GLES 3.1 layout symbol location names
+            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
+        }
+        barrier_probed = true;
+        if (glMemoryBarrierEXT_ptr) {
+            log_info("Hardware DMA memory cache barrier synchronization interface: ACTIVE");
+        } else {
+            log_warn("Hardware DMA memory barrier missing. Fallback double-buffering profiles may experience tearing.");
+        }
+    }
+
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
     // ONE-TIME INITIALIZATION: Allocate and permanently map the persistent PBO rings
     if (app->has_pbo_support && !app->ring_allocated) {
-        // Generate two permanent hardware buffer identifiers
         glGenBuffers(2, app->pbo_ids);
 
         for (int i = 0; i < 2; ++i) {
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
 
-            // Allocate driver-backed memory storage block handles matching stride budget
             glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, nullptr, GL_STREAM_DRAW);
 
-            // Permanently map the hardware PBO space straight into CPU userspace memory boundaries.
-            // Using EXT persistent/coherent parameters prevents driver stalls and bypasses memcpy.
+            // Permanently map hardware buffer ranges using the standard vendor EXT flags
             app->pbo_mapped_ptrs[i] = static_cast<uint8_t*>(glMapBufferRange(
                 GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
                 GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT_EXT | GL_MAP_COHERENT_BIT_EXT));
@@ -691,7 +708,6 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
                 return false;
             }
 
-            // Bind a permanent Cairo drawing surface container directly on top of the DMA pointer addresses!
             app->persistent_surfaces[i] = cairo_image_surface_create_for_data(
                 app->pbo_mapped_ptrs[i], CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
             app->persistent_contexts[i] = cairo_create(app->persistent_surfaces[i]);
@@ -702,8 +718,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
         log_info("Zero-Copy Hardware DMA Canvas Pipeline fully locked down.");
     }
 
-    // Standard frame clearing operations
-    glViewport(0, 0, frame.width, frame.height);
+    glViewport(0, 0, 1920, 1080);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -715,18 +730,21 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
     if (app->has_pbo_support && app->ring_allocated) {
-        // Ping-pong between the persistent buffers (0 -> 1 -> 0)
         int draw_idx = app->current_ring_index;
         app->current_ring_index = (draw_idx + 1) % 2;
 
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
 
-        // HARDWARE RE-SYNC GUARD: Explicitly flush memory blocks down to shared system RAM
-        // right before texturing parameters are parsed. This ensures the GPU can read the pixels.
-        glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+        // If the driver exposes the cache flush function pointer, execute it safely
+        if (glMemoryBarrierEXT_ptr) {
+            // Using the macro definition specified by GL_EXT_buffer_storage header specifications
+            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
+            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
+            #endif
+            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
+        }
 
-        // Asynchronously update texture data fields pulling directly from the bound PBO allocation slot
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, frame.width, frame.height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, 1920, 1080, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
