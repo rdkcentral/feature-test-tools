@@ -390,7 +390,6 @@ bool init_gles_pipeline(AppContext* app)
     app->pbo_initialized = false;
     app->pbo_ids[0] = 0;
     app->pbo_ids[1] = 0;
-    app->pbo_index = 0;
     app->ring_allocated = false;
     app->current_ring_index = 0;
 
@@ -454,12 +453,12 @@ static bool ensure_egl_current(AppContext* app)
     }
     return (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) == EGL_TRUE);
 }
+
 static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 {
     PreparedFrame frame;
     if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
 
-    // Enforce exclusive EGL ownership on the active render thread
     if (!ensure_egl_current(app)) return frame;
 
     using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
@@ -478,20 +477,29 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
 
-    // FIX CORES ALIGNMENT: Map Cairo strictly to current active ring slot index tracker
+    // Pull straight from the active ring index
     int active_idx = app->current_ring_index;
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[active_idx]);
 
-    // Fix: Using GL_MAP_UNSYNCHRONIZED_BIT prevents Mali drivers from dropping memory pages mid-render
+    // 1. Inject GL_MAP_READ_BIT. This gives Cairo permission to safely
+    //    evaluate antialiasing alphas and blend text layers directly inside the pointer.
+    // 2. Use GL_MAP_UNSYNCHRONIZED_BIT to prevent the driver from
+    //    dropping or re-allocating memory pages mid-render.
     uint8_t* pbo_ptr = static_cast<uint8_t*>(glMapBufferRange(
         GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes,
-        GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT));
+        GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT));
 
     if (!pbo_ptr) {
         log_err("Fatal: Streaming buffer mapping failed on index slot {}", active_idx);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         return frame;
+    }
+
+    // MEMORY ALIGNMENT VERIFICATION:
+    // If the driver returns an unaligned pointer, log it instantly to catch hardware constraints.
+    if (reinterpret_cast<uintptr_t>(pbo_ptr) % 64 != 0) {
+        log_warn("Driver warning: Mapped PBO pointer address is not aligned to a 64-byte cache boundary!");
     }
 
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
@@ -501,6 +509,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
 
+    // Solid base paint clear
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
@@ -508,6 +517,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     double left_width = split_x;
     double right_width = frame.width - split_x;
 
+    // --- LEFT SECTION: 60% VISUAL EFFECTS ---
     cairo_save(cr);
     cairo_rectangle(cr, 0, 0, left_width, frame.height);
     cairo_clip(cr);
@@ -535,6 +545,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_surface_destroy(tile);
     }
 
+    // Effect A: Rotating Starburst
     double center_x = left_width / 2.0;
     double center_y = frame.height / 2.0;
     int total_spokes = 8;
@@ -566,6 +577,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         cairo_restore(cr);
     }
 
+    // Effect B: Sine Waves
     cairo_set_line_width(cr, 3.5);
     for (int wave = 0; wave < 3; ++wave) {
         cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
@@ -585,6 +597,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     }
     cairo_restore(cr);
 
+    // --- RIGHT SECTION: 40% USER INPUT PANEL ---
     cairo_save(cr);
     cairo_rectangle(cr, split_x, 0, right_width, frame.height);
     cairo_clip(cr);
@@ -616,7 +629,6 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
     else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
-    // Optimized: Cached fixed widths for text label saves CPU parsing cycles per frame
     double content_spacing = 75.0;
     double label_width = 208.0;
     double label_height = 22.0;
@@ -658,6 +670,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 
     return frame;
 }
+
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
 {
     if (!app) return false;
