@@ -174,10 +174,14 @@ void printMetadataInformation(const PackageMetaData &metadata)
 	std::cout << "Title " << metadata.title().value_or("N/A") << std::endl;
 	std::cout << "Entry Point Path " << metadata.entryPointPath().string() << std::endl;
 	std::cout << "Entry Args ";
+	bool first = true;
 	for (const auto &arg : metadata.entryArgs())
 	{
-		std::cout << arg << " ";
+		if (!first) std::cout << ' ';
+		std::cout << arg;
+		first = false;
 	}
+	if (first) std::cout << "None";
 	std::cout << std::endl;
 	std::cout << SEPARATOR_LINE << std::endl;
 }
