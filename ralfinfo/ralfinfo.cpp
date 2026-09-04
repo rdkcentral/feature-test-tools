@@ -169,13 +169,16 @@ void printMetadataInformation(const PackageMetaData &metadata)
 			  << SEPARATOR_LINE << std::endl;
 	std::cout << "ID " << metadata.id() << std::endl;
 	std::cout << "Version " << metadata.version().toString() << std::endl;
-	std::cout << "Type " << mapMetadataType(metadata.type()) << std::endl;
-	std::cout << "Platform Architecture " << metadata.platformInfo().architecture.value_or("unknown") << std::endl;
-	std::cout << "Platform variant " << metadata.platformInfo().variant.value_or("unknown") << std::endl;
-	std::cout << "Platform OS " << metadata.platformInfo().os.value_or("unknown") << std::endl;
-	std::cout << " Mime Type " << metadata.mimeType() << std::endl;
-	std::cout << " Title " << metadata.title().value_or("N/A") << std::endl;
-	std::cout << " Entry Point Path " << metadata.entryPointPath().string() << std::endl;
+	std::cout << "Package Type " << mapMetadataType(metadata.type()) << std::endl;
+	std::cout << "Mime Type " << metadata.mimeType() << std::endl;
+	std::cout << "Title " << metadata.title().value_or("N/A") << std::endl;
+	std::cout << "Entry Point Path " << metadata.entryPointPath().string() << std::endl;
+	std::cout << "Entry Args ";
+	for (const auto &arg : metadata.entryArgs())
+	{
+		std::cout << arg << " ";
+	}
+	std::cout << std::endl;
 	std::cout << SEPARATOR_LINE << std::endl;
 }
 
@@ -189,21 +192,21 @@ void printMetadataDependenciesInfo(const std::map<std::string, VersionConstraint
 	}
 	for (auto &dep : dependencies)
 	{
-		std::cout << "  ID: " << dep.first << ", Version Constraint: " << dep.second.toString() << std::endl;
+		std::cout << "ID: " << dep.first << ", Version Constraint: " << dep.second.toString() << std::endl;
 	}
 }
 
 void printApplicationIconDetails(const std::list<Icon> &icons)
 {
-	std::cout << " Icons: " << std::endl;
+	std::cout << "Icons: " << std::endl;
 	if (icons.empty())
 	{
-		std::cout << "  None" << std::endl;
+		std::cout << "None" << std::endl;
 		return;
 	}
 	for (const auto &icon : icons)
 	{
-		std::cout << "  Path: " << icon.path.string() << ", MimeType: " << icon.mimeType << ", Purpose: " << icon.purpose << ", Sizes: ";
+		std::cout << "Path: " << icon.path.string() << ", MimeType: " << icon.mimeType << ", Purpose: " << icon.purpose << ", Sizes: ";
 		for (const auto &size : icon.sizes)
 		{
 			std::cout << size.first << "x" << size.second << " ";
