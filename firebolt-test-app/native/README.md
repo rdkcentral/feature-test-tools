@@ -11,9 +11,14 @@ and events/notifications across all supported Firebolt modules.
 ```
 native/
 ├── CMakeLists.txt          # Top-level CMake project
+├── assets/
+│   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
+│   └── OFL.txt                 # License text installed from the Liberation font package (OFL 1.1)
 └── src/
     ├── main.cpp            # Entry point, connection management, run-mode dispatch
     ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
+    ├── gl.h                # GlApp class declaration (Wayland/EGL/GLES keycode display window)
+    ├── gl.cpp              # GlApp implementation
     └── tests/
         ├── accessibilityTest.h/.cpp
         ├── actionsTest.h/.cpp
@@ -26,10 +31,10 @@ native/
         ├── metricsTest.h/.cpp
         ├── networkTest.h/.cpp
         ├── presentationTest.h/.cpp
-        ├── SpeechSynthesisTest.h/.cpp  ← To be implemented
+        ├── SpeechSynthesisTest.h/.cpp
         ├── statsTest.h/.cpp
         ├── texttospeechTest.h/.cpp
-        └── VideoOutputTest.h/.cpp      ← To be implemented
+        └── VideoOutputTest.h/.cpp
 ```
 
 ---
@@ -43,6 +48,9 @@ native/
 | **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
 | **nlohmann-json** installed | Used for JSON input/response validation in tests |
+| **wayland-client / wayland-egl** | Required for the GL display window (`gl.cpp`) |
+| **EGL / GLESv2** | Required for the GL display window (`gl.cpp`) |
+| **Cairo / cairo-ft / FreeType** | Required for the GL display window (`gl.cpp`) |
 
 The `FireboltClient`, `FireboltTransport`, and `nlohmann_json` CMake packages must be findable via
 `CMAKE_PREFIX_PATH` (or `SYSROOT_PATH` for cross-compilation).
@@ -69,25 +77,29 @@ inherit cmake pkgconfig
 
 SRC_URI = "${CMF_GITHUB_ROOT}/feature-test-tools;${CMF_GITHUB_SRC_URI_SUFFIX}"
 SRCREV = "${AUTOREV}"  <=== Replace with SHA
-PV = "1.0.0"
+PV = "2.0.0"
 PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client nlohmann-json"
-RDEPENDS:${PN} += "firebolt-cpp-client"
+DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell"
+RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell"
 
-EXTRA_OECMAKE = ""
+EXTRA_OECMAKE:append = " \
+    -DBUILD_FIREBOLT_APP=ON \
+    -DBUILD_GL_TEST=ON \
+    -DGL_MODULE_SHARED=OFF \
+    "
 
-do_install() {
-    install -d ${D}${bindir}
-    install -m 0755 ${B}/firebolt-test-app ${D}${bindir}/firebolt-test-app
-}
-
-FILES:${PN} += "${bindir}/firebolt-test-app"
+FILES:${PN} += " /usr/share/fonts"
 ```
 
 </details>
+
+### Font License Note
+
+`assets/OFL.txt` is the license text installed from the Liberation font package for
+`LiberationSans-Bold.ttf`.
 
 ---
 
@@ -118,6 +130,20 @@ firebolt-test-app [--auto] [--url <URL>]
 | `--help` | Print usage and exit |
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
+
+### GL display window (optional)
+
+When `XDG_RUNTIME_DIR` is set, a Wayland/EGL overlay window launches in a background thread after
+connecting to Firebolt. It renders the last received key code using the bundled Liberation Sans Bold font.
+The following environment variables control it:
+
+| Variable | Default | Description |
+|---|---|---|
+| `WAYLAND_DISPLAY` | `wayland-0` | Wayland socket name |
+| `WIDTH` | `1280` | Window width in pixels |
+| `HEIGHT` | `720` | Window height in pixels |
+| `PATTERN_MODE` | *(none)* | Background pattern: `GRID` or `DOT` |
+| `GLAPP_POLL_NO_TIMEOUT` | NA | If `1` disables GL refresh poll() timeout |
 
 ---
 
@@ -213,3 +239,18 @@ printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url w
 ## License
 
 Apache-2.0 – see [LICENSE](./../../LICENSE)
+
+---
+
+## Third-Party Attributions
+
+#### Font used in this app: Liberation Sans Bold (LiberationSans-Bold.ttf)
+
+| Field | Value |
+|---|---|
+| **Font** | Liberation Sans Bold |
+| **Copyright holders** | Google Corporation (digitized data); Red Hat, Inc. |
+| **Reserved Font Names** | Arimo, Tinos, Cousine, Liberation |
+| **License** | [SIL Open Font License, Version 1.1](./assets/OFL.txt) |
+| **Source** | https://github.com/liberationfonts/liberation-fonts |
+| **Bundled at** | `assets/LiberationSans-Bold.ttf` |

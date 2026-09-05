@@ -23,10 +23,12 @@
 
 #pragma once
 
+#include <cstdint>
 #include <firebolt/types.h>
 #include <firebolt/common_types.h>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -57,6 +59,9 @@ inline bool termSupportsColor()
     return supportsColor;
 }
 
+std::string timepointToString(
+    const std::chrono::system_clock::time_point& tp = std::chrono::system_clock::now());
+
 namespace Color
 {
     inline const char* green() { return termSupportsColor() ? "\033[0;32m" : ""; }
@@ -84,13 +89,19 @@ inline const char* fireboltErrorCodeToString(int errorCode)
 }
 
 // ---------------------------------------------------------------------------
+// Utility functions
+// ---------------------------------------------------------------------------
+std::string current_thread_string();
+
+
+// ---------------------------------------------------------------------------
 // Global test-run configuration
 // ---------------------------------------------------------------------------
 typedef enum fireboltVersion
 {
-	FIREBOLT_VERSION_8 = 8,
-	FIREBOLT_VERSION_9 = 9,
-	FIREBOLT_VERSION_ALL = 9 // Need to increment when new versions are added.
+    FIREBOLT_VERSION_8 = 8,
+    FIREBOLT_VERSION_9 = 9,
+    FIREBOLT_VERSION_ALL = 9 // Need to increment when new versions are added.
 } fireboltVersion_t;
 
 struct AppConfig
@@ -101,6 +112,28 @@ struct AppConfig
 };
 
 AppConfig& GetAppConfig();
+
+enum class MenuInputAction
+{
+    Up,
+    Down,
+    Select,
+    Back,
+    Digit
+};
+
+struct MenuInputEvent
+{
+    MenuInputAction action = MenuInputAction::Select;
+    int digit = -1;
+    uint32_t rawKeyCode = 0;
+};
+
+void SetMenuInputBridgeEnabled(bool enabled);
+bool IsMenuInputBridgeEnabled();
+void PushMenuInputEvent(const MenuInputEvent& event);
+void RequestEscExit();
+bool ConsumeEscExitRequest();
 
 // ---------------------------------------------------------------------------
 // Console helpers
