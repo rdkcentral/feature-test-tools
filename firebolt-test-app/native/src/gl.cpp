@@ -1081,41 +1081,27 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
 {
     (void)keyboard; (void)serial; (void)time;
     AppContext* app = static_cast<AppContext*>(data);
+
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         uint32_t utf32 = 0;
 #ifdef HAVE_XKBCOMMON
-        static bool warnedNoXkbState = false;
-        if (app && !app->xkbState && !warnedNoXkbState) {
-            log_warn("xkb translation unavailable; reporting evdev keycodes only");
-            warnedNoXkbState = true;
-        }
         if (app && app->xkbState) {
             const xkb_keysym_t keysym = xkb_state_key_get_one_sym(app->xkbState, key + 8);
             utf32 = xkb_keysym_to_utf32(keysym);
-            if (utf32 >= 0x20 && utf32 <= 0x7E) {
-                log_dbg("Translated key press: raw={}, char='{}' (U+{:04X})", key, static_cast<char>(utf32), utf32);
-            } else if (utf32 != 0) {
-                log_dbg("Translated key press: raw={}, U+{:04X}", key, utf32);
-            } else {
-                char name[64] = {0};
-                if (xkb_keysym_get_name(keysym, name, sizeof(name)) > 0) {
-                    log_dbg("Translated key press: raw={}, keysym={}", key, name);
-                }
-            }
         }
 #endif
-        app->current_keycode.store(key, std::memory_order_release);
-        app->current_utf32.store(utf32, std::memory_order_release);
-        app->keyFrameDirty.store(true, std::memory_order_release);
-        app->keycode_dirty.store(true, std::memory_order_release); // Signals clock bypass trigger
-        if (app->keycodeCallback) {
-            GlKeyEvent keyEvent;
-            keyEvent.evdevKeycode = key;
-            keyEvent.utf32 = utf32;
-            keyEvent.hasUtf32 = (utf32 != 0);
-            app->keycodeCallback(keyEvent);
+        if (app) {
+            app->current_keycode.store(key, std::memory_order_release);
+            app->current_utf32.store(utf32, std::memory_order_release);
+
+            if (app->keycodeCallback) {
+                GlKeyEvent keyEvent;
+                keyEvent.evdevKeycode = key;
+                keyEvent.utf32 = utf32;
+                keyEvent.hasUtf32 = (utf32 != 0);
+                app->keycodeCallback(keyEvent);
+            }
         }
-        signal_run_loop(app);
     }
 }
 
@@ -1338,10 +1324,12 @@ static const wl_callback_listener frame_listener = { frame_handle_done };
 
 void GlApp::run()
 {
-    log_info("Starting Wayland dispatch loop with Frame Sync throttling");
+    log_info("Starting Wayland dispatch loop with Hardware Frame Sync throttling");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
-    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE Loop ---
+    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE LOOP ---
+    // Safely reads and dispatches socket events until the simple-shell protocol
+    // acknowledges the surface creation on the background thread context.
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
         if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
             stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
@@ -1351,16 +1339,20 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
+    // EXCLUSIVE ANCHOR POINT: Background render thread claims isolated context control
     if (!ensure_egl_current(m_ctx)) {
         log_err("Background render thread failed to claim EGL context ownership.");
         return;
     }
 
-    // Render Initial Frame for Window Manager Setup
+    // --- PHASE 2: STATE 2 HARD REQUIREMENT — BOOTSTRAP INITIAL FRAME ---
+    // Renders and presents a single, static layout frame immediately so the window manager
+    // knows this container application is structurally ready and can map it to the display screen.
     {
         std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
+        log_info("Executing State 2: Rendering static bootstrap frame for window manager registration.");
         if (render_cairo_frame(m_ctx) != 0) {
-            stop_run_loop(m_ctx, "render_cairo_frame bootstrap failed");
+            stop_run_loop(m_ctx, "render_cairo_frame bootstrap execution failed");
             return;
         }
     }
@@ -1372,16 +1364,19 @@ void GlApp::run()
     wl_callback* frame_callback = nullptr;
     m_ctx->keyFrameDirty.store(true, std::memory_order_release);
 
-    // --- PHASE 2: HARDWARE-THROTTLED MAIN DISPATCH LOOP ---
+    // --- PHASE 3: HARDWARE-THROTTLED DISPATCH & MAIN ACTIVE RUNTIME LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
-
-        // Handle pending state transitions smoothly
+        // --- STEP 0: PROCESS PENDING LIFECYCLE TRANSITIONS ---
         if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
             RenderLifecycleState target = m_ctx->target_lifecycle_state.load(std::memory_order_acquire);
             m_ctx->lifecycle_state.store(target, std::memory_order_release);
             m_ctx->state_transition_pending.store(false, std::memory_order_release);
-            if (target == RenderLifecycleState::Closing) break;
+            log_info("Lifecycle state transitioned smoothly to: {}", static_cast<int>(target));
+
+            if (target == RenderLifecycleState::Closing) {
+                break;
+            }
         }
 
         bool rendered_this_pass = false;
@@ -1404,50 +1399,57 @@ void GlApp::run()
 
             int pollResult = poll(fds, 2, active_timeout);
             if (pollResult > 0) {
-                // Route checking explicitly using index positions
+                // True incoming data on watched descriptors
                 if ((fds[0].revents & POLLIN) != 0) {
-                    if (wl_display_read_events(m_ctx->display) == 0) {
-                        // Handled natively via dispatch down below
+                    if (wl_display_read_events(m_ctx->display) < 0) {
+                        log_warn("wl_display_read_events hardware descriptor read error encountered.");
                     }
                 } else {
+                    // Woken by cross-thread eventfd instead of Wayland socket
                     wl_display_cancel_read(m_ctx->display);
                 }
 
-                // Clear out background cross-thread signals
+                // Clear out background cross-thread eventfd wake signals to satisfy -Werror=unused-result
                 if ((fds[1].revents & POLLIN) != 0) {
                     uint64_t wakeValue = 0;
                     ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
                     (void)bytesRead;
                 }
+            } else if (pollResult == 0) {
+                // TRUE TIMEOUT - Let Wayland safely consume the cycle
+                // instead of short-circuiting and canceling the thread mutex
+                wl_display_read_events(m_ctx->display);
             } else {
+                // HARD HARDWARE SYSTEM ERROR
+                log_warn("poll() failed with errno={}", errno);
                 wl_display_cancel_read(m_ctx->display);
             }
+        } else {
+            // wl_display_prepare_read failed because events are already pending in internal queue;
+            // dispatch them directly right now to prevent tight, unthrottled thread spin loop patterns
+            while (wl_display_dispatch_pending(m_ctx->display) > 0);
         }
 
-        // Drain the queue to process any events from the compositor
+        // Drain the queue to process any events from the compositor completely
         while (wl_display_dispatch_pending(m_ctx->display) > 0);
 
         // --- STEP 2: CADENCE PRESENTATION LOGIC ---
         if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) {
-            // Check if compositor has completed rendering the previous frame step
-            if (m_ctx->keyFrameDirty.load(std::memory_order_acquire) ||
-                m_ctx->keycode_dirty.load(std::memory_order_acquire))
-            {
+            // Driven strictly by the hardware monitor's vsync refresh token callback
+            if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
                 m_ctx->keyFrameDirty.store(false, std::memory_order_release);
-                m_ctx->keycode_dirty.store(false, std::memory_order_release);
 
                 // Initialize a fresh hardware frame synchronization boundary hook
                 frame_callback = wl_surface_frame(m_ctx->surface);
                 wl_callback_add_listener(frame_callback, &frame_listener, m_ctx);
 
-                // Run GLES/Cairo frame steps natively
                 if (render_cairo_frame(m_ctx) < 0) {
                     break;
                 }
                 rendered_this_pass = true;
             }
 
-            // Maintenance pass rules
+            // Periodic shell layout maintenance verification passes
             auto now = std::chrono::steady_clock::now();
             if (now - last_shell_reapply >= kShellReapplyInterval) {
                 wl_surface_commit(m_ctx->surface);
@@ -1457,8 +1459,8 @@ void GlApp::run()
         }
 
         // --- STEP 3: IDLE PROTECTION GATE (CPU SAVER) ---
-        // If the thread didn't execute a frame update, yield the remaining time slice
-        // to prevent high CPU usage when idle.
+        // If the thread didn't execute an active frame redraw step this pass,
+        // yield the remainder of the execution slice to keep background CPU core metrics low.
         if (!rendered_this_pass && m_ctx->running.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(8));
         }
