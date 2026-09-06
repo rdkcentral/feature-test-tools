@@ -1184,6 +1184,7 @@ static void global_registry_handler(void* data, wl_registry* registry, uint32_t 
 static const wl_registry_listener registry_listener = { global_registry_handler, [](void* d, wl_registry* r, uint32_t id){
     (void)d; (void)r; (void)id;
 } };
+
 GlApp::GlApp(int width, int height, const std::string& fontPath, BackgroundPatternMode pattern)
     : m_ctx(new AppContext())
 {
@@ -1316,12 +1317,31 @@ void GlApp::renderInitialFrame()
     resume();
 }
 
+// Callback for Wayland frame completion events - Invoked by compositor when a frame has been
+// fully processed and displayed.
+static void frame_handle_done(void* data, wl_callback* callback, uint32_t cookie)
+{
+    (void)cookie;
+    AppContext* app = static_cast<AppContext*>(data);
+    if (callback) {
+        wl_callback_destroy(callback);
+    }
+
+    // Unblock the main loop thread for the next animation frame step
+    if (app) {
+        app->keyFrameDirty.store(true, std::memory_order_release);
+        signal_run_loop(app);
+    }
+}
+
+static const wl_callback_listener frame_listener = { frame_handle_done };
+
 void GlApp::run()
 {
-    log_info("Starting Wayland dispatch loop");
+    log_info("Starting Wayland dispatch loop with Frame Sync throttling");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
-    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE LOOP ---
+    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE Loop ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
         if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
             stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
@@ -1331,187 +1351,108 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
-    // EXCLUSIVE ANCHOR POINT: Background render thread claims isolated context control
     if (!ensure_egl_current(m_ctx)) {
         log_err("Background render thread failed to claim EGL context ownership.");
         return;
     }
 
-    // Renders and presents a single, static layout frame immediately so the window manager
-    // knows this container application is structurally ready and can map it to the display screen.
+    // Render Initial Frame for Window Manager Setup
     {
         std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
-        log_info("Executing State 2: Rendering static bootstrap frame for window manager registration.");
-
-        // Render the base frame vectors explicitly
         if (render_cairo_frame(m_ctx) != 0) {
-            stop_run_loop(m_ctx, "render_cairo_frame bootstrap execution failed");
+            stop_run_loop(m_ctx, "render_cairo_frame bootstrap failed");
             return;
         }
-
-        // Leave the GLApp lifecycle state as Paused / Bootstrapping here!
-        // Do NOT change it to Active yet. Let main thread call resume() to safely
-        // move forward.
     }
 
-    auto last_frame_time = std::chrono::steady_clock::now();
-    auto last_cairo_time = std::chrono::steady_clock::now();
-    const std::chrono::milliseconds kTargetFrameTime = m_ctx->targetFrameTime;
-    const std::chrono::milliseconds kCairoFrameTime = m_ctx->cairoFrameTime;
-    static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
+    static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
 
-    // --- PHASE 2: MAIN DISPATCH & RENDERING LOOP ---
+    // Set up our tracking state for the Wayland hardware clock callback
+    wl_callback* frame_callback = nullptr;
+    m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+
+    // --- PHASE 2: HARDWARE-THROTTLED MAIN DISPATCH LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
-        // --- STEP 0: PROCESS PENDING LIFECYCLE TRANSITIONS ---
+        // Handle pending state transitions smoothly
         if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
             RenderLifecycleState target = m_ctx->target_lifecycle_state.load(std::memory_order_acquire);
             m_ctx->lifecycle_state.store(target, std::memory_order_release);
             m_ctx->state_transition_pending.store(false, std::memory_order_release);
-            log_info("Lifecycle state transitioned smoothly to: {}", static_cast<int>(target));
-
-            if (target == RenderLifecycleState::Closing) {
-                break;
-            }
+            if (target == RenderLifecycleState::Closing) break;
         }
 
-        // --- STEP 1: PRE-FLUSH WAYLAND EVENTS Safely ---
-        while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
-            if (wl_display_dispatch_pending(m_ctx->display) < 0) {
-                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
-                break;
-            }
-        }
-        if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
+        // --- STEP 1: READ NATIVE WAYLAND WIRE PROTOCOL SOCKET PACKETS ---
+        // Replacing the pre-read spinlock with a safe standard dispatch drain pattern
+        if (wl_display_prepare_read(m_ctx->display) == 0) {
+            wl_display_flush(m_ctx->display);
 
-        wl_display_flush(m_ctx->display);
+            pollfd fds[2];
+            fds[0].fd = m_ctx->waylandFd;
+            fds[0].events = POLLIN;
+            fds[0].revents = 0;
 
-        // --- STEP 2: CALCULATE HARD TIMEOUT BUDGETS ---
-        const auto now = std::chrono::steady_clock::now();
-        int timeoutMs = 0;
+            fds[1].fd = m_ctx->wakeEventFd;
+            fds[1].events = POLLIN;
+            fds[1].revents = 0;
 
-        RenderLifecycleState active_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+            // Compute a relaxed low-power timeout budget if paused, otherwise sleep until wake/socket event
+            int active_timeout = (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) ? 16 : 100;
 
-        if (active_state == RenderLifecycleState::Active) {
-            auto next_frame_target = last_frame_time + kTargetFrameTime;
-            timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
-            if (timeoutMs <= 0) {
-                timeoutMs = 0; // Trigger immediate poll execution but don't drop out of sleep bounds
-            }
-        } else {
-            timeoutMs = 100; // Deep low-power sleep fallback if app context is Paused
-        }
-
-        // --- STEP 3: STRUCTURAL MULTI-DESCRIPTOR POLL ATTRIBUTES ---
-        pollfd fds[2];
-        fds[0].fd = m_ctx->waylandFd;
-        fds[0].events = POLLIN;
-        fds[0].revents = 0;
-
-        fds[1].fd = m_ctx->wakeEventFd;
-        fds[1].events = POLLIN;
-        fds[1].revents = 0;
-
-        const int pollResult = poll(fds, 2, timeoutMs);
-        if (pollResult < 0) {
-            wl_display_cancel_read(m_ctx->display);
-            if (EINTR == errno) continue;
-            break;
-        }
-
-        // --- STEP 4: SIGNAL PROCESSING AND DESCRIPTOR DRAINING ---
-        bool wayland_socket_has_data = false;
-
-        if (pollResult == 0) {
-            wl_display_cancel_read(m_ctx->display);
-        } else {
-            // Handle cross-thread manual eventfd wake signals
-            if ((fds[1].revents & POLLIN) != 0) {
-                uint64_t wakeValue = 0;
-                while (m_ctx) {
-                    ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
-                    if (bytesRead < 0) {
-                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                            break;
-                        }
-                        log_err("EventFd read hardware error encountered: errno={}", errno);
-                        break;
-                    }
-                    if (bytesRead == 0) break;
+            if (poll(fds, 2, active_timeout) > 0) {
+                if ((fds[0].revents & POLLIN) != 0) {
+                    wl_display_read_events(m_ctx->display);
+                } else {
+                    wl_display_cancel_read(m_ctx->display);
                 }
-            }
 
-            if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) {
-                wl_display_cancel_read(m_ctx->display);
-                break;
-            }
-
-            if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                wl_display_cancel_read(m_ctx->display);
-                break;
-            }
-
-            // Handle native Wayland protocol stream events
-            if ((fds[0].revents & POLLIN) != 0) {
-                if (wl_display_read_events(m_ctx->display) < 0) {
-                    break;
+                // Drain cross-thread wake eventfds cleanly
+                if ((fds[1].revents & POLLIN) != 0) {
+                    uint64_t wakeValue = 0;
+                    read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
                 }
-                wayland_socket_has_data = true;
             } else {
                 wl_display_cancel_read(m_ctx->display);
             }
-
-            if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                break;
-            }
         }
 
-        // --- STEP 5: PURGE PENDING QUEUE MESSAGES ---
-        if (wayland_socket_has_data) {
-            if (wl_display_dispatch_pending(m_ctx->display) < 0) {
-                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
-                break;
-            }
-        }
+        // Purge queue messages to keep memory fences clear
+        while (wl_display_dispatch_pending(m_ctx->display) > 0);
 
-        if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
+        // --- STEP 2: CADENCE PRESENTATION LOGIC ---
+        if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) {
+            // Check if compositor has completed rendering the previous frame step
+            if (m_ctx->keyFrameDirty.load(std::memory_order_acquire) ||
+                m_ctx->keycode_dirty.load(std::memory_order_acquire))
+            {
+                m_ctx->keyFrameDirty.store(false, std::memory_order_release);
+                m_ctx->keycode_dirty.store(false, std::memory_order_release);
 
-        // --- STEP 6: CADENCE-DRIVEN ANIMATION CADENCE TRIGGER ---
-        if (active_state == RenderLifecycleState::Active) {
-            const auto render_now = std::chrono::steady_clock::now();
+                // Initialize a fresh hardware frame synchronization boundary hook
+                frame_callback = wl_surface_frame(m_ctx->surface);
+                wl_callback_add_listener(frame_callback, &frame_listener, m_ctx);
 
-            if ((render_now - last_frame_time >= kTargetFrameTime) ||
-                 m_ctx->keycode_dirty.load(std::memory_order_acquire)) {
-
-                const bool keyDirty = m_ctx->keycode_dirty.exchange(false, std::memory_order_acq_rel);
-                const bool cairoDue = (render_now - last_cairo_time >= kCairoFrameTime);
-
-                if (keyDirty || cairoDue || !m_ctx->hasCachedPreparedFrame) {
-                    if (render_cairo_frame(m_ctx) < 0) {
-                        break;
-                    }
-                    last_cairo_time = render_now;
-                } else {
-                    if (present_cached_frame(m_ctx) < 0) {
-                        break;
-                    }
-                }
-
-                last_frame_time += kTargetFrameTime;
-                if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
-                    last_frame_time = render_now;
+                // Run GLES/Cairo frame steps natively
+                if (render_cairo_frame(m_ctx) < 0) {
+                    break;
                 }
             }
 
-            // Periodic layout maintenance tasks
-            if (render_now - last_shell_reapply >= kShellReapplyInterval) {
+            // Periodic shell layout verification updates
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_shell_reapply >= kShellReapplyInterval) {
                 wl_surface_commit(m_ctx->surface);
                 wl_display_flush(m_ctx->display);
-                last_shell_reapply = render_now;
+                last_shell_reapply = now;
             }
         }
     }
+
+    if (frame_callback) {
+        wl_callback_destroy(frame_callback);
+    }
+
     log_warn("Wayland dispatch loop exited cleanly");
 }
 
