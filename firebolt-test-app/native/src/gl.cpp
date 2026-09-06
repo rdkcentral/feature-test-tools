@@ -1345,9 +1345,7 @@ void GlApp::run()
         return;
     }
 
-    // --- PHASE 2: STATE 2 HARD REQUIREMENT — BOOTSTRAP INITIAL FRAME ---
-    // Renders and presents a single, static layout frame immediately so the window manager
-    // knows this container application is structurally ready and can map it to the display screen.
+    // Render Initial Frame for Window Manager Setup
     {
         std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
         log_info("Executing State 2: Rendering static bootstrap frame for window manager registration.");
@@ -1364,8 +1362,9 @@ void GlApp::run()
     wl_callback* frame_callback = nullptr;
     m_ctx->keyFrameDirty.store(true, std::memory_order_release);
 
-    // --- PHASE 3: HARDWARE-THROTTLED DISPATCH & MAIN ACTIVE RUNTIME LOOP ---
+    // --- PHASE 2: UNIFIED DISPATCH LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
+
         // --- STEP 0: PROCESS PENDING LIFECYCLE TRANSITIONS ---
         if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
@@ -1373,73 +1372,52 @@ void GlApp::run()
             m_ctx->lifecycle_state.store(target, std::memory_order_release);
             m_ctx->state_transition_pending.store(false, std::memory_order_release);
             log_info("Lifecycle state transitioned smoothly to: {}", static_cast<int>(target));
-
-            if (target == RenderLifecycleState::Closing) {
-                break;
-            }
+            if (target == RenderLifecycleState::Closing) break;
         }
 
         bool rendered_this_pass = false;
 
-        // --- STEP 1: NATIVE WAYLAND DISPATCH SYNCHRONIZATION ---
-        if (wl_display_prepare_read(m_ctx->display) == 0) {
-            wl_display_flush(m_ctx->display);
+        // --- STEP 1: SLEEP VIA POLL ---
+        pollfd fds[2];
+        fds[0].fd = m_ctx->waylandFd;
+        fds[0].events = POLLIN;
+        fds[0].revents = 0;
 
-            pollfd fds[2];
-            fds[0].fd = m_ctx->waylandFd;
-            fds[0].events = POLLIN;
-            fds[0].revents = 0;
+        fds[1].fd = m_ctx->wakeEventFd;
+        fds[1].events = POLLIN;
+        fds[1].revents = 0;
 
-            fds[1].fd = m_ctx->wakeEventFd;
-            fds[1].events = POLLIN;
-            fds[1].revents = 0;
+        int active_timeout = (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) ? 16 : 100;
 
-            // Strict 16ms sleep baseline targets a consistent 60Hz update cycle when awake
-            int active_timeout = (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) ? 16 : 100;
+        wl_display_flush(m_ctx->display);
+        int pollResult = poll(fds, 2, active_timeout);
 
-            int pollResult = poll(fds, 2, active_timeout);
-            if (pollResult > 0) {
-                // True incoming data on watched descriptors
-                if ((fds[0].revents & POLLIN) != 0) {
-                    if (wl_display_read_events(m_ctx->display) < 0) {
-                        log_warn("wl_display_read_events hardware descriptor read error encountered.");
-                    }
-                } else {
-                    // Woken by cross-thread eventfd instead of Wayland socket
-                    wl_display_cancel_read(m_ctx->display);
+        if (pollResult > 0) {
+            // If the Wayland socket descriptor has data, dispatch and drain it natively
+            if ((fds[0].revents & POLLIN) != 0) {
+                if (wl_display_dispatch(m_ctx->display) < 0) {
+                    log_err("Hardware display connection lost.");
+                    break;
                 }
-
-                // Clear out background cross-thread eventfd wake signals to satisfy -Werror=unused-result
-                if ((fds[1].revents & POLLIN) != 0) {
-                    uint64_t wakeValue = 0;
-                    ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
-                    (void)bytesRead;
-                }
-            } else if (pollResult == 0) {
-                // TRUE TIMEOUT - Let Wayland safely consume the cycle
-                // instead of short-circuiting and canceling the thread mutex
-                wl_display_read_events(m_ctx->display);
-            } else {
-                // HARD HARDWARE SYSTEM ERROR
-                log_warn("poll() failed with errno={}", errno);
-                wl_display_cancel_read(m_ctx->display);
             }
-        } else {
-            // wl_display_prepare_read failed because events are already pending in internal queue;
-            // dispatch them directly right now to prevent tight, unthrottled thread spin loop patterns
+
+            // Clear cross-thread signal buffer
+            if ((fds[1].revents & POLLIN) != 0) {
+                uint64_t wakeValue = 0;
+                ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
+                (void)bytesRead;
+            }
+        }
+        else if (pollResult == 0) {
+            // Timeout event: execute internal pending queue processing safely
             while (wl_display_dispatch_pending(m_ctx->display) > 0);
         }
 
-        // Drain the queue to process any events from the compositor completely
-        while (wl_display_dispatch_pending(m_ctx->display) > 0);
-
         // --- STEP 2: CADENCE PRESENTATION LOGIC ---
         if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) {
-            // Driven strictly by the hardware monitor's vsync refresh token callback
             if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
                 m_ctx->keyFrameDirty.store(false, std::memory_order_release);
 
-                // Initialize a fresh hardware frame synchronization boundary hook
                 frame_callback = wl_surface_frame(m_ctx->surface);
                 wl_callback_add_listener(frame_callback, &frame_listener, m_ctx);
 
@@ -1449,7 +1427,6 @@ void GlApp::run()
                 rendered_this_pass = true;
             }
 
-            // Periodic shell layout maintenance verification passes
             auto now = std::chrono::steady_clock::now();
             if (now - last_shell_reapply >= kShellReapplyInterval) {
                 wl_surface_commit(m_ctx->surface);
@@ -1458,9 +1435,7 @@ void GlApp::run()
             }
         }
 
-        // --- STEP 3: IDLE PROTECTION GATE (CPU SAVER) ---
-        // If the thread didn't execute an active frame redraw step this pass,
-        // yield the remainder of the execution slice to keep background CPU core metrics low.
+        // --- STEP 3: IDLE PROTECTION GATE ---
         if (!rendered_this_pass && m_ctx->running.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(8));
         }
