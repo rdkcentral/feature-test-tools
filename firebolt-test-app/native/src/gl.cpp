@@ -158,6 +158,7 @@ struct AppContext {
     int wakeEventFd = -1;
     int waylandFd = -1;
     std::chrono::milliseconds targetFrameTime{33};
+    std::chrono::milliseconds cairoFrameTime{33};
     int swapInterval = 1;
     bool forceGlFinish = false;
     EGLint glesClientVersion = 3;
@@ -181,6 +182,11 @@ struct AppContext {
     void (*keycodeCallback)(const GlKeyEvent&) = nullptr;
 
     std::atomic<bool> deinitialized { false };
+    int cachedFrameWidth = 0;
+    int cachedFrameHeight = 0;
+    uint32_t cachedFrameKeycode = 0;
+    uint32_t cachedFrameUtf32 = 0;
+    bool hasCachedPreparedFrame = false;
 };
 
 struct PreparedFrame {
@@ -197,6 +203,7 @@ struct FontResourceBundle {
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
 int render_cairo_frame(AppContext* app);
+int present_cached_frame(AppContext* app);
 
 static int read_env_int_clamped(const char* name, int fallback, int minValue, int maxValue)
 {
@@ -781,7 +788,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     return frame;
 }
 
-static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
+static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, bool uploadTexture = true)
 {
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
@@ -799,7 +806,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
-    if (app->has_pbo_support && app->ring_allocated) {
+    if (uploadTexture && app->has_pbo_support && app->ring_allocated) {
         // FIX ARCHITECTURE ALIGNMENT: Pull straight from active ring index matching Cairo output payload
         int draw_idx = app->current_ring_index;
         app->current_ring_index = (draw_idx + 1) % 2; // Advance ring pointer index ONLY after presentation sampling
@@ -845,7 +852,32 @@ int render_cairo_frame(AppContext* app)
 {
     if (!app || !app->running.load(std::memory_order_acquire)) return -1;
     const PreparedFrame frame = prepare_cairo_frame(app, app->current_keycode.load(std::memory_order_acquire));
-    if (!present_prepared_frame(app, frame)) { app->running.store(false, std::memory_order_release); return -1; }
+    if (!present_prepared_frame(app, frame, true)) { app->running.store(false, std::memory_order_release); return -1; }
+    app->cachedFrameWidth = frame.width;
+    app->cachedFrameHeight = frame.height;
+    app->cachedFrameKeycode = frame.keycode;
+    app->cachedFrameUtf32 = frame.utf32;
+    app->hasCachedPreparedFrame = true;
+    return 0;
+}
+
+int present_cached_frame(AppContext* app)
+{
+    if (!app || !app->running.load(std::memory_order_acquire)) return -1;
+    if (!app->hasCachedPreparedFrame) {
+        return render_cairo_frame(app);
+    }
+
+    PreparedFrame frame;
+    frame.width = app->cachedFrameWidth;
+    frame.height = app->cachedFrameHeight;
+    frame.keycode = app->cachedFrameKeycode;
+    frame.utf32 = app->cachedFrameUtf32;
+
+    if (!present_prepared_frame(app, frame, false)) {
+        app->running.store(false, std::memory_order_release);
+        return -1;
+    }
     return 0;
 }
 
@@ -1134,21 +1166,27 @@ bool GlApp::init(const char* waylandDisplay)
     if (m_ctx->egl_surface == EGL_NO_SURFACE || eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) != EGL_TRUE) return false;
 
     const int configuredFps = read_env_int_clamped("GLAPP_TARGET_FPS", 30, 1, 120);
+    const int configuredCairoFps = read_env_int_clamped("GLAPP_CAIRO_FPS", configuredFps, 1, 120);
     m_ctx->targetFrameTime = std::chrono::milliseconds(std::max(1, 1000 / configuredFps));
+    m_ctx->cairoFrameTime = std::chrono::milliseconds(std::max(1, 1000 / configuredCairoFps));
     m_ctx->swapInterval = read_env_int_clamped("GLAPP_SWAP_INTERVAL", 1, 0, 4);
     m_ctx->forceGlFinish = (read_env_int_clamped("GLAPP_FORCE_GLFINISH", 0, 0, 1) == 1);
 
     if (eglSwapInterval(m_ctx->egl_display, m_ctx->swapInterval) == EGL_TRUE) {
-        log_info("EGL swap interval set to {}. Target FPS={} ({} ms/frame). glFinish={}",
+        log_info("EGL swap interval set to {}. Present FPS={} ({} ms/frame). Cairo FPS={} ({} ms/frame). glFinish={}",
                  m_ctx->swapInterval,
                  configuredFps,
                  m_ctx->targetFrameTime.count(),
+                 configuredCairoFps,
+                 m_ctx->cairoFrameTime.count(),
                  m_ctx->forceGlFinish ? "on" : "off");
     } else {
-        log_warn("Failed to set EGL swap interval to {}. Target FPS={} ({} ms/frame). glFinish={}",
+        log_warn("Failed to set EGL swap interval to {}. Present FPS={} ({} ms/frame). Cairo FPS={} ({} ms/frame). glFinish={}",
                  m_ctx->swapInterval,
                  configuredFps,
                  m_ctx->targetFrameTime.count(),
+                 configuredCairoFps,
+                 m_ctx->cairoFrameTime.count(),
                  m_ctx->forceGlFinish ? "on" : "off");
     }
 
@@ -1211,14 +1249,14 @@ void GlApp::run()
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
+    auto last_cairo_time = std::chrono::steady_clock::now();
     const std::chrono::milliseconds kTargetFrameTime = m_ctx->targetFrameTime;
+    const std::chrono::milliseconds kCairoFrameTime = m_ctx->cairoFrameTime;
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
     // --- PHASE 3: MAIN DISPATCH & RENDERING LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
-
-        // 🔒 TRANSACTION BARRIER: Handle potential lifecycle changes under lock before processing event loops
         {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
             if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Closing) {
@@ -1348,11 +1386,20 @@ void GlApp::run()
                 if ((render_now - last_frame_time >= kTargetFrameTime) ||
                      m_ctx->keycode_dirty.load(std::memory_order_acquire)) {
 
-                    m_ctx->keycode_dirty.store(false, std::memory_order_release);
+                    const bool keyDirty = m_ctx->keycode_dirty.exchange(false, std::memory_order_acq_rel);
+                    const bool cairoDue = (render_now - last_cairo_time >= kCairoFrameTime);
 
-                    if (render_cairo_frame(m_ctx) < 0) {
-                        break;
+                    if (keyDirty || cairoDue || !m_ctx->hasCachedPreparedFrame) {
+                        if (render_cairo_frame(m_ctx) < 0) {
+                            break;
+                        }
+                        last_cairo_time = render_now;
+                    } else {
+                        if (present_cached_frame(m_ctx) < 0) {
+                            break;
+                        }
                     }
+
                     last_frame_time += kTargetFrameTime;
                     if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
                         last_frame_time = render_now;
