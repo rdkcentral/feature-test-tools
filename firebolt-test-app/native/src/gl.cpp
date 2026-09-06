@@ -201,7 +201,7 @@ struct FontResourceBundle {
     FT_Face face = nullptr;
 };
 
-static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
+static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, bool uploadTexture);
 int render_cairo_frame(AppContext* app);
 int present_cached_frame(AppContext* app);
 
@@ -788,7 +788,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     return frame;
 }
 
-static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, bool uploadTexture = true)
+static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, bool uploadTexture)
 {
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;

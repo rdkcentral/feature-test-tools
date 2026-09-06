@@ -99,7 +99,12 @@ struct RuntimeLogger {
             } else if constexpr (std::is_same_v<T, std::string_view>) {
                 result_str.append(arg.data(), arg.size());
             } else if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
-                result_str.append(arg ? arg : "<null>");
+                const uintptr_t raw = reinterpret_cast<uintptr_t>(arg);
+                if (raw == 0U) {
+                    result_str.append("<null>");
+                } else {
+                    result_str.append(arg);
+                }
             } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
                 result_str.append("<null>");
             } else if constexpr (std::is_pointer_v<T>) {
