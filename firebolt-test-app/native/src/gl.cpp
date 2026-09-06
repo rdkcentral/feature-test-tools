@@ -1311,7 +1311,6 @@ bool GlApp::init(const char* waylandDisplay)
 
 void GlApp::renderInitialFrame()
 {
-    // Redundancy fixed: Main thread drawing loops are deleted completely.
     // Transition staging parameters to active and wake the thread to claim context ownership.
     if (!m_ctx || m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Closing) return;
     resume();
@@ -1322,9 +1321,7 @@ void GlApp::run()
     log_info("Starting Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
-    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE Loop ---
-    // Safely reads and dispatches socket events until the simple-shell protocol
-    // acknowledges the surface creation on the background thread context.
+    // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
         if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
             stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
@@ -1340,20 +1337,21 @@ void GlApp::run()
         return;
     }
 
-    // --- PHASE 2: SAFE BOUNDED INITIAL BOOTSTRAP FRAME ---
-    // Enforce lock containment over the AppContext state before invoking Cairo drawing
+    // Renders and presents a single, static layout frame immediately so the window manager
+    // knows this container application is structurally ready and can map it to the display screen.
     {
         std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
-        if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Paused ||
-            m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Bootstrapping) {
-            m_ctx->lifecycle_state.store(RenderLifecycleState::Active, std::memory_order_release);
-            m_ctx->keyFrameDirty.store(true, std::memory_order_release);
+        log_info("Executing State 2: Rendering static bootstrap frame for window manager registration.");
 
-            log_info("Rendering initial frame on run() entry safely on the background thread context.");
-            if (render_cairo_frame(m_ctx) != 0) {
-                stop_run_loop(m_ctx, "render_cairo_frame failed");
-            }
+        // Render the base frame vectors explicitly
+        if (render_cairo_frame(m_ctx) != 0) {
+            stop_run_loop(m_ctx, "render_cairo_frame bootstrap execution failed");
+            return;
         }
+
+        // Leave the GLApp lifecycle state as Paused / Bootstrapping here!
+        // Do NOT change it to Active yet. Let main thread call resume() to safely
+        // move forward.
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
@@ -1363,50 +1361,49 @@ void GlApp::run()
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 
-    // --- PHASE 3: MAIN DISPATCH & RENDERING LOOP ---
+    // --- PHASE 2: MAIN DISPATCH & RENDERING LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
-        {
+        // --- STEP 0: PROCESS PENDING LIFECYCLE TRANSITIONS ---
+        if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
-            if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Closing) {
+            RenderLifecycleState target = m_ctx->target_lifecycle_state.load(std::memory_order_acquire);
+            m_ctx->lifecycle_state.store(target, std::memory_order_release);
+            m_ctx->state_transition_pending.store(false, std::memory_order_release);
+            log_info("Lifecycle state transitioned smoothly to: {}", static_cast<int>(target));
+
+            if (target == RenderLifecycleState::Closing) {
                 break;
             }
         }
 
-        // --- STEP 1: PRE-FLUSH WAYLAND EVENTS ---
+        // --- STEP 1: PRE-FLUSH WAYLAND EVENTS Safely ---
         while (m_ctx && (wl_display_prepare_read(m_ctx->display) != 0)) {
-            if (m_ctx && wl_display_dispatch_pending(m_ctx->display) < 0) {
+            if (wl_display_dispatch_pending(m_ctx->display) < 0) {
                 stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
                 break;
             }
         }
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
-        if (m_ctx) wl_display_flush(m_ctx->display);
+        wl_display_flush(m_ctx->display);
 
         // --- STEP 2: CALCULATE HARD TIMEOUT BUDGETS ---
         const auto now = std::chrono::steady_clock::now();
-        auto next_frame_target = last_frame_time + kTargetFrameTime;
         int timeoutMs = 0;
 
-        // Ensure state checking remains thread-isolated
-        RenderLifecycleState active_state;
-        {
-            std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
-            active_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
-        }
+        RenderLifecycleState active_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
 
         if (active_state == RenderLifecycleState::Active) {
+            auto next_frame_target = last_frame_time + kTargetFrameTime;
             timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(next_frame_target - now).count());
             if (timeoutMs <= 0) {
-                auto missed_by = std::chrono::duration_cast<std::chrono::milliseconds>(now - next_frame_target).count();
-                timeoutMs = static_cast<int>(kTargetFrameTime.count() - (missed_by % kTargetFrameTime.count()));
-                if (timeoutMs <= 0) timeoutMs = 4; // Anti-spin backoff protection
+                timeoutMs = 0; // Trigger immediate poll execution but don't drop out of sleep bounds
             }
         } else {
-            timeoutMs = 50; // Low-power sleep fallback if app context enters Paused state
+            timeoutMs = 100; // Deep low-power sleep fallback if app context is Paused
         }
 
-        // --- STEP 3: CONSTRUCT STRUCTURAL MULTI-DESCRIPTOR POLL ATTRIBUTES ---
+        // --- STEP 3: STRUCTURAL MULTI-DESCRIPTOR POLL ATTRIBUTES ---
         pollfd fds[2];
         fds[0].fd = m_ctx->waylandFd;
         fds[0].events = POLLIN;
@@ -1418,16 +1415,16 @@ void GlApp::run()
 
         const int pollResult = poll(fds, 2, timeoutMs);
         if (pollResult < 0) {
-            if (m_ctx) wl_display_cancel_read(m_ctx->display);
+            wl_display_cancel_read(m_ctx->display);
             if (EINTR == errno) continue;
             break;
         }
 
-        // --- STEP 4: SIGNAL PROCESSING & HARDENED MULTI-THREAD DRAINING ---
+        // --- STEP 4: SIGNAL PROCESSING AND DESCRIPTOR DRAINING ---
         bool wayland_socket_has_data = false;
 
         if (pollResult == 0) {
-            if (m_ctx) wl_display_cancel_read(m_ctx->display);
+            wl_display_cancel_read(m_ctx->display);
         } else {
             // Handle cross-thread manual eventfd wake signals
             if ((fds[1].revents & POLLIN) != 0) {
@@ -1446,23 +1443,23 @@ void GlApp::run()
             }
 
             if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) {
-                if (m_ctx) wl_display_cancel_read(m_ctx->display);
+                wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
             if ((fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                if (m_ctx) wl_display_cancel_read(m_ctx->display);
+                wl_display_cancel_read(m_ctx->display);
                 break;
             }
 
             // Handle native Wayland protocol stream events
             if ((fds[0].revents & POLLIN) != 0) {
-                if (m_ctx && wl_display_read_events(m_ctx->display) < 0) {
+                if (wl_display_read_events(m_ctx->display) < 0) {
                     break;
                 }
                 wayland_socket_has_data = true;
             } else {
-                if (m_ctx) wl_display_cancel_read(m_ctx->display);
+                wl_display_cancel_read(m_ctx->display);
             }
 
             if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
@@ -1471,9 +1468,7 @@ void GlApp::run()
         }
 
         // --- STEP 5: PURGE PENDING QUEUE MESSAGES ---
-        while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
-
-        if (m_ctx && wayland_socket_has_data) {
+        if (wayland_socket_has_data) {
             if (wl_display_dispatch_pending(m_ctx->display) < 0) {
                 stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
                 break;
@@ -1483,44 +1478,37 @@ void GlApp::run()
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
 
         // --- STEP 6: CADENCE-DRIVEN ANIMATION CADENCE TRIGGER ---
-        // Wrap frame generation strictly inside the mutex block boundary to guarantee stability
-        {
-            std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
-            const RenderLifecycleState loop_current_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+        if (active_state == RenderLifecycleState::Active) {
+            const auto render_now = std::chrono::steady_clock::now();
 
-            if (loop_current_state == RenderLifecycleState::Active) {
-                const auto render_now = std::chrono::steady_clock::now();
+            if ((render_now - last_frame_time >= kTargetFrameTime) ||
+                 m_ctx->keycode_dirty.load(std::memory_order_acquire)) {
 
-                if ((render_now - last_frame_time >= kTargetFrameTime) ||
-                     m_ctx->keycode_dirty.load(std::memory_order_acquire)) {
+                const bool keyDirty = m_ctx->keycode_dirty.exchange(false, std::memory_order_acq_rel);
+                const bool cairoDue = (render_now - last_cairo_time >= kCairoFrameTime);
 
-                    const bool keyDirty = m_ctx->keycode_dirty.exchange(false, std::memory_order_acq_rel);
-                    const bool cairoDue = (render_now - last_cairo_time >= kCairoFrameTime);
-
-                    if (keyDirty || cairoDue || !m_ctx->hasCachedPreparedFrame) {
-                        if (render_cairo_frame(m_ctx) < 0) {
-                            break;
-                        }
-                        last_cairo_time = render_now;
-                    } else {
-                        if (present_cached_frame(m_ctx) < 0) {
-                            break;
-                        }
+                if (keyDirty || cairoDue || !m_ctx->hasCachedPreparedFrame) {
+                    if (render_cairo_frame(m_ctx) < 0) {
+                        break;
                     }
-
-                    last_frame_time += kTargetFrameTime;
-                    if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
-                        last_frame_time = render_now;
+                    last_cairo_time = render_now;
+                } else {
+                    if (present_cached_frame(m_ctx) < 0) {
+                        break;
                     }
                 }
 
-                // Periodic container shell maintenance tasks
-                const auto final_now = std::chrono::steady_clock::now();
-                if (final_now - last_shell_reapply >= kShellReapplyInterval) {
-                    if (m_ctx && m_ctx->surface) wl_surface_commit(m_ctx->surface);
-                    if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
-                    last_shell_reapply = final_now;
+                last_frame_time += kTargetFrameTime;
+                if (render_now - last_frame_time > std::chrono::milliseconds(100)) {
+                    last_frame_time = render_now;
                 }
+            }
+
+            // Periodic layout maintenance tasks
+            if (render_now - last_shell_reapply >= kShellReapplyInterval) {
+                wl_surface_commit(m_ctx->surface);
+                wl_display_flush(m_ctx->display);
+                last_shell_reapply = render_now;
             }
         }
     }
@@ -1530,7 +1518,6 @@ void GlApp::run()
 void GlApp::resume()
 {
     if (m_ctx) {
-        std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
         m_ctx->target_lifecycle_state.store(RenderLifecycleState::Active, std::memory_order_release);
         m_ctx->state_transition_pending.store(true, std::memory_order_release);
         signal_run_loop(m_ctx);
@@ -1540,16 +1527,17 @@ void GlApp::resume()
 void GlApp::pause()
 {
     if (m_ctx) {
-        std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
         m_ctx->target_lifecycle_state.store(RenderLifecycleState::Paused, std::memory_order_release);
         m_ctx->state_transition_pending.store(true, std::memory_order_release);
         signal_run_loop(m_ctx);
     }
 }
+
 void GlApp::close()
 {
     if (m_ctx) {
-        m_ctx->lifecycle_state.store(RenderLifecycleState::Closing, std::memory_order_release);
+        m_ctx->target_lifecycle_state.store(RenderLifecycleState::Closing, std::memory_order_release);
+        m_ctx->state_transition_pending.store(true, std::memory_order_release);
         m_ctx->running.store(false, std::memory_order_release);
         signal_run_loop(m_ctx);
     }
