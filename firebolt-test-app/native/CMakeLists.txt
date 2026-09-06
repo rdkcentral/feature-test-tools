@@ -181,6 +181,7 @@ pkg_check_modules(EGL         REQUIRED egl)
 pkg_check_modules(GLESV2      REQUIRED glesv2)
 pkg_check_modules(CAIRO_FT    REQUIRED cairo cairo-ft)
 pkg_check_modules(FREETYPE    REQUIRED freetype2)
+pkg_check_modules(XKBCOMMON   QUIET xkbcommon)
 
 set(FONT_BASE_DIR "${CMAKE_INSTALL_FULL_DATADIR}")
 set(APP_FONT_DIR "${FONT_BASE_DIR}/fonts/ttf/")
@@ -215,6 +216,13 @@ target_link_libraries(${GL_MODULE_TARGET}
         ${FREETYPE_LIBRARIES}
 )
 
+if(XKBCOMMON_FOUND)
+    target_link_libraries(${GL_MODULE_TARGET} PUBLIC ${XKBCOMMON_LIBRARIES})
+    message(STATUS "xkbcommon detected: enabling Wayland keymap translation")
+else()
+    message(STATUS "xkbcommon not found: building with raw evdev keycodes only")
+endif()
+
 target_include_directories(${GL_MODULE_TARGET}
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
@@ -226,11 +234,19 @@ target_include_directories(${GL_MODULE_TARGET}
         ${FREETYPE_INCLUDE_DIRS}
 )
 
+if(XKBCOMMON_FOUND)
+    target_include_directories(${GL_MODULE_TARGET} PRIVATE ${XKBCOMMON_INCLUDE_DIRS})
+endif()
+
 target_compile_definitions(${GL_MODULE_TARGET}
     PRIVATE
         USE_WESTEROS_SIMPLESHELL
         APP_FONT_DIR=\"${APP_FONT_DIR}\"
 )
+
+if(XKBCOMMON_FOUND)
+    target_compile_definitions(${GL_MODULE_TARGET} PRIVATE HAVE_XKBCOMMON=1)
+endif()
 
 set_target_properties(${GL_MODULE_TARGET} PROPERTIES
     CXX_STANDARD 17

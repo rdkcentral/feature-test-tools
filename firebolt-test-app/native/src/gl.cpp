@@ -26,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -39,6 +40,7 @@
 
 #include <errno.h>
 #include <poll.h>
+#include <sys/mman.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 
@@ -49,6 +51,9 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#ifdef HAVE_XKBCOMMON
+#include <xkbcommon/xkbcommon.h>
+#endif
 
 #if __has_include(<GLES3/gl3.h>)
 #include <GLES3/gl3.h>
@@ -98,6 +103,11 @@ struct AppContext {
     wl_compositor* compositor = nullptr;
     wl_seat* seat = nullptr;
     wl_keyboard* keyboard = nullptr;
+#ifdef HAVE_XKBCOMMON
+    xkb_context* xkbContext = nullptr;
+    xkb_keymap* xkbKeymap = nullptr;
+    xkb_state* xkbState = nullptr;
+#endif
 
     wl_simple_shell* simple_shell_ptr = nullptr;
     uint32_t simple_shell_surface_id = 0;
@@ -132,6 +142,14 @@ struct AppContext {
     bool configured = false;
     std::atomic<bool> keyFrameDirty{ false };
     std::atomic<uint32_t> current_keycode{ 0 };
+    std::atomic<uint32_t> current_utf32{ 0 };
+    uint32_t cachedDisplayKeycode = UINT32_MAX;
+    uint32_t cachedDisplayUtf32 = UINT32_MAX;
+    std::string cachedDisplayText = "?";
+    cairo_text_extents_t cachedLabelExtents{};
+    cairo_text_extents_t cachedCodeExtents{};
+    bool cachedLabelExtentsValid = false;
+    bool cachedCodeExtentsValid = false;
     std::mutex preparedFrameMutex;
     int pendingPreparedWidth = 0;
     int pendingPreparedHeight = 0;
@@ -157,7 +175,7 @@ struct AppContext {
     int width = DEFAULT_WIDTH;
     int height = DEFAULT_HEIGHT;
     std::string fontPath = "/usr/share/fonts/ttf/LiberationSans-Bold.ttf";
-    void (*keycodeCallback)(uint32_t) = nullptr;
+    void (*keycodeCallback)(const GlKeyEvent&) = nullptr;
 
     std::atomic<bool> deinitialized { false };
 };
@@ -166,6 +184,7 @@ struct PreparedFrame {
     int width = 0;
     int height = 0;
     uint32_t keycode = 0;
+    uint32_t utf32 = 0;
 };
 
 struct FontResourceBundle {
@@ -175,6 +194,32 @@ struct FontResourceBundle {
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
 int render_cairo_frame(AppContext* app);
+
+static std::string format_key_display(uint32_t keycode, uint32_t utf32)
+{
+    if (keycode == 0) {
+        return "?";
+    }
+
+    if (utf32 >= 0x20 && utf32 <= 0x7E) {
+        std::string out;
+        out.reserve(10);
+        out.push_back('\'');
+        out.push_back(static_cast<char>(utf32));
+        out.push_back('\'');
+        out.push_back(' ');
+        out += std::to_string(keycode);
+        return out;
+    }
+
+    if (utf32 != 0) {
+        std::ostringstream os;
+        os << "U+" << std::uppercase << std::hex << utf32 << std::dec << ' ' << keycode;
+        return os.str();
+    }
+
+    return std::to_string(keycode);
+}
 
 static bool ensure_run_wake_signal(AppContext* app)
 {
@@ -500,6 +545,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
+    frame.utf32 = app->current_utf32.load(std::memory_order_acquire);
 
     int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
     size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
@@ -620,7 +666,43 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_rectangle(cr, split_x + 2, 0, right_width, frame.height);
     cairo_fill(cr);
 
-    double box_size = 380.0;
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
+    else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+
+    const char* label_text = "LAST KEYCODE";
+
+    constexpr double kCodeFontSize = 60.0;
+    constexpr double kLabelFontSize = 28.0;
+    constexpr double kOuterMargin = 12.0;
+    constexpr double kFixedBoxSize = 520.0;
+    const double content_spacing = 75.0;
+
+    if (!app->cachedLabelExtentsValid) {
+        cairo_set_font_size(cr, kLabelFontSize);
+        cairo_text_extents(cr, label_text, &app->cachedLabelExtents);
+        app->cachedLabelExtentsValid = true;
+    }
+
+    if (!app->cachedCodeExtentsValid ||
+        app->cachedDisplayKeycode != frame.keycode ||
+        app->cachedDisplayUtf32 != frame.utf32) {
+        app->cachedDisplayText = format_key_display(frame.keycode, frame.utf32);
+        app->cachedDisplayKeycode = frame.keycode;
+        app->cachedDisplayUtf32 = frame.utf32;
+
+        cairo_set_font_size(cr, kCodeFontSize);
+        cairo_text_extents(cr, app->cachedDisplayText.c_str(), &app->cachedCodeExtents);
+        app->cachedCodeExtentsValid = true;
+    }
+
+    const cairo_text_extents_t& label_extents = app->cachedLabelExtents;
+    const cairo_text_extents_t& code_extents = app->cachedCodeExtents;
+    const std::string& code_str = app->cachedDisplayText;
+
+    const double max_box_size = std::max(100.0, right_width - (2.0 * kOuterMargin));
+    const double box_size = std::min(kFixedBoxSize, max_box_size);
+
     double box_x = split_x + (right_width - box_size) / 2.0;
     double box_y = (frame.height - box_size) / 2.0;
 
@@ -633,31 +715,17 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_rectangle(cr, box_x, box_y, box_size, box_size);
     cairo_stroke(cr);
 
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
-    else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-
-    double content_spacing = 75.0;
-    double label_width = 208.0;
-    double label_height = 22.0;
-    const char* label_text = "LAST KEYCODE";
-
-    std::string code_str = (frame.keycode != 0) ? std::to_string(frame.keycode) : "?";
-
-    cairo_set_font_size(cr, 96.0);
-    cairo_text_extents_t code_extents;
-    cairo_text_extents(cr, code_str.c_str(), &code_extents);
-
-    double total_content_height = label_height + content_spacing + code_extents.height;
+    double total_content_height = label_extents.height + content_spacing + code_extents.height;
     double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 15.0;
 
-    cairo_set_font_size(cr, 28.0);
-    cairo_move_to(cr, box_x + (box_size - label_width) / 2.0, baseline_start_y + label_height);
+    cairo_set_font_size(cr, kLabelFontSize);
+    cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing,
+                 baseline_start_y + label_extents.height);
     cairo_show_text(cr, label_text);
 
-    cairo_set_font_size(cr, 96.0);
+    cairo_set_font_size(cr, kCodeFontSize);
     cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing,
-                 baseline_start_y + label_height + content_spacing + code_extents.height);
+                 baseline_start_y + label_extents.height + content_spacing + code_extents.height);
     cairo_show_text(cr, code_str.c_str());
 
     cairo_restore(cr);
@@ -755,9 +823,65 @@ int render_cairo_frame(AppContext* app)
 
 static void keyboard_handle_keymap(void* d, wl_keyboard* kb, uint32_t f, int32_t fd, uint32_t s)
 {
-    (void)d; (void)kb; (void)f; (void)s;
+    (void)kb;
+    AppContext* app = static_cast<AppContext*>(d);
     log_dbg("Received keymap file descriptor: {}", fd);
+
+#ifdef HAVE_XKBCOMMON
+    if (!app || !app->xkbContext) {
+        close(fd);
+        return;
+    }
+
+    if (f != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || s == 0) {
+        log_warn("Unsupported keymap format={}, size={}", f, s);
+        close(fd);
+        return;
+    }
+
+    void* keymapData = mmap(nullptr, s, PROT_READ, MAP_SHARED, fd, 0);
+    if (keymapData == MAP_FAILED) {
+        log_warn("mmap failed for keymap fd={}, errno={}", fd, errno);
+        close(fd);
+        return;
+    }
+
+    xkb_keymap* newKeymap = xkb_keymap_new_from_string(
+        app->xkbContext,
+        static_cast<const char*>(keymapData),
+        XKB_KEYMAP_FORMAT_TEXT_V1,
+        XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+    munmap(keymapData, s);
     close(fd);
+
+    if (!newKeymap) {
+        log_warn("Failed to create xkb keymap from compositor keymap");
+        return;
+    }
+
+    xkb_state* newState = xkb_state_new(newKeymap);
+    if (!newState) {
+        xkb_keymap_unref(newKeymap);
+        log_warn("Failed to create xkb state from keymap");
+        return;
+    }
+
+    if (app->xkbState) {
+        xkb_state_unref(app->xkbState);
+    }
+    if (app->xkbKeymap) {
+        xkb_keymap_unref(app->xkbKeymap);
+    }
+
+    app->xkbKeymap = newKeymap;
+    app->xkbState = newState;
+#else
+    (void)app;
+    (void)f;
+    (void)s;
+    close(fd);
+#endif
 }
 
 static void keyboard_handle_enter(void* d, wl_keyboard* kb, uint32_t s, wl_surface* surf, wl_array* k)
@@ -773,8 +897,16 @@ static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surfa
 }
 static void keyboard_handle_modifiers(void* d, wl_keyboard* kb, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lck, uint32_t g)
 {
-    (void)d; (void)kb;
+    (void)kb;
+    AppContext* app = static_cast<AppContext*>(d);
     log_dbg("Keyboard modifiers changed: serial={}, depressed={}, latched={}, locked={}, group={}", s, dep, lat, lck, g);
+#ifdef HAVE_XKBCOMMON
+    if (app && app->xkbState) {
+        xkb_state_update_mask(app->xkbState, dep, lat, lck, 0, 0, g);
+    }
+#else
+    (void)app;
+#endif
 }
 
 static void keyboard_handle_repeat_info(void* d, wl_keyboard* kb, int32_t r, int32_t dly)
@@ -788,10 +920,35 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
     (void)keyboard; (void)serial; (void)time;
     AppContext* app = static_cast<AppContext*>(data);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        uint32_t utf32 = 0;
+#ifdef HAVE_XKBCOMMON
+        if (app && app->xkbState) {
+            const xkb_keysym_t keysym = xkb_state_key_get_one_sym(app->xkbState, key + 8);
+            utf32 = xkb_keysym_to_utf32(keysym);
+            if (utf32 >= 0x20 && utf32 <= 0x7E) {
+                log_dbg("Translated key press: raw={}, char='{}' (U+{:04X})", key, static_cast<char>(utf32), utf32);
+            } else if (utf32 != 0) {
+                log_dbg("Translated key press: raw={}, U+{:04X}", key, utf32);
+            } else {
+                char name[64] = {0};
+                if (xkb_keysym_get_name(keysym, name, sizeof(name)) > 0) {
+                    log_dbg("Translated key press: raw={}, keysym={}", key, name);
+                }
+            }
+        }
+#endif
+
         app->current_keycode.store(key, std::memory_order_release);
+        app->current_utf32.store(utf32, std::memory_order_release);
         app->keyFrameDirty.store(true, std::memory_order_release);
         app->keycode_dirty.store(true, std::memory_order_release); // Signals clock bypass trigger
-        if (app->keycodeCallback) app->keycodeCallback(key);
+        if (app->keycodeCallback) {
+            GlKeyEvent keyEvent;
+            keyEvent.evdevKeycode = key;
+            keyEvent.utf32 = utf32;
+            keyEvent.hasUtf32 = (utf32 != 0);
+            app->keycodeCallback(keyEvent);
+        }
         signal_run_loop(app);
     }
 }
@@ -875,7 +1032,7 @@ GlApp::~GlApp()
     if (m_ctx && !m_ctx->deinitialized.load()) deinit();
 }
 
-bool GlApp::registerKeycodeCallback(void (*callback)(uint32_t keycode))
+bool GlApp::registerKeycodeCallback(void (*callback)(const GlKeyEvent& keyEvent))
 {
     if (!m_ctx) return false;
     m_ctx->keycodeCallback = callback;
@@ -896,6 +1053,13 @@ bool GlApp::init(const char* waylandDisplay)
 
     m_ctx->display = wl_display_connect(waylandDisplay);
     if (!m_ctx->display) return false;
+
+#ifdef HAVE_XKBCOMMON
+    m_ctx->xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    if (!m_ctx->xkbContext) {
+        log_warn("xkbcommon available but xkb context creation failed; key translation disabled");
+    }
+#endif
 
     m_ctx->waylandFd = wl_display_get_fd(m_ctx->display);
     if (m_ctx->waylandFd < 0 || !ensure_run_wake_signal(m_ctx)) return false;
@@ -1243,6 +1407,11 @@ void GlApp::deinit()
     }
 
     if (m_ctx->keyboard) { wl_keyboard_destroy(m_ctx->keyboard); m_ctx->keyboard = nullptr; }
+#ifdef HAVE_XKBCOMMON
+    if (m_ctx->xkbState) { xkb_state_unref(m_ctx->xkbState); m_ctx->xkbState = nullptr; }
+    if (m_ctx->xkbKeymap) { xkb_keymap_unref(m_ctx->xkbKeymap); m_ctx->xkbKeymap = nullptr; }
+    if (m_ctx->xkbContext) { xkb_context_unref(m_ctx->xkbContext); m_ctx->xkbContext = nullptr; }
+#endif
     if (m_ctx->seat) { wl_seat_destroy(m_ctx->seat); m_ctx->seat = nullptr; }
     if (m_ctx->simple_shell_ptr) { wl_simple_shell_destroy(m_ctx->simple_shell_ptr); m_ctx->simple_shell_ptr = nullptr; }
     if (m_ctx->surface) { wl_surface_destroy(m_ctx->surface); m_ctx->surface = nullptr; }

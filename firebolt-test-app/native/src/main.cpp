@@ -101,10 +101,17 @@ constexpr uint32_t kEscKeyCode = 1;
 constexpr uint32_t kBackspaceKeyCode = 14;
 std::atomic<bool> gGlExitKeyRequested{ false };
 
-void handleGlKeycode(uint32_t keycode)
+void handleGlKeycode(const GlKeyEvent& keyEvent)
 {
-    log_info("GL keycode received: {}", keycode);
-    if (kEscKeyCode == keycode || kBackspaceKeyCode == keycode) {
+    if (keyEvent.hasUtf32 && keyEvent.utf32 >= 0x20 && keyEvent.utf32 <= 0x7E) {
+        log_info("GL key received: '{}' (U+{:04X}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
+    } else if (keyEvent.hasUtf32) {
+        log_info("GL key received: U+{:04X}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
+    } else {
+        log_info("GL keycode received: evdev={}", keyEvent.evdevKeycode);
+    }
+
+    if (kEscKeyCode == keyEvent.evdevKeycode || kBackspaceKeyCode == keyEvent.evdevKeycode) {
         gGlExitKeyRequested.store(true, std::memory_order_release);
     }
 }

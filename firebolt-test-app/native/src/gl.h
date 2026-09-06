@@ -34,6 +34,12 @@ enum BackgroundPatternMode {
 // Opaque context — fully defined in gl.cpp
 struct AppContext;
 
+struct GlKeyEvent {
+    uint32_t evdevKeycode = 0;
+    uint32_t utf32 = 0;
+    bool hasUtf32 = false;
+};
+
 class GlApp {
     public:
         GlApp(int width, int height,
@@ -75,10 +81,10 @@ class GlApp {
         void deinit();
 
         // callback function pointer for get/clear keycode to external app.
-        bool registerKeycodeCallback(void (*callback)(uint32_t keycode));
+        bool registerKeycodeCallback(void (*callback)(const GlKeyEvent& keyEvent));
         bool unregisterKeycodeCallback();
 
     private:
         AppContext* m_ctx = nullptr;
-        void (*m_keycodeCallback)(uint32_t keycode) = nullptr;
+        void (*m_keycodeCallback)(const GlKeyEvent& keyEvent) = nullptr;
 };
