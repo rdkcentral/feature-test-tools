@@ -1385,7 +1385,6 @@ void GlApp::run()
         }
 
         bool rendered_this_pass = false;
-        bool wayland_socket_has_data = false;
 
         // --- STEP 1: NATIVE WAYLAND DISPATCH SYNCHRONIZATION ---
         if (wl_display_prepare_read(m_ctx->display) == 0) {
@@ -1408,7 +1407,7 @@ void GlApp::run()
                 // Route checking explicitly using index positions
                 if ((fds[0].revents & POLLIN) != 0) {
                     if (wl_display_read_events(m_ctx->display) == 0) {
-                        wayland_socket_has_data = true;
+                        // Handled natively via dispatch down below
                     }
                 } else {
                     wl_display_cancel_read(m_ctx->display);
