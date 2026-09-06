@@ -405,7 +405,6 @@ bool init_gles_pipeline(AppContext* app)
     app->pbo_initialized = false;
     app->pbo_ids[0] = 0;
     app->pbo_ids[1] = 0;
-    app->pbo_index = 0;
     app->ring_allocated = false;
     app->current_ring_index = 0;
 
@@ -1122,7 +1121,10 @@ void GlApp::run()
         while (m_ctx && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         if (m_ctx && wayland_socket_has_data) {
-            wl_display_dispatch_queue_pending(m_ctx->display, nullptr);
+            if (wl_display_dispatch_pending(m_ctx->display) < 0) {
+                stop_run_loop(m_ctx, "wl_display_dispatch_pending failed");
+                break;
+            }
         }
 
         if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) break;
