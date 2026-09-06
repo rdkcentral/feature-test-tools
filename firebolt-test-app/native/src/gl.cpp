@@ -157,6 +157,9 @@ struct AppContext {
     bool hasPendingPreparedFrame = false;
     int wakeEventFd = -1;
     int waylandFd = -1;
+    std::chrono::milliseconds targetFrameTime{33};
+    int swapInterval = 1;
+    bool forceGlFinish = false;
     EGLint glesClientVersion = 3;
     GLint positionAttribLocation = 0;
     GLint texCoordAttribLocation = 1;
@@ -194,6 +197,29 @@ struct FontResourceBundle {
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame);
 int render_cairo_frame(AppContext* app);
+
+static int read_env_int_clamped(const char* name, int fallback, int minValue, int maxValue)
+{
+    const char* value = std::getenv(name);
+    if (!value || value[0] == '\0') {
+        return fallback;
+    }
+
+    char* end = nullptr;
+    long parsed = std::strtol(value, &end, 10);
+    if (end == value || (end && *end != '\0')) {
+        return fallback;
+    }
+
+    if (parsed < minValue) {
+        return minValue;
+    }
+    if (parsed > maxValue) {
+        return maxValue;
+    }
+
+    return static_cast<int>(parsed);
+}
 
 static std::string format_key_display(uint32_t keycode, uint32_t utf32)
 {
@@ -807,7 +833,9 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame)
     glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    glFinish();
+    if (app->forceGlFinish) {
+        glFinish();
+    }
 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
@@ -1105,8 +1133,23 @@ bool GlApp::init(const char* waylandDisplay)
     m_ctx->egl_surface = create_wayland_egl_surface(m_ctx->egl_display, m_ctx->egl_config, m_ctx->egl_window);
     if (m_ctx->egl_surface == EGL_NO_SURFACE || eglMakeCurrent(m_ctx->egl_display, m_ctx->egl_surface, m_ctx->egl_surface, m_ctx->egl_context) != EGL_TRUE) return false;
 
-    if (eglSwapInterval(m_ctx->egl_display, 0) == EGL_TRUE) {
-        log_info("Platform EGL Swap Interval calibrated successfully to 0 (Unbound Async Mode).");
+    const int configuredFps = read_env_int_clamped("GLAPP_TARGET_FPS", 30, 1, 120);
+    m_ctx->targetFrameTime = std::chrono::milliseconds(std::max(1, 1000 / configuredFps));
+    m_ctx->swapInterval = read_env_int_clamped("GLAPP_SWAP_INTERVAL", 1, 0, 4);
+    m_ctx->forceGlFinish = (read_env_int_clamped("GLAPP_FORCE_GLFINISH", 0, 0, 1) == 1);
+
+    if (eglSwapInterval(m_ctx->egl_display, m_ctx->swapInterval) == EGL_TRUE) {
+        log_info("EGL swap interval set to {}. Target FPS={} ({} ms/frame). glFinish={}",
+                 m_ctx->swapInterval,
+                 configuredFps,
+                 m_ctx->targetFrameTime.count(),
+                 m_ctx->forceGlFinish ? "on" : "off");
+    } else {
+        log_warn("Failed to set EGL swap interval to {}. Target FPS={} ({} ms/frame). glFinish={}",
+                 m_ctx->swapInterval,
+                 configuredFps,
+                 m_ctx->targetFrameTime.count(),
+                 m_ctx->forceGlFinish ? "on" : "off");
     }
 
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
@@ -1168,7 +1211,7 @@ void GlApp::run()
     }
 
     auto last_frame_time = std::chrono::steady_clock::now();
-    static constexpr std::chrono::milliseconds kTargetFrameTime(16); // Strict ~60 FPS Cadence
+    const std::chrono::milliseconds kTargetFrameTime = m_ctx->targetFrameTime;
     static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
     auto last_shell_reapply = std::chrono::steady_clock::now();
 

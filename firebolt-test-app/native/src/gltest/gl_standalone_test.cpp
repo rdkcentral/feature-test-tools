@@ -59,9 +59,13 @@ static const char* argValue(int argc, char** argv, const char* flag, const char*
 // ---------------------------------------------------------------------------
 // Optional keycode callback – prints key events to stdout
 // ---------------------------------------------------------------------------
-static void keycodeCallback(uint32_t keycode)
+static void keycodeCallback(const GlKeyEvent& keyEvent)
 {
-    std::cout << "[GL-TEST] keycode=" << keycode << "\n";
+    std::cout << "[GL-TEST] keycode=" << keyEvent.evdevKeycode;
+    if (keyEvent.hasUtf32) {
+        std::cout << " utf32=U+" << std::hex << std::uppercase << keyEvent.utf32 << std::dec;
+    }
+    std::cout << "\n";
 }
 
 // ---------------------------------------------------------------------------
