@@ -438,6 +438,7 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
 bool init_gles_pipeline(AppContext* app)
 {
     log_info("Initializing GLES pipeline and probing extensions");
+
     const char* vertex_shader_src =
         "#version 300 es\n"
         "precision mediump float;\n"
@@ -448,14 +449,102 @@ bool init_gles_pipeline(AppContext* app)
         "   gl_Position = position;\n"
         "   v_texCoord = vec2(texCoord.x, 1.0 - texCoord.y);\n"
         "}\n";
+
     const char* fragment_shader_src =
         "#version 300 es\n"
         "precision mediump float;\n"
         "in vec2 v_texCoord;\n"
-        "uniform sampler2D s_texture;\n"
+        "uniform sampler2D s_texture;\n" // Pulls the static UI panel from Cairo
+        "uniform float u_time;\n"          // Global monotonic time
+        "uniform vec2 u_resolution;\n"     // 1920x1080 dimensions
+        "uniform int u_pattern;\n"         // 0=None, 1=Grid, 2=Dot\n"
         "out vec4 fragColor;\n"
+        "\n"
+        "#define M_PI 3.14159265359\n"
+        "\n"
         "void main() {\n"
-        "   fragColor = texture(s_texture, v_texCoord);\n"
+        "   // The screen is split 60% Left (Dynamic GPU), 40% Right (Static Cairo UI)\n"
+        "   if (v_texCoord.x > 0.60) {\n"
+        "       fragColor = texture(s_texture, v_texCoord);\n"
+        "       return;\n"
+        "   }\n"
+        "\n"
+        "   // --- LEFT SECTION RENDERING (0.0 to 0.60 x-space) ---\n"
+        "   vec2 uv = v_texCoord * u_resolution;\n"
+        "   vec2 left_res = vec2(u_resolution.x * 0.60, u_resolution.y);\n"
+        "   vec2 center = left_res * 0.5;\n"
+        "\n"
+        "   // Base Solid Clear Background Color\n"
+        "   vec3 finalColor = vec3(0.04, 0.05, 0.08);\n"
+        "\n"
+        "   // A. Background Patterns\n"
+        "   if (u_pattern == 1) { // PATTERN_GRID\n"
+        "       vec2 grid = mod(uv, 40.0);\n"
+        "       if (grid.x < 1.0 || grid.y < 1.0) {\n"
+        "           finalColor = mix(finalColor, vec3(0.0, 0.6, 1.0), 0.07);\n"
+        "       }\n"
+        "   } else if (u_pattern == 2) { // PATTERN_DOT\n"
+        "       vec2 center_tile = mod(uv, 40.0) - vec2(20.0);\n"
+        "       if (length(center_tile) < 1.5) {\n"
+        "           finalColor = mix(finalColor, vec3(0.0, 0.6, 1.0), 0.10);\n"
+        "       }\n"
+        "   }\n"
+        "\n"
+        "   // B. Effect A: Rotating Starburst\n"
+        "   vec2 toCenter = uv - center;\n"
+        "   float dist = length(toCenter);\n"
+        "   if (dist < 300.0) {\n"
+        "       float baseAngle = atan(toCenter.y, toCenter.x);\n"
+        "       if (baseAngle < 0.0) baseAngle += 2.0 * M_PI;\n"
+        "       \n"
+        "       float rotation_speed = u_time * 0.4;\n"
+        "       float color_phase = u_time * 1.5;\n"
+        "       float total_spokes = 8.0;\n"
+        "       \n"
+        "       // Determine which spoke context we occupy\n"
+        "       float spoke_idx = floor(mod(baseAngle - rotation_speed, 2.0 * M_PI) / (2.0 * M_PI / total_spokes));\n"
+        "       float local_angle = mod(baseAngle - rotation_speed, 2.0 * M_PI / total_spokes) - (M_PI / total_spokes);\n"
+        "       \n"
+        "       // Define width constraint thresholds matching the original vector limits\n"
+        "       float max_half_width = atan(35.0 / 300.0);\n"
+        "       float edge_bound = mix(0.0, max_half_width, dist / 300.0);\n"
+        "\n"
+        "       if (abs(local_angle) < edge_bound) {\n"
+        "           float phase = color_phase + spoke_idx;\n"
+        "           vec3 rgb = 0.5 + 0.5 * sin(phase + vec3(0.0, 2.0*M_PI/3.0, 4.0*M_PI/3.0));\n"
+        "           \n"
+        "           // Create linear color stop interpolations natively\n"
+        "           float t = dist / 300.0;\n"
+        "           vec4 gradientColor;\n"
+        "           if (t < 0.5) {\n"
+        "               gradientColor = mix(vec4(rgb, 0.85), vec4(rgb.gbr, 0.40), t / 0.5);\n"
+        "           } else {\n"
+        "               gradientColor = mix(vec4(rgb.gbr, 0.40), vec4(rgb.brg, 0.00), (t - 0.5) / 0.5);\n"
+        "           }\n"
+        "           finalColor = mix(finalColor, gradientColor.rgb, gradientColor.a);\n"
+        "       }\n"
+        "   }\n"
+        "\n"
+        "   // C. Effect B: Additive Sine Waves\n"
+        "   float center_y = u_resolution.y / 2.0;\n"
+        "   float frequency = 0.008;\n"
+        "   float amplitude = 90.0 + sin(u_time * 0.5) * 30.0;\n"
+        "   \n"
+        "   for (int wave = 0; wave < 3; ++wave) {\n"
+        "       float phase = u_time * 2.5 + (float(wave) * 0.6);\n"
+        "       float wave_y = center_y + sin(uv.x * frequency + phase) * amplitude;\n"
+        "       \n"
+        "       // Pixel stroke thickness math via implicit delta modeling\n"
+        "       float distToWave = abs(uv.y - wave_y);\n"
+        "       if (distToWave < 3.5) {\n"
+        "           vec3 waveColor = (wave == 0) ? vec3(0.9, 0.1, 0.1) :\n"
+        "                            (wave == 1) ? vec3(0.1, 0.8, 0.2) : vec3(0.1, 0.3, 0.9);\n"
+        "           float intensity = smoothstep(3.5, 0.0, distToWave) * 0.6;\n"
+        "           finalColor += waveColor * intensity; // Emulates CAIRO_OPERATOR_ADD perfectly\n"
+        "       }\n"
+        "   }\n"
+        "\n"
+        "   fragColor = vec4(finalColor, 1.0);\n"
         "}\n";
 
     app->positionAttribLocation = 0;
@@ -758,7 +847,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     frame.keycode = keycode;
     frame.utf32 = app->current_utf32.load(std::memory_order_acquire);
 
-    // EVALUATE DIRTY STATE: Update the static surface only if dimensions changed or a keypress occurred
+    // Update the static surface context only if dimensions changed or a keypress occurred
     if (!app->static_layer_surface ||
         !app->cachedCodeExtentsValid ||
         app->cachedDisplayKeycode != frame.keycode ||
@@ -780,89 +869,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_set_source_surface(cr, app->static_layer_surface, 0, 0);
     cairo_paint(cr);
 
-    double split_x = frame.width * 0.60;
-    double left_width = split_x;
-
-    // --- STEP 2: DYNAMIC LEFT SECTION RENDERING ---
-    cairo_save(cr);
-    cairo_rectangle(cr, 0, 0, left_width, frame.height);
-    cairo_clip(cr);
-
-    // Use fast pre-compiled tiles instead of reallocating surfaces mid-frame
-    if (app->background_pattern != PATTERN_NONE) {
-        if (app->background_pattern == PATTERN_GRID && app->cached_grid_pattern) {
-            cairo_set_source(cr, app->cached_grid_pattern);
-            cairo_paint(cr);
-        } else if (app->background_pattern == PATTERN_DOT && app->cached_dot_pattern) {
-            cairo_set_source(cr, app->cached_dot_pattern);
-            cairo_paint(cr);
-        }
-    }
-
-    auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
-    double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
-
-    // Effect A: Rotating Starburst
-    double center_x = left_width / 2.0;
-    double center_y = frame.height / 2.0;
-    int total_spokes = 8;
-
-    double rotation_angle = time_secs * 0.4;
-    double color_phase = time_secs * 1.5;
-
-    for (int i = 0; i < total_spokes; ++i) {
-        double angle = (i * (2.0 * M_PI / total_spokes)) + rotation_angle;
-
-        double r_eval = 0.5 + 0.5 * std::sin(color_phase + i);
-        double g_eval = 0.5 + 0.5 * std::sin(color_phase + i + 2.0 * M_PI / 3.0);
-        double b_eval = 0.5 + 0.5 * std::sin(color_phase + i + 4.0 * M_PI / 3.0);
-
-        cairo_save(cr);
-        cairo_translate(cr, center_x, center_y);
-        cairo_rotate(cr, angle);
-
-        // REUSE CACHED PATTERN: Erase old stops by clearing the reference, avoiding heap allocation
-        if (app->spoke_gradient_cache) {
-            cairo_pattern_destroy(app->spoke_gradient_cache);
-        }
-        app->spoke_gradient_cache = cairo_pattern_create_linear(0, 0, 300, 0);
-
-        cairo_pattern_add_color_stop_rgba(app->spoke_gradient_cache, 0.0, r_eval, g_eval, b_eval, 0.85);
-        cairo_pattern_add_color_stop_rgba(app->spoke_gradient_cache, 0.5, g_eval, b_eval, r_eval, 0.40);
-        cairo_pattern_add_color_stop_rgba(app->spoke_gradient_cache, 1.0, b_eval, r_eval, g_eval, 0.00);
-
-        cairo_set_source(cr, app->spoke_gradient_cache);
-        cairo_move_to(cr, 0, 0);
-        cairo_line_to(cr, 300, -35);
-        cairo_line_to(cr, 300, 35);
-        cairo_close_path(cr);
-        cairo_fill(cr);
-
-        cairo_restore(cr);
-    }
-
-    // Effect B: Sine Waves
-    cairo_set_line_width(cr, 3.5);
-    for (int wave = 0; wave < 3; ++wave) {
-        cairo_set_operator(cr, CAIRO_OPERATOR_OVER); // Keep fast blending active
-        //cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
-        if (wave == 0)      cairo_set_source_rgba(cr, 0.9, 0.1, 0.1, 0.6);
-        else if (wave == 1) cairo_set_source_rgba(cr, 0.1, 0.8, 0.2, 0.6);
-        else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6);
-
-        cairo_move_to(cr, 0, center_y);
-        // Optimized step from 8.0 to 16.0 dramatically cuts math complexity
-        for (double x = 0.0; x <= left_width; x += 16.0) {
-            double frequency = 0.008;
-            double phase = time_secs * 2.5 + (wave * 0.6);
-            double amplitude = 90.0 + std::sin(time_secs * 0.5) * 30.0;
-            double y = center_y + std::sin(x * frequency + phase) * amplitude;
-            cairo_line_to(cr, x, y);
-        }
-        cairo_stroke(cr);
-    }
-
-    cairo_restore(cr);
+    // --- STEP 2: RENDER DYNAMIC CONTENT - Handled directly by GLES pipeline ---
 
     cairo_surface_flush(surface);
     cairo_destroy(cr);
@@ -902,6 +909,16 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(app->program_id);
+
+    // --- INJECT HIGH-PERFORMANCE UNIFORM PARAMETERS TO GPU ---
+    auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
+    float time_secs = static_cast<float>(std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count());
+
+    glUniform1f(glGetUniformLocation(app->program_id, "u_time"), time_secs);
+    glUniform2f(glGetUniformLocation(app->program_id, "u_resolution"), static_cast<float>(frame.width), static_cast<float>(frame.height));
+    glUniform1i(glGetUniformLocation(app->program_id, "u_pattern"), static_cast<int>(app->background_pattern));
+    // ---------------------------------------------------------
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, app->texture_id);
 
@@ -909,28 +926,10 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
 
     if (uploadTexture && app->has_pbo_support && app->ring_allocated) {
-        // FIX ARCHITECTURE ALIGNMENT: Pull straight from active ring index matching Cairo output payload
         int draw_idx = app->current_ring_index;
-        app->current_ring_index = (draw_idx + 1) % 2; // Advance ring pointer index ONLY after presentation sampling
+        app->current_ring_index = (draw_idx + 1) % 2;
 
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
-
-        using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-        static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-        static bool barrier_probed = false;
-        if (!barrier_probed) {
-            glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-            if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-            barrier_probed = true;
-        }
-
-        if (glMemoryBarrierEXT_ptr) {
-            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
-            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
-            #endif
-            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
-        }
-
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame.width, frame.height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
@@ -942,6 +941,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
     if (app->forceGlFinish) {
         glFinish();
     }
