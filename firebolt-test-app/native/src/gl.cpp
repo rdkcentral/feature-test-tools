@@ -165,6 +165,13 @@ struct AppContext {
     GLint positionAttribLocation = 0;
     GLint texCoordAttribLocation = 1;
 
+    // Pattern caches created once at startup
+    cairo_pattern_t* cached_grid_pattern = nullptr;
+    cairo_pattern_t* cached_dot_pattern = nullptr;
+    cairo_pattern_t* spoke_gradient_cache = nullptr;
+    // Static panel/background cache
+    cairo_surface_t* static_layer_surface = nullptr;
+
     // Platform-Agnostic Optimized PBO Ring Infrastructure
     GLuint pbo_ids[2] = { 0, 0 };
     bool has_pbo_support = true;
@@ -205,6 +212,41 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
 int render_cairo_frame(AppContext* app);
 int present_cached_frame(AppContext* app);
 
+#ifdef HAVE_XKBCOMMON
+static bool ensure_default_xkb_state(AppContext* app)
+{
+    if (!app || !app->xkbContext) {
+        return false;
+    }
+    if (app->xkbState && app->xkbKeymap) {
+        return true;
+    }
+
+    xkb_rule_names names{};
+    xkb_keymap* keymap = xkb_keymap_new_from_names(app->xkbContext, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (!keymap) {
+        return false;
+    }
+
+    xkb_state* state = xkb_state_new(keymap);
+    if (!state) {
+        xkb_keymap_unref(keymap);
+        return false;
+    }
+
+    if (app->xkbState) {
+        xkb_state_unref(app->xkbState);
+    }
+    if (app->xkbKeymap) {
+        xkb_keymap_unref(app->xkbKeymap);
+    }
+
+    app->xkbKeymap = keymap;
+    app->xkbState = state;
+    return true;
+}
+#endif
+
 static int read_env_int_clamped(const char* name, int fallback, int minValue, int maxValue)
 {
     const char* value = std::getenv(name);
@@ -228,7 +270,14 @@ static int read_env_int_clamped(const char* name, int fallback, int minValue, in
     return static_cast<int>(parsed);
 }
 
-static std::string format_key_display(uint32_t keycode, uint32_t utf32)
+/**
+ * @brief Formats a keycode and optional UTF-32 character into a human-readable string.
+ * @param keycode The evdev keycode.
+ * @param utf32 The UTF-32 character code corresponding to the keycode.
+ * @param showevdev If true, appends the evdev keycode to the output string.
+ * @return A formatted string representing the keycode and character.
+ */
+static std::string format_key_display(uint32_t keycode, uint32_t utf32, bool showevdev = false)
 {
     if (keycode == 0) {
         return "?";
@@ -240,14 +289,19 @@ static std::string format_key_display(uint32_t keycode, uint32_t utf32)
         out.push_back('\'');
         out.push_back(static_cast<char>(utf32));
         out.push_back('\'');
-        out.push_back(' ');
-        out += std::to_string(keycode);
+        if (showevdev) {
+            out.push_back(' ');
+            out += std::to_string(keycode);
+        }
         return out;
     }
 
     if (utf32 != 0) {
         std::ostringstream os;
-        os << "U+" << std::uppercase << std::hex << utf32 << std::dec << ' ' << keycode;
+        os << "U+" << std::uppercase << std::hex << utf32 << std::dec;
+        if (showevdev) {
+            os << ' ' << keycode;
+        }
         return os.str();
     }
 
@@ -556,147 +610,64 @@ static bool ensure_egl_current(AppContext* app)
     return (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) == EGL_TRUE);
 }
 
-static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
+
+void init_cairo_pattern_caches(AppContext* app)
 {
-    PreparedFrame frame;
-    if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
+    if (!app) return;
 
-    using PFNGLBUFFERSUBDATAPROC_LOCAL = void (*)(GLenum target, GLintptr offset, GLsizeiptr size, const void* data);
-    static PFNGLBUFFERSUBDATAPROC_LOCAL glBufferSubData_ptr = nullptr;
+    // Build Grid Pattern Cache
+    cairo_surface_t* grid_tile = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 40, 40);
+    cairo_t* g_cr = cairo_create(grid_tile);
+    cairo_set_source_rgba(g_cr, 0.0, 0.6, 1.0, 0.07);
+    cairo_set_line_width(g_cr, 1.0);
+    cairo_move_to(g_cr, 40, 0);  cairo_line_to(g_cr, 40, 40);
+    cairo_move_to(g_cr, 0, 40);  cairo_line_to(g_cr, 40, 40);
+    cairo_stroke(g_cr);
+    cairo_destroy(g_cr);
+    app->cached_grid_pattern = cairo_pattern_create_for_surface(grid_tile);
+    cairo_pattern_set_extend(app->cached_grid_pattern, CAIRO_EXTEND_REPEAT);
+    cairo_surface_destroy(grid_tile);
 
-    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-    static bool symbols_probed = false;
+    // Build Dot Pattern Cache
+    cairo_surface_t* dot_tile = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 40, 40);
+    cairo_t* d_cr = cairo_create(dot_tile);
+    cairo_set_source_rgba(d_cr, 0.0, 0.6, 1.0, 0.10);
+    cairo_arc(d_cr, 20, 20, 1.5, 0, 2 * M_PI);
+    cairo_fill(d_cr);
+    cairo_destroy(d_cr);
+    app->cached_dot_pattern = cairo_pattern_create_for_surface(dot_tile);
+    cairo_pattern_set_extend(app->cached_dot_pattern, CAIRO_EXTEND_REPEAT);
+    cairo_surface_destroy(dot_tile);
+}
 
-    if (!symbols_probed) {
-        glBufferSubData_ptr = reinterpret_cast<PFNGLBUFFERSUBDATAPROC_LOCAL>(eglGetProcAddress("glBufferSubData"));
-        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        symbols_probed = true;
+static void render_static_ui_layer(AppContext* app, uint32_t keycode, uint32_t utf32)
+{
+    if (!app->static_layer_surface) {
+        app->static_layer_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, app->width, app->height);
     }
 
-    frame.width = app->width;
-    frame.height = app->height;
-    frame.keycode = keycode;
-    frame.utf32 = app->current_utf32.load(std::memory_order_acquire);
-
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
-
-    // Determine the next target ring index for our double buffering setup
-    int next_idx = (app->current_ring_index + 1) % 2;
-
-    // DYNAMIC OFFSET CALCULATION: Points directly to the safe contiguous memory segment
-    uint8_t* active_staging_ptr = app->staging_buffer_pool.data() + (next_idx * total_buffer_bytes);
-
-    cairo_surface_t* surface = cairo_image_surface_create_for_data(
-        active_staging_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
-    cairo_t* cr = cairo_create(surface);
-
-    auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
-    double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
+    cairo_t* cr = cairo_create(app->static_layer_surface);
 
     // Solid paint clear
     cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
     cairo_paint(cr);
 
-    double split_x = frame.width * 0.60;
-    double left_width = split_x;
-    double right_width = frame.width - split_x;
+    double split_x = app->width * 0.60;
+    double right_width = app->width - split_x;
 
-    // --- LEFT SECTION: 60% VISUAL EFFECTS ---
+    // --- RIGHT SECTION: 40% USER INPUT PANEL (BAKED STATICALLY) ---
     cairo_save(cr);
-    cairo_rectangle(cr, 0, 0, left_width, frame.height);
-    cairo_clip(cr);
-
-    if (app->background_pattern != PATTERN_NONE) {
-        cairo_surface_t* tile = cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 40, 40);
-        cairo_t* tile_cr = cairo_create(tile);
-        if (app->background_pattern == PATTERN_GRID) {
-            cairo_set_source_rgba(tile_cr, 0.0, 0.6, 1.0, 0.07);
-            cairo_set_line_width(tile_cr, 1.0);
-            cairo_move_to(tile_cr, 40, 0); cairo_line_to(tile_cr, 40, 40);
-            cairo_move_to(tile_cr, 0, 40); cairo_line_to(tile_cr, 40, 40);
-            cairo_stroke(tile_cr);
-        } else if (app->background_pattern == PATTERN_DOT) {
-            cairo_set_source_rgba(tile_cr, 0.0, 0.6, 1.0, 0.10);
-            cairo_arc(tile_cr, 20, 20, 1.5, 0, 2 * M_PI);
-            cairo_fill(tile_cr);
-        }
-        cairo_pattern_t* pattern = cairo_pattern_create_for_surface(tile);
-        cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
-        cairo_set_source(cr, pattern);
-        cairo_paint(cr);
-        cairo_pattern_destroy(pattern);
-        cairo_destroy(tile_cr);
-        cairo_surface_destroy(tile);
-    }
-
-    // Effect A: Rotating Starburst
-    double center_x = left_width / 2.0;
-    double center_y = frame.height / 2.0;
-    int total_spokes = 8;
-    double rotation_speed = time_secs * 0.4;
-
-    for (int i = 0; i < total_spokes; ++i) {
-        double angle = (i * (2.0 * M_PI / total_spokes)) + rotation_speed;
-        double r_eval = 0.5 + 0.5 * std::sin(angle + time_secs);
-        double g_eval = 0.5 + 0.5 * std::sin(angle + time_secs + 2.0 * M_PI / 3.0);
-        double b_eval = 0.5 + 0.5 * std::sin(angle + time_secs + 4.0 * M_PI / 3.0);
-
-        cairo_save(cr);
-        cairo_translate(cr, center_x, center_y);
-        cairo_rotate(cr, angle);
-
-        cairo_pattern_t* spoke_grad = cairo_pattern_create_linear(0, 0, 300, 0);
-        cairo_pattern_add_color_stop_rgba(spoke_grad, 0.0, r_eval, g_eval, b_eval, 0.85);
-        cairo_pattern_add_color_stop_rgba(spoke_grad, 0.5, g_eval, b_eval, r_eval, 0.40);
-        cairo_pattern_add_color_stop_rgba(spoke_grad, 1.0, b_eval, r_eval, g_eval, 0.00);
-
-        cairo_set_source(cr, spoke_grad);
-        cairo_move_to(cr, 0, 0);
-        cairo_line_to(cr, 300, -35);
-        cairo_line_to(cr, 300, 35);
-        cairo_close_path(cr);
-        cairo_fill(cr);
-
-        cairo_pattern_destroy(spoke_grad);
-        cairo_restore(cr);
-    }
-
-    // Effect B: Sine Waves
-    cairo_set_line_width(cr, 3.5);
-    for (int wave = 0; wave < 3; ++wave) {
-        cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
-        if (wave == 0)      cairo_set_source_rgba(cr, 0.9, 0.1, 0.1, 0.6);
-        else if (wave == 1) cairo_set_source_rgba(cr, 0.1, 0.8, 0.2, 0.6);
-        else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6);
-
-        cairo_move_to(cr, 0, center_y);
-        for (double x = 0.0; x <= left_width; x += 8.0) {
-            double frequency = 0.008;
-            double phase = time_secs * 2.5 + (wave * 0.6);
-            double amplitude = 90.0 + std::sin(time_secs * 0.5) * 30.0;
-            double y = center_y + std::sin(x * frequency + phase) * amplitude;
-            cairo_line_to(cr, x, y);
-        }
-        cairo_stroke(cr);
-    }
-    cairo_restore(cr);
-
-    // --- RIGHT SECTION: 40% USER INPUT PANEL ---
-    cairo_save(cr);
-    cairo_rectangle(cr, split_x, 0, right_width, frame.height);
+    cairo_rectangle(cr, split_x, 0, right_width, app->height);
     cairo_clip(cr);
 
     cairo_set_source_rgb(cr, 0.12, 0.16, 0.26);
     cairo_set_line_width(cr, 4.0);
     cairo_move_to(cr, split_x, 0);
-    cairo_line_to(cr, split_x, frame.height);
+    cairo_line_to(cr, split_x, app->height);
     cairo_stroke(cr);
 
     cairo_set_source_rgb(cr, 0.07, 0.09, 0.15);
-    cairo_rectangle(cr, split_x + 2, 0, right_width, frame.height);
+    cairo_rectangle(cr, split_x + 2, 0, right_width, app->height);
     cairo_fill(cr);
 
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
@@ -717,17 +688,14 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
         app->cachedLabelExtentsValid = true;
     }
 
-    if (!app->cachedCodeExtentsValid ||
-        app->cachedDisplayKeycode != frame.keycode ||
-        app->cachedDisplayUtf32 != frame.utf32) {
-        app->cachedDisplayText = format_key_display(frame.keycode, frame.utf32);
-        app->cachedDisplayKeycode = frame.keycode;
-        app->cachedDisplayUtf32 = frame.utf32;
+    // Refresh dynamic key metrics inside our backing cache
+    app->cachedDisplayText = format_key_display(keycode, utf32);
+    app->cachedDisplayKeycode = keycode;
+    app->cachedDisplayUtf32 = utf32;
 
-        cairo_set_font_size(cr, kCodeFontSize);
-        cairo_text_extents(cr, app->cachedDisplayText.c_str(), &app->cachedCodeExtents);
-        app->cachedCodeExtentsValid = true;
-    }
+    cairo_set_font_size(cr, kCodeFontSize);
+    cairo_text_extents(cr, app->cachedDisplayText.c_str(), &app->cachedCodeExtents);
+    app->cachedCodeExtentsValid = true;
 
     const cairo_text_extents_t& label_extents = app->cachedLabelExtents;
     const cairo_text_extents_t& code_extents = app->cachedCodeExtents;
@@ -737,7 +705,7 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     const double box_size = std::min(kFixedBoxSize, max_box_size);
 
     double box_x = split_x + (right_width - box_size) / 2.0;
-    double box_y = (frame.height - box_size) / 2.0;
+    double box_y = (app->height - box_size) / 2.0;
 
     cairo_set_source_rgb(cr, 0.11, 0.14, 0.24);
     cairo_rectangle(cr, box_x, box_y, box_size, box_size);
@@ -762,11 +730,145 @@ static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
     cairo_show_text(cr, code_str.c_str());
 
     cairo_restore(cr);
+    cairo_surface_flush(app->static_layer_surface);
+    cairo_destroy(cr);
+}
+
+static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
+{
+    PreparedFrame frame;
+    if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
+
+    using PFNGLBUFFERSUBDATAPROC_LOCAL = void (*)(GLenum target, GLintptr offset, GLsizeiptr size, const void* data);
+    static PFNGLBUFFERSUBDATAPROC_LOCAL glBufferSubData_ptr = nullptr;
+
+    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
+    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
+    static bool symbols_probed = false;
+
+    if (!symbols_probed) {
+        glBufferSubData_ptr = reinterpret_cast<PFNGLBUFFERSUBDATAPROC_LOCAL>(eglGetProcAddress("glBufferSubData"));
+        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
+        if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
+        symbols_probed = true;
+    }
+
+    frame.width = app->width;
+    frame.height = app->height;
+    frame.keycode = keycode;
+    frame.utf32 = app->current_utf32.load(std::memory_order_acquire);
+
+    // EVALUATE DIRTY STATE: Update the static surface only if dimensions changed or a keypress occurred
+    if (!app->static_layer_surface ||
+        !app->cachedCodeExtentsValid ||
+        app->cachedDisplayKeycode != frame.keycode ||
+        app->cachedDisplayUtf32 != frame.utf32) {
+        render_static_ui_layer(app, frame.keycode, frame.utf32);
+    }
+
+    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
+    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
+    int next_idx = (app->current_ring_index + 1) % 2;
+    uint8_t* active_staging_ptr = app->staging_buffer_pool.data() + (next_idx * total_buffer_bytes);
+
+    cairo_surface_t* surface = cairo_image_surface_create_for_data(
+        active_staging_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
+    cairo_t* cr = cairo_create(surface);
+
+    // --- STEP 1: BLIT STATIC CACHE LAYER ---
+    // Instantly drops the background and right panel geometry via low-level memcpy blit
+    cairo_set_source_surface(cr, app->static_layer_surface, 0, 0);
+    cairo_paint(cr);
+
+    double split_x = frame.width * 0.60;
+    double left_width = split_x;
+
+    // --- STEP 2: DYNAMIC LEFT SECTION RENDERING ---
+    cairo_save(cr);
+    cairo_rectangle(cr, 0, 0, left_width, frame.height);
+    cairo_clip(cr);
+
+    // Use fast pre-compiled tiles instead of reallocating surfaces mid-frame
+    if (app->background_pattern != PATTERN_NONE) {
+        if (app->background_pattern == PATTERN_GRID && app->cached_grid_pattern) {
+            cairo_set_source(cr, app->cached_grid_pattern);
+            cairo_paint(cr);
+        } else if (app->background_pattern == PATTERN_DOT && app->cached_dot_pattern) {
+            cairo_set_source(cr, app->cached_dot_pattern);
+            cairo_paint(cr);
+        }
+    }
+
+    auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
+    double time_secs = std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count();
+
+    // Effect A: Rotating Starburst
+    double center_x = left_width / 2.0;
+    double center_y = frame.height / 2.0;
+    int total_spokes = 8;
+
+    double rotation_angle = time_secs * 0.4;
+    double color_phase = time_secs * 1.5;
+
+    for (int i = 0; i < total_spokes; ++i) {
+        double angle = (i * (2.0 * M_PI / total_spokes)) + rotation_angle;
+
+        double r_eval = 0.5 + 0.5 * std::sin(color_phase + i);
+        double g_eval = 0.5 + 0.5 * std::sin(color_phase + i + 2.0 * M_PI / 3.0);
+        double b_eval = 0.5 + 0.5 * std::sin(color_phase + i + 4.0 * M_PI / 3.0);
+
+        cairo_save(cr);
+        cairo_translate(cr, center_x, center_y);
+        cairo_rotate(cr, angle);
+
+        // REUSE CACHED PATTERN: Erase old stops by clearing the reference, avoiding heap allocation
+        if (app->spoke_gradient_cache) {
+            cairo_pattern_destroy(app->spoke_gradient_cache);
+        }
+        app->spoke_gradient_cache = cairo_pattern_create_linear(0, 0, 300, 0);
+
+        cairo_pattern_add_color_stop_rgba(app->spoke_gradient_cache, 0.0, r_eval, g_eval, b_eval, 0.85);
+        cairo_pattern_add_color_stop_rgba(app->spoke_gradient_cache, 0.5, g_eval, b_eval, r_eval, 0.40);
+        cairo_pattern_add_color_stop_rgba(app->spoke_gradient_cache, 1.0, b_eval, r_eval, g_eval, 0.00);
+
+        cairo_set_source(cr, app->spoke_gradient_cache);
+        cairo_move_to(cr, 0, 0);
+        cairo_line_to(cr, 300, -35);
+        cairo_line_to(cr, 300, 35);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+
+        cairo_restore(cr);
+    }
+
+    // Effect B: Sine Waves
+    cairo_set_line_width(cr, 3.5);
+    for (int wave = 0; wave < 3; ++wave) {
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER); // Keep fast blending active
+        //cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
+        if (wave == 0)      cairo_set_source_rgba(cr, 0.9, 0.1, 0.1, 0.6);
+        else if (wave == 1) cairo_set_source_rgba(cr, 0.1, 0.8, 0.2, 0.6);
+        else                cairo_set_source_rgba(cr, 0.1, 0.3, 0.9, 0.6);
+
+        cairo_move_to(cr, 0, center_y);
+        // Optimized step from 8.0 to 16.0 dramatically cuts math complexity
+        for (double x = 0.0; x <= left_width; x += 16.0) {
+            double frequency = 0.008;
+            double phase = time_secs * 2.5 + (wave * 0.6);
+            double amplitude = 90.0 + std::sin(time_secs * 0.5) * 30.0;
+            double y = center_y + std::sin(x * frequency + phase) * amplitude;
+            cairo_line_to(cr, x, y);
+        }
+        cairo_stroke(cr);
+    }
+
+    cairo_restore(cr);
 
     cairo_surface_flush(surface);
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 
+    // --- STEP 3: HIGH-SPEED DISPATCH VIA OPENGL PBO BOARDS ---
     if (ensure_egl_current(app)) {
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
 
@@ -982,6 +1084,11 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         uint32_t utf32 = 0;
 #ifdef HAVE_XKBCOMMON
+        static bool warnedNoXkbState = false;
+        if (app && !app->xkbState && !warnedNoXkbState) {
+            log_warn("xkb translation unavailable; reporting evdev keycodes only");
+            warnedNoXkbState = true;
+        }
         if (app && app->xkbState) {
             const xkb_keysym_t keysym = xkb_state_key_get_one_sym(app->xkbState, key + 8);
             utf32 = xkb_keysym_to_utf32(keysym);
@@ -997,7 +1104,6 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
             }
         }
 #endif
-
         app->current_keycode.store(key, std::memory_order_release);
         app->current_utf32.store(utf32, std::memory_order_release);
         app->keyFrameDirty.store(true, std::memory_order_release);
@@ -1118,6 +1224,8 @@ bool GlApp::init(const char* waylandDisplay)
     m_ctx->xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     if (!m_ctx->xkbContext) {
         log_warn("xkbcommon available but xkb context creation failed; key translation disabled");
+    } else if (!ensure_default_xkb_state(m_ctx)) {
+        log_warn("xkb default keymap init failed; waiting for compositor keymap");
     }
 #endif
 
@@ -1520,6 +1628,24 @@ void GlApp::deinit()
 
     m_ctx->waylandFd = -1;
     release_run_wake_signal(m_ctx);
+
+    // Destroy cached Cairo patterns and surfaces
+    if (m_ctx->cached_grid_pattern) {
+        cairo_pattern_destroy(m_ctx->cached_grid_pattern);
+        m_ctx->cached_grid_pattern = nullptr;
+    }
+    if (m_ctx->cached_dot_pattern) {
+        cairo_pattern_destroy(m_ctx->cached_dot_pattern);
+        m_ctx->cached_dot_pattern = nullptr;
+    }
+    if (m_ctx->spoke_gradient_cache) {
+        cairo_pattern_destroy(m_ctx->spoke_gradient_cache);
+        m_ctx->spoke_gradient_cache = nullptr;
+    }
+    if (m_ctx->static_layer_surface) {
+        cairo_surface_destroy(m_ctx->static_layer_surface);
+        m_ctx->static_layer_surface = nullptr;
+    }
 
     if (access("/data/skip-glapp-context-teardown", F_OK) == 0) {
         log_warn("GlApp::deinit: skip-glapp-context-teardown file FOUND. Skipping AppContext deletion!");
