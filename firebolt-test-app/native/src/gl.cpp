@@ -1374,6 +1374,7 @@ void GlApp::run()
 
     // --- PHASE 2: HARDWARE-THROTTLED MAIN DISPATCH LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
+
         // Handle pending state transitions smoothly
         if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
@@ -1383,8 +1384,10 @@ void GlApp::run()
             if (target == RenderLifecycleState::Closing) break;
         }
 
-        // --- STEP 1: READ NATIVE WAYLAND WIRE PROTOCOL SOCKET PACKETS ---
-        // Replacing the pre-read spinlock with a safe standard dispatch drain pattern
+        bool rendered_this_pass = false;
+        bool wayland_socket_has_data = false;
+
+        // --- STEP 1: NATIVE WAYLAND DISPATCH SYNCHRONIZATION ---
         if (wl_display_prepare_read(m_ctx->display) == 0) {
             wl_display_flush(m_ctx->display);
 
@@ -1397,27 +1400,32 @@ void GlApp::run()
             fds[1].events = POLLIN;
             fds[1].revents = 0;
 
-            // Compute a relaxed low-power timeout budget if paused, otherwise sleep until wake/socket event
+            // Strict 16ms sleep baseline targets a consistent 60Hz update cycle when awake
             int active_timeout = (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) ? 16 : 100;
 
-            if (poll(fds, 2, active_timeout) > 0) {
+            int pollResult = poll(fds, 2, active_timeout);
+            if (pollResult > 0) {
+                // Route checking explicitly using index positions
                 if ((fds[0].revents & POLLIN) != 0) {
-                    wl_display_read_events(m_ctx->display);
+                    if (wl_display_read_events(m_ctx->display) == 0) {
+                        wayland_socket_has_data = true;
+                    }
                 } else {
                     wl_display_cancel_read(m_ctx->display);
                 }
 
-                // Drain cross-thread wake eventfds cleanly
+                // Clear out background cross-thread signals
                 if ((fds[1].revents & POLLIN) != 0) {
                     uint64_t wakeValue = 0;
-                    read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
+                    ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
+                    (void)bytesRead;
                 }
             } else {
                 wl_display_cancel_read(m_ctx->display);
             }
         }
 
-        // Purge queue messages to keep memory fences clear
+        // Drain the queue to process any events from the compositor
         while (wl_display_dispatch_pending(m_ctx->display) > 0);
 
         // --- STEP 2: CADENCE PRESENTATION LOGIC ---
@@ -1437,9 +1445,10 @@ void GlApp::run()
                 if (render_cairo_frame(m_ctx) < 0) {
                     break;
                 }
+                rendered_this_pass = true;
             }
 
-            // Periodic shell layout verification updates
+            // Maintenance pass rules
             auto now = std::chrono::steady_clock::now();
             if (now - last_shell_reapply >= kShellReapplyInterval) {
                 wl_surface_commit(m_ctx->surface);
@@ -1447,12 +1456,18 @@ void GlApp::run()
                 last_shell_reapply = now;
             }
         }
+
+        // --- STEP 3: IDLE PROTECTION GATE (CPU SAVER) ---
+        // If the thread didn't execute a frame update, yield the remaining time slice
+        // to prevent high CPU usage when idle.
+        if (!rendered_this_pass && m_ctx->running.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        }
     }
 
     if (frame_callback) {
         wl_callback_destroy(frame_callback);
     }
-
     log_warn("Wayland dispatch loop exited cleanly");
 }
 
