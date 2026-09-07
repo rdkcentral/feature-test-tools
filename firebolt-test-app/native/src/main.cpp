@@ -96,6 +96,70 @@ struct AppLoggerConfig {
 };
 using LocalLogger = RuntimeLogger<AppLoggerConfig>;
 
+class ProgressController {
+private:
+    std::mutex mtx;
+    std::condition_variable cv;
+
+    int total = 0;
+    int count = 0;
+    float currentPercentage = 0.0f;
+    bool hasChanged = false;
+
+public:
+    /**
+     * Sets the total number of progress steps.
+     * @param total The total number of steps.
+     */
+    void set_total(int total)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        this->total = total;
+        count = 0;
+        currentPercentage = 0.0f;
+        hasChanged = false;
+    }
+
+    /**
+     * Increments the progress count by one.
+     */
+    void increment_progress()
+    {
+        std::unique_lock<std::mutex> lock(mtx);
+        if (total <= 0) return;
+        count++;
+        currentPercentage = (static_cast<float>(count) / total) * 100.0f;
+        hasChanged = true;
+        // Notify the progress change detecetors
+        cv.notify_one();
+    }
+
+    /**
+     * Waits for the progress percentage to change or for an exit request.
+     * @param exitRequested Atomic boolean indicating if an exit has been requested.
+     * @return The current progress percentage.
+     */
+    float wait_for_percentage_change(const std::atomic<bool>& exitRequested)
+    {
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [this, &exitRequested]() {
+            return hasChanged || exitRequested.load(std::memory_order_acquire);
+        });
+        hasChanged = false;
+        return currentPercentage;
+    }
+
+    /**
+     * Wakes up all waiting threads for shutdown.
+     */
+    void wake_for_shutdown()
+    {
+        std::unique_lock<std::mutex> lock(mtx);
+        hasChanged = true;
+        cv.notify_all();
+    }
+};
+
 namespace {
 constexpr uint32_t kEscKeyCode = 1;
 constexpr uint32_t kBackspaceKeyCode = 14;
@@ -113,11 +177,9 @@ void handleGlKeycode(const GlKeyEvent& keyEvent)
 
     if (kEscKeyCode == keyEvent.evdevKeycode || kBackspaceKeyCode == keyEvent.evdevKeycode) {
         gGlExitKeyRequested.store(true, std::memory_order_release);
-    } else {
-        // Create a producer signal
     }
 }
-}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // LifeCycleState to AppState mapping
@@ -309,7 +371,7 @@ static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
 // ---------------------------------------------------------------------------
 // runAutoMode – runs every method of every module sequentially
 // ---------------------------------------------------------------------------
-static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
+static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, ProgressController& progressController)
 {
     for (auto& mod : modules)
     {
@@ -318,6 +380,7 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
         {
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
+            progressController.increment_progress();
         }
     }
 }
@@ -426,7 +489,6 @@ int main(int argc, char** argv)
     std::string                url;
     std::optional<bool>        legacyRPCv1;
     Firebolt::LogLevel         logLevel = Firebolt::LogLevel::Notice;
-    float                      progressPercentage = 0.0f;
 
     // -----------------------------------------------------------------------
     // Parse command-line arguments
@@ -483,6 +545,17 @@ int main(int argc, char** argv)
             log_fatal("Unknown option: {} (use --help for usage)", arg);
             return 1;
         }
+    }
+
+    // If the environment variable MODE_AUTO_RUN is set, enable auto-run mode.
+    const char* runmode = std::getenv("MODE_AUTO_RUN");
+    if (nullptr != runmode)
+    {
+        appConfig.autoRun = true;
+    } else {
+        log_err("Only AUTO mode is supported in firebolt app mode.");
+        printUsage(argv[0]);
+        return 1;
     }
 
     // -----------------------------------------------------------------------
@@ -641,16 +714,17 @@ int main(int argc, char** argv)
             glAppPtr->run();
             log_info("GL render thread exited.");
         });
-        glAppProgressUpdateThread = std::thread([glAppPtr, &exitRequested]() {
+        glAppProgressUpdateThread = std::thread([glAppPtr, &exitRequested, &progressController]() {
             log_info("Starting GL progress update thread.");
-            float progressPercentage = 1.0f;
-            while (!gGlExitKeyRequested.load(std::memory_order_acquire) && !exitRequested.load(std::memory_order_acquire)) {
-                if (glAppPtr) glAppPtr->updateProgress(progressPercentage);
-                progressPercentage += 1.0f;
-                if (progressPercentage > 100.0f) {
-                    progressPercentage = 1.0f;
+            while (!exitRequested.load(std::memory_order_acquire)) {
+                float progressPercentage = progressController.wait_for_percentage_change(exitRequested);
+                if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
+                    break;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::lock_guard<std::mutex> lock(glAppMutex);
+                if (glAppPtr != nullptr) {
+                    glAppPtr->updateProgress(progressPercentage);
+                }
             }
             log_info("GL progress update thread exited.");
         });
@@ -658,6 +732,31 @@ int main(int argc, char** argv)
         return true;
     };
 
+    // ------------------------- Firebolt Test Modules ----------------------------
+    ProgressController progressController;
+    std::thread runTestModulesThread;
+
+    auto startrunTestModules = [&]() {
+        runTestModulesThread = std::thread([&progressController,
+                                          &appConfig,
+                                          &exitRequested](...) {
+            log_info("Test modules thread started.");
+            auto testModules = buildModuleList(appConfig.fireboltVersion);
+            int totalSteps = 0;
+            for (const auto& mod : testModules) {
+                totalSteps += static_cast<int>(mod->methodCount());
+            }
+            progressController.set_total(totalSteps);
+            progressController.updateProgress(0.0f);
+            runAutoMode(testModules, progressController);
+            log_info("Test modules thread completed.");
+            while (!exitRequested.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+    };
+
+    // ------------------------- App Lifecycle Subscription -------------------
     auto subscriptionResult = Firebolt::IFireboltAccessor::Instance()
                                   .LifecycleInterface()
                                   .subscribeOnStateChanged([&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
@@ -702,6 +801,7 @@ int main(int argc, char** argv)
                             glApp->resume();
                         }
                     }
+                    startrunTestModules();
                     currentAppState = newAppState;
                 }
                 break;
@@ -717,6 +817,7 @@ int main(int argc, char** argv)
                 case AppState::PAUSED_TO_SUSPENDED:
                 case AppState::SUSPENDED_TO_HIBERNATED:
                 {
+                    progressController.wake_for_shutdown();
                     stopGlApp();
                     currentAppState = newAppState;
                 }
@@ -726,6 +827,7 @@ int main(int argc, char** argv)
                 case AppState::SUSPENDED_TO_TERMINATING:
                 {
                     sawLifecycleTerminating.store(true, std::memory_order_release);
+                    progressController.wake_for_shutdown();
                     stopGlApp();
                     exitRequested.store(true, std::memory_order_release);
                     currentAppState = newAppState;
@@ -748,11 +850,17 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
+    // Wait for the test modules thread to exit if it was started.
+    if (runTestModulesThread.joinable()) {
+        runTestModulesThread.join();
+    }
+
     // Wait for the GL render thread to exit if it was started.
     if (glAppRunThread.joinable()) {
         glAppRunThread.join();
     }
 
+    // Wait for the GL progress update thread to exit if it was started.
     if (glAppProgressUpdateThread.joinable()) {
         glAppProgressUpdateThread.join();
     }
