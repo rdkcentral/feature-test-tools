@@ -70,10 +70,6 @@
 #define EGL_OPENGL_ES3_BIT_KHR 0x00000040
 #endif
 
-#ifndef GL_BGRA_EXT
-#define GL_BGRA_EXT 0x80E1
-#endif
-
 struct GlLoggerConfig {
     static constexpr const char* kEnvVar = "GLLOGLEVEL";
     static constexpr const char* kTag = "[GL]";
@@ -95,6 +91,29 @@ enum class RenderLifecycleState {
     Paused,
     Active,
     Closing,
+};
+
+struct PreparedFrame {
+    int width = 0;
+    int height = 0;
+    uint32_t keycode = 0;
+    uint32_t utf32 = 0;
+};
+
+struct FontResourceBundle {
+    FT_Library library = nullptr;
+    FT_Face face = nullptr;
+};
+
+struct CharacterGlyph {
+    GLuint texture_id;      // Shared atlas texture handle
+    int width;              // Size of glyph bounding box
+    int height;             // Size of glyph bounding box
+    int bearing_x;          // Offset from baseline to left/top of glyph
+    int bearing_y;          // Offset from baseline to left/top of glyph
+    GLuint advance;         // Horizontal offset to next character position
+    float tex_coord_min_x;  // UV bounding boxes inside the texture atlas
+    float tex_coord_max_x;
 };
 
 struct AppContext {
@@ -128,7 +147,6 @@ struct AppContext {
     BackgroundPatternMode background_pattern = PATTERN_NONE;
     std::atomic<bool> running{true};
 
-    // EXCLUSIVE RENDER BARRIERS: Handles thread-isolated state updates
     std::atomic<RenderLifecycleState> lifecycle_state{RenderLifecycleState::Bootstrapping};
     std::atomic<RenderLifecycleState> target_lifecycle_state{RenderLifecycleState::Bootstrapping};
     std::atomic<bool> state_transition_pending{ false };
@@ -178,7 +196,7 @@ struct AppContext {
     bool pbo_initialized = false;
     bool swap_interval_calibrated = false;
     bool ring_allocated = false;
-    int current_ring_index = 0;
+    std::atomic<int> current_ring_index{0};
     std::vector<uint8_t> staging_buffer_pool;
 
     cairo_font_face_t* embedded_font = nullptr;
@@ -194,18 +212,14 @@ struct AppContext {
     uint32_t cachedFrameKeycode = 0;
     uint32_t cachedFrameUtf32 = 0;
     bool hasCachedPreparedFrame = false;
-};
 
-struct PreparedFrame {
-    int width = 0;
-    int height = 0;
-    uint32_t keycode = 0;
-    uint32_t utf32 = 0;
-};
-
-struct FontResourceBundle {
-    FT_Library library = nullptr;
-    FT_Face face = nullptr;
+    // GPU Text Atlas Pipeline Variables
+    std::vector<CharacterGlyph> gpu_glyph_atlas; // Character array map index (ASCII 32 to 126)
+    GLuint text_program_id = 0;                  // Dedicated text rendering pipeline shader program
+    GLuint text_vbo_id = 0;                      // Transient dynamic vertex buffer for character quads
+    GLuint text_vao_id = 0;
+    GLuint main_quad_vao_id = 0;                 // Tracks background quad channel arrays
+    bool text_pipeline_initialized = false;
 };
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, bool uploadTexture);
@@ -270,13 +284,6 @@ static int read_env_int_clamped(const char* name, int fallback, int minValue, in
     return static_cast<int>(parsed);
 }
 
-/**
- * @brief Formats a keycode and optional UTF-32 character into a human-readable string.
- * @param keycode The evdev keycode.
- * @param utf32 The UTF-32 character code corresponding to the keycode.
- * @param showevdev If true, appends the evdev keycode to the output string.
- * @return A formatted string representing the keycode and character.
- */
 static std::string format_key_display(uint32_t keycode, uint32_t utf32, bool showevdev = false)
 {
     if (keycode == 0) {
@@ -386,6 +393,8 @@ static void update_simple_shell_configured_state(AppContext* app, const char* re
     }
 }
 
+static const cairo_user_data_key_t g_font_bundle_key = {0};
+
 bool init_custom_font(AppContext* app, const std::string& font_path)
 {
     if (font_path.empty() || access(font_path.c_str(), F_OK | R_OK) != 0) {
@@ -404,8 +413,7 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
     if (!app->embedded_font) {
         FT_Done_Face(bundle->face); FT_Done_FreeType(bundle->library); delete bundle; return false;
     }
-    static const cairo_user_data_key_t key = {0};
-    cairo_font_face_set_user_data(app->embedded_font, &key, bundle, [](void* data) {
+    cairo_font_face_set_user_data(app->embedded_font, &g_font_bundle_key, bundle, [](void* data) {
         FontResourceBundle* b = static_cast<FontResourceBundle*>(data);
         if (b) {
             if (b->face) FT_Done_Face(b->face);
@@ -437,7 +445,7 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
 
 bool init_gles_pipeline(AppContext* app)
 {
-    log_info("Initializing GLES pipeline and probing extensions");
+    log_info("Initializing offloaded GLES pipeline and assembling hardware shaders");
 
     const char* vertex_shader_src =
         "#version 300 es\n"
@@ -454,43 +462,70 @@ bool init_gles_pipeline(AppContext* app)
         "#version 300 es\n"
         "precision mediump float;\n"
         "in vec2 v_texCoord;\n"
-        "uniform sampler2D s_texture;\n" // Pulls the static UI panel from Cairo
-        "uniform float u_time;\n"          // Global monotonic time
-        "uniform vec2 u_resolution;\n"     // 1920x1080 dimensions
-        "uniform int u_pattern;\n"         // 0=None, 1=Grid, 2=Dot\n"
+        "uniform float u_time;\n"          // Global monotonic clock time
+        "uniform vec2 u_resolution;\n"     // Full-viewport resolution metrics (1920x1080)
+        "uniform int u_pattern;\n"         // Background overlay configuration mode
+        "uniform int u_keycode;\n"         // Active system input evdev code
+        "uniform int u_utf32;\n"           // Translated character metrics passed natively
         "out vec4 fragColor;\n"
         "\n"
         "#define M_PI 3.14159265359\n"
         "\n"
         "void main() {\n"
-        "   // The screen is split 60% Left (Dynamic GPU), 40% Right (Static Cairo UI)\n"
+        "   vec2 uv = v_texCoord * u_resolution;\n"
+        "   vec3 finalColor = vec3(0.04, 0.05, 0.08); // Baseline solid clear layer\n"
+        "\n"
+        "   // ====================================================================\n"
+        "   // --- RIGHT SECTION: 40% USER INPUT PANEL (OFFLOADED TO GPU) ---\n"
+        "   // ====================================================================\n"
         "   if (v_texCoord.x > 0.60) {\n"
-        "       fragColor = texture(s_texture, v_texCoord);\n"
+        "       finalColor = vec3(0.07, 0.09, 0.15); // Container interior background\n"
+        "       \n"
+        "       // Calculate 4px layout divider border boundary lines\n"
+        "       float split_x = u_resolution.x * 0.60;\n"
+        "       if (uv.x < split_x + 4.0) {\n"
+        "           finalColor = vec3(0.12, 0.16, 0.26);\n"
+        "       }\n"
+        "       \n"
+        "       // Establish display boundaries matching Cairo padding limits\n"
+        "       float right_width = u_resolution.x - split_x;\n"
+        "       float box_size = min(520.0, max(100.0, right_width - 24.0));\n"
+        "       vec2 box_center = vec2(split_x + right_width * 0.5, u_resolution.y * 0.5);\n"
+        "       vec2 box_min = box_center - vec2(box_size * 0.5);\n"
+        "       vec2 box_max = box_center + vec2(box_size * 0.5);\n"
+        "       \n"
+        "       // Structural container filling pass loops\n"
+        "       if (uv.x > box_min.x && uv.x < box_max.x && uv.y > box_min.y && uv.y < box_max.y) {\n"
+        "           finalColor = vec3(0.11, 0.14, 0.24);\n"
+        "           \n"
+        "           // Generate 6px Cyan Highlight stroke borders\n"
+        "           if (uv.x < box_min.x + 6.0 || uv.x > box_max.x - 6.0 ||\n"
+        "               uv.y < box_min.y + 6.0 || uv.y > box_max.y - 6.0) {\n"
+        "               finalColor = vec3(0.0, 0.70, 0.95);\n"
+        "           }\n"
+        "       }\n"
+        "       fragColor = vec4(finalColor, 1.0);\n"
         "       return;\n"
         "   }\n"
         "\n"
-        "   // --- LEFT SECTION RENDERING (0.0 to 0.60 x-space) ---\n"
-        "   vec2 uv = v_texCoord * u_resolution;\n"
+        "   // ====================================================================\n"
+        "   // --- LEFT SECTION RENDERING: 60% VISUAL DYNAMIC EFFECTS ---\n"
+        "   // ====================================================================\n"
         "   vec2 left_res = vec2(u_resolution.x * 0.60, u_resolution.y);\n"
         "   vec2 center = left_res * 0.5;\n"
         "\n"
-        "   // Base Solid Clear Background Color\n"
-        "   vec3 finalColor = vec3(0.04, 0.05, 0.08);\n"
-        "\n"
-        "   // A. Background Patterns\n"
-        "   if (u_pattern == 1) { // PATTERN_GRID\n"
+        "   if (u_pattern == 1) {\n"
         "       vec2 grid = mod(uv, 40.0);\n"
         "       if (grid.x < 1.0 || grid.y < 1.0) {\n"
         "           finalColor = mix(finalColor, vec3(0.0, 0.6, 1.0), 0.07);\n"
         "       }\n"
-        "   } else if (u_pattern == 2) { // PATTERN_DOT\n"
+        "   } else if (u_pattern == 2) {\n"
         "       vec2 center_tile = mod(uv, 40.0) - vec2(20.0);\n"
         "       if (length(center_tile) < 1.5) {\n"
         "           finalColor = mix(finalColor, vec3(0.0, 0.6, 1.0), 0.10);\n"
         "       }\n"
         "   }\n"
         "\n"
-        "   // B. Effect A: Rotating Starburst\n"
         "   vec2 toCenter = uv - center;\n"
         "   float dist = length(toCenter);\n"
         "   if (dist < 300.0) {\n"
@@ -501,31 +536,20 @@ bool init_gles_pipeline(AppContext* app)
         "       float color_phase = u_time * 1.5;\n"
         "       float total_spokes = 8.0;\n"
         "       \n"
-        "       // Determine which spoke context we occupy\n"
         "       float spoke_idx = floor(mod(baseAngle - rotation_speed, 2.0 * M_PI) / (2.0 * M_PI / total_spokes));\n"
         "       float local_angle = mod(baseAngle - rotation_speed, 2.0 * M_PI / total_spokes) - (M_PI / total_spokes);\n"
         "       \n"
-        "       // Define width constraint thresholds matching the original vector limits\n"
-        "       float max_half_width = atan(35.0 / 300.0);\n"
-        "       float edge_bound = mix(0.0, max_half_width, dist / 300.0);\n"
-        "\n"
+        "       float edge_bound = mix(0.0, atan(35.0 / 300.0), dist / 300.0);\n"
         "       if (abs(local_angle) < edge_bound) {\n"
         "           float phase = color_phase + spoke_idx;\n"
         "           vec3 rgb = 0.5 + 0.5 * sin(phase + vec3(0.0, 2.0*M_PI/3.0, 4.0*M_PI/3.0));\n"
-        "           \n"
-        "           // Create linear color stop interpolations natively\n"
         "           float t = dist / 300.0;\n"
-        "           vec4 gradientColor;\n"
-        "           if (t < 0.5) {\n"
-        "               gradientColor = mix(vec4(rgb, 0.85), vec4(rgb.gbr, 0.40), t / 0.5);\n"
-        "           } else {\n"
-        "               gradientColor = mix(vec4(rgb.gbr, 0.40), vec4(rgb.brg, 0.00), (t - 0.5) / 0.5);\n"
-        "           }\n"
+        "           vec4 gradientColor = (t < 0.5) ? mix(vec4(rgb, 0.85), vec4(rgb.gbr, 0.40), t / 0.5)\n"
+        "                                          : mix(vec4(rgb.gbr, 0.40), vec4(rgb.brg, 0.00), (t - 0.5) / 0.5);\n"
         "           finalColor = mix(finalColor, gradientColor.rgb, gradientColor.a);\n"
         "       }\n"
         "   }\n"
         "\n"
-        "   // C. Effect B: Additive Sine Waves\n"
         "   float center_y = u_resolution.y / 2.0;\n"
         "   float frequency = 0.008;\n"
         "   float amplitude = 90.0 + sin(u_time * 0.5) * 30.0;\n"
@@ -533,14 +557,12 @@ bool init_gles_pipeline(AppContext* app)
         "   for (int wave = 0; wave < 3; ++wave) {\n"
         "       float phase = u_time * 2.5 + (float(wave) * 0.6);\n"
         "       float wave_y = center_y + sin(uv.x * frequency + phase) * amplitude;\n"
-        "       \n"
-        "       // Pixel stroke thickness math via implicit delta modeling\n"
         "       float distToWave = abs(uv.y - wave_y);\n"
         "       if (distToWave < 3.5) {\n"
         "           vec3 waveColor = (wave == 0) ? vec3(0.9, 0.1, 0.1) :\n"
         "                            (wave == 1) ? vec3(0.1, 0.8, 0.2) : vec3(0.1, 0.3, 0.9);\n"
         "           float intensity = smoothstep(3.5, 0.0, distToWave) * 0.6;\n"
-        "           finalColor += waveColor * intensity; // Emulates CAIRO_OPERATOR_ADD perfectly\n"
+        "           finalColor += waveColor * intensity;\n"
         "       }\n"
         "   }\n"
         "\n"
@@ -583,7 +605,16 @@ bool init_gles_pipeline(AppContext* app)
     glGenBuffers(1, &app->vbo_id);
     glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glGenVertexArrays(1, &app->main_quad_vao_id);
+    glBindVertexArray(app->main_quad_vao_id);
+
+    glEnableVertexAttribArray(app->positionAttribLocation);
+    glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
+    glEnableVertexAttribArray(app->texCoordAttribLocation);
+    glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
     // Hardened PBO extension probing
     app->has_pbo_support = false;
@@ -623,49 +654,201 @@ bool init_gles_pipeline(AppContext* app)
 
     log_info("Verified Hardware PBO Capability: {}", app->has_pbo_support ? "ACTIVE/SUPPORTED" : "DISABLED/FALLBACK");
 
+    // Cleanly override legacy streaming structures to match the zero-copy shader model
     app->pbo_initialized = false;
     app->pbo_ids[0] = 0;
     app->pbo_ids[1] = 0;
     app->ring_allocated = false;
     app->current_ring_index = 0;
 
-    // Single-pass core texture generation with solid sizing bounds
-    glGenTextures(1, &app->texture_id);
-    glBindTexture(GL_TEXTURE_2D, app->texture_id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    return true;
+}
 
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, app->width);
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * app->height;
-
-    // Pre-seed texture backing allocation via standard formats
-    std::vector<unsigned char> seed_buffer(total_buffer_bytes, 0);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, app->width, app->height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, seed_buffer.data());
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    if (app->has_pbo_support) {
-        // ONE-TIME ALLOCATION FIX: Allocate the unified flat buffer pool EXACTLY ONCE,
-        // outside of the ring generation loop to stop pointer stride corruption crashes.
-        app->staging_buffer_pool.resize(total_buffer_bytes * 2, 0);
-
-        glGenBuffers(2, app->pbo_ids);
-        for (int i = 0; i < 2; ++i) {
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[i]);
-
-            // Map the PBO channel pulling directly from the flat vector offset positions
-            uint8_t* seed_ptr = app->staging_buffer_pool.data() + (i * total_buffer_bytes);
-            glBufferData(GL_PIXEL_UNPACK_BUFFER, total_buffer_bytes, seed_ptr, GL_DYNAMIC_DRAW);
-        }
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-        app->ring_allocated = true;
-        app->pbo_initialized = true;
-        log_info("Pre-Allocated {}x{} PBO Streaming Rings Pre-Seeded: {} bytes per slot", app->width, app->height, total_buffer_bytes);
+bool init_gpu_font_atlas(AppContext* app) {
+    if (!app || !app->embedded_font) {
+        log_err("Cannot build GPU font atlas: Embedded font resource is null.");
+        return false;
     }
 
+    FontResourceBundle* bundle = static_cast<FontResourceBundle*>(
+        cairo_font_face_get_user_data(app->embedded_font, &g_font_bundle_key)
+    );
+    if (!bundle || !bundle->face) {
+        log_err("Failed to retrieve raw FT_Face configuration context from Cairo font wrapper.");
+        return false;
+    }
+
+    FT_Face face = bundle->face;
+
+    // Set character size profile (48px baseline rendering height)
+    FT_Set_Pixel_Sizes(face, 0, 48);
+
+    // Disable byte alignment restrictions to support clean 1-byte font channel storage layouts
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    app->gpu_glyph_atlas.resize(128);
+
+    // Generate atlas entries for printable standard characters (ASCII 32 to 126)
+    for (unsigned char c = 32; c < 127; ++c) {
+        if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
+            log_warn("FreeType failed to rasterize character glyph: ASCII={}", (int)c);
+            continue;
+        }
+
+        GLuint texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+
+        // Push the raw single-channel FreeType bitmap array straight to an internal GL_RED texture
+        glTexImage2D(
+            GL_TEXTURE_2D, 0, GL_R8,
+            face->glyph->bitmap.width, face->glyph->bitmap.rows,
+            0, GL_RED, GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer
+        );
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        // Populate our metrics index array
+        CharacterGlyph glyph = {
+            texture,
+            static_cast<int>(face->glyph->bitmap.width),
+            static_cast<int>(face->glyph->bitmap.rows),
+            face->glyph->bitmap_left,
+            face->glyph->bitmap_top,
+            static_cast<GLuint>(face->glyph->advance.x),
+            0.0f, 1.0f // Explicit normalized boundary limits
+        };
+        app->gpu_glyph_atlas[c] = glyph;
+    }
+
+    // Reinstate standard 4-byte unpack alignments for standard texture passes
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    // Assemble dynamic VBO layer used for text quad stream processing
+    glGenBuffers(1, &app->text_vbo_id);
+    glBindBuffer(GL_ARRAY_BUFFER, app->text_vbo_id);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, nullptr, GL_DYNAMIC_DRAW);
+
+    // FIXED: Generate and isolate structural attributes using an independent text VAO
+    glGenVertexArrays(1, &app->text_vao_id);
+    glBindVertexArray(app->text_vao_id);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    // FIXED HARDWARE PATH: Generate and map a clean, isolated main screen-aligned quad VAO
+    glGenVertexArrays(1, &app->main_quad_vao_id);
+    glBindVertexArray(app->main_quad_vao_id);
+
+    glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
+    glEnableVertexAttribArray(app->positionAttribLocation);
+    glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
+    glEnableVertexAttribArray(app->texCoordAttribLocation);
+    glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    // Setup Text-specific Shader Pipeline
+    const char* text_vs_src =
+        "#version 300 es\n"
+        "layout (location = 0) in vec4 vertex; // [pos.x, pos.y, tex.x, tex.y]\n"
+        "out vec2 v_texCoord;\n"
+        "uniform mat4 u_projection;\n"
+        "void main() {\n"
+        "   gl_Position = u_projection * vec4(vertex.xy, 0.0, 1.0);\n"
+        "   v_texCoord = vertex.zw;\n"
+        "}\n";
+
+    const char* text_fs_src =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "in vec2 v_texCoord;\n"
+        "uniform sampler2D u_text_atlas;\n"
+        "uniform vec3 u_text_color;\n"
+        "out vec4 fragColor;\n"
+        "void main() {\n"
+        "   float alpha = texture(u_text_atlas, v_texCoord).r;\n"
+        "   fragColor = vec4(u_text_color, alpha);\n"
+        "}\n";
+
+    GLuint vs = compile_hardware_shader(GL_VERTEX_SHADER, text_vs_src);
+    GLuint fs = compile_hardware_shader(GL_FRAGMENT_SHADER, text_fs_src);
+    app->text_program_id = glCreateProgram();
+    glAttachShader(app->text_program_id, vs);
+    glAttachShader(app->text_program_id, fs);
+    glLinkProgram(app->text_program_id);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    app->text_pipeline_initialized = true;
+    log_info("Pre-baked GPU Text Atlas and shader channels successfully generated.");
     return true;
+}
+
+void draw_gpu_text_string(AppContext* app, const std::string& text, float x, float y, float scale, float r, float g, float b)
+{
+    if (text.empty() || !app || !app->text_pipeline_initialized) return;
+
+    glUseProgram(app->text_program_id);
+    glUniform3f(glGetUniformLocation(app->text_program_id, "u_text_color"), r, g, b);
+
+    // Bind the atlas sheet explicitly to Texture Unit 1 to protect your background channel states
+    glActiveTexture(GL_TEXTURE1);
+    glUniform1i(glGetUniformLocation(app->text_program_id, "u_text_atlas"), 1);
+
+    // Build the orthographic projection matrix layout
+    float left = 0.0f; float right = static_cast<float>(app->width);
+    float bottom = static_cast<float>(app->height); float top = 0.0f;
+    float ortho_mat[16] = {
+        2.0f/(right-left), 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f/(top-bottom), 0.0f, 0.0f,
+        0.0f, 0.0f, -1.0f, 0.0f,
+        -(right+left)/(right-left), -(top+bottom)/(top-bottom), 0.0f, 1.0f
+    };
+    glUniformMatrix4fv(glGetUniformLocation(app->text_program_id, "u_projection"), 1, GL_FALSE, ortho_mat);
+
+    // FIXED: Formally claim state control via your isolated text VAO container
+    glBindVertexArray(app->text_vao_id);
+    glBindBuffer(GL_ARRAY_BUFFER, app->text_vbo_id);
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        unsigned char c = text[i];
+        if (c >= 128) c = '?';
+        const CharacterGlyph& ch = app->gpu_glyph_atlas[c];
+
+        float xpos = x + ch.bearing_x * scale;
+        float ypos = y + (app->gpu_glyph_atlas['H'].bearing_y - ch.bearing_y) * scale;
+
+        float w = ch.width * scale;
+        float h = ch.height * scale;
+
+        float vertices[6][4] = {
+            { xpos,     ypos + h,   0.0f, 1.0f },
+            { xpos,     ypos,       0.0f, 0.0f },
+            { xpos + w, ypos,       1.0f, 0.0f },
+
+            { xpos,     ypos + h,   0.0f, 1.0f },
+            { xpos + w, ypos,       1.0f, 0.0f },
+            { xpos + w, ypos + h,   1.0f, 1.0f }
+        };
+
+        glBindTexture(GL_TEXTURE_2D, ch.texture_id);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        x += (ch.advance >> 6) * scale;
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0); // Safely unlock context tracking
+    glActiveTexture(GL_TEXTURE0); // Return Defaults cleanly
 }
 
 static EGLDisplay get_wayland_egl_display(wl_display* display)
@@ -677,7 +860,6 @@ static EGLDisplay get_wayland_egl_display(wl_display* display)
     }
     return eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display));
 }
-
 static EGLSurface create_wayland_egl_surface(EGLDisplay display, EGLConfig config, wl_egl_window* egl_window)
 {
     using PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC_LOCAL = EGLSurface (*)(EGLDisplay dpy, EGLConfig config, void* native_window, const EGLint* attrib_list);
@@ -699,12 +881,10 @@ static bool ensure_egl_current(AppContext* app)
     return (eglMakeCurrent(app->egl_display, app->egl_surface, app->egl_surface, app->egl_context) == EGL_TRUE);
 }
 
-
 void init_cairo_pattern_caches(AppContext* app)
 {
     if (!app) return;
 
-    // Build Grid Pattern Cache
     cairo_surface_t* grid_tile = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 40, 40);
     cairo_t* g_cr = cairo_create(grid_tile);
     cairo_set_source_rgba(g_cr, 0.0, 0.6, 1.0, 0.07);
@@ -717,7 +897,6 @@ void init_cairo_pattern_caches(AppContext* app)
     cairo_pattern_set_extend(app->cached_grid_pattern, CAIRO_EXTEND_REPEAT);
     cairo_surface_destroy(grid_tile);
 
-    // Build Dot Pattern Cache
     cairo_surface_t* dot_tile = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 40, 40);
     cairo_t* d_cr = cairo_create(dot_tile);
     cairo_set_source_rgba(d_cr, 0.0, 0.6, 1.0, 0.10);
@@ -729,224 +908,64 @@ void init_cairo_pattern_caches(AppContext* app)
     cairo_surface_destroy(dot_tile);
 }
 
-static void render_static_ui_layer(AppContext* app, uint32_t keycode, uint32_t utf32)
-{
-    if (!app->static_layer_surface) {
-        app->static_layer_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, app->width, app->height);
-    }
-
-    cairo_t* cr = cairo_create(app->static_layer_surface);
-
-    // Solid paint clear
-    cairo_set_source_rgba(cr, 0.04, 0.05, 0.08, 1.0);
-    cairo_paint(cr);
-
-    double split_x = app->width * 0.60;
-    double right_width = app->width - split_x;
-
-    // --- RIGHT SECTION: 40% USER INPUT PANEL (BAKED STATICALLY) ---
-    cairo_save(cr);
-    cairo_rectangle(cr, split_x, 0, right_width, app->height);
-    cairo_clip(cr);
-
-    cairo_set_source_rgb(cr, 0.12, 0.16, 0.26);
-    cairo_set_line_width(cr, 4.0);
-    cairo_move_to(cr, split_x, 0);
-    cairo_line_to(cr, split_x, app->height);
-    cairo_stroke(cr);
-
-    cairo_set_source_rgb(cr, 0.07, 0.09, 0.15);
-    cairo_rectangle(cr, split_x + 2, 0, right_width, app->height);
-    cairo_fill(cr);
-
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    if (app->embedded_font) cairo_set_font_face(cr, app->embedded_font);
-    else cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-
-    const char* label_text = "LAST KEYCODE";
-
-    constexpr double kCodeFontSize = 60.0;
-    constexpr double kLabelFontSize = 28.0;
-    constexpr double kOuterMargin = 12.0;
-    constexpr double kFixedBoxSize = 520.0;
-    const double content_spacing = 75.0;
-
-    if (!app->cachedLabelExtentsValid) {
-        cairo_set_font_size(cr, kLabelFontSize);
-        cairo_text_extents(cr, label_text, &app->cachedLabelExtents);
-        app->cachedLabelExtentsValid = true;
-    }
-
-    // Refresh dynamic key metrics inside our backing cache
-    app->cachedDisplayText = format_key_display(keycode, utf32);
-    app->cachedDisplayKeycode = keycode;
-    app->cachedDisplayUtf32 = utf32;
-
-    cairo_set_font_size(cr, kCodeFontSize);
-    cairo_text_extents(cr, app->cachedDisplayText.c_str(), &app->cachedCodeExtents);
-    app->cachedCodeExtentsValid = true;
-
-    const cairo_text_extents_t& label_extents = app->cachedLabelExtents;
-    const cairo_text_extents_t& code_extents = app->cachedCodeExtents;
-    const std::string& code_str = app->cachedDisplayText;
-
-    const double max_box_size = std::max(100.0, right_width - (2.0 * kOuterMargin));
-    const double box_size = std::min(kFixedBoxSize, max_box_size);
-
-    double box_x = split_x + (right_width - box_size) / 2.0;
-    double box_y = (app->height - box_size) / 2.0;
-
-    cairo_set_source_rgb(cr, 0.11, 0.14, 0.24);
-    cairo_rectangle(cr, box_x, box_y, box_size, box_size);
-    cairo_fill(cr);
-
-    cairo_set_source_rgb(cr, 0.0, 0.70, 0.95);
-    cairo_set_line_width(cr, 6.0);
-    cairo_rectangle(cr, box_x, box_y, box_size, box_size);
-    cairo_stroke(cr);
-
-    double total_content_height = label_extents.height + content_spacing + code_extents.height;
-    double baseline_start_y = box_y + (box_size - total_content_height) / 2.0 - 15.0;
-
-    cairo_set_font_size(cr, kLabelFontSize);
-    cairo_move_to(cr, box_x + (box_size - label_extents.width) / 2.0 - label_extents.x_bearing,
-                 baseline_start_y + label_extents.height);
-    cairo_show_text(cr, label_text);
-
-    cairo_set_font_size(cr, kCodeFontSize);
-    cairo_move_to(cr, box_x + (box_size - code_extents.width) / 2.0 - code_extents.x_bearing,
-                 baseline_start_y + label_extents.height + content_spacing + code_extents.height);
-    cairo_show_text(cr, code_str.c_str());
-
-    cairo_restore(cr);
-    cairo_surface_flush(app->static_layer_surface);
-    cairo_destroy(cr);
-}
-
 static PreparedFrame prepare_cairo_frame(AppContext* app, uint32_t keycode)
 {
     PreparedFrame frame;
-    if (!app || app->width <= 0 || app->height <= 0 || !app->ring_allocated) return frame;
-
-    using PFNGLBUFFERSUBDATAPROC_LOCAL = void (*)(GLenum target, GLintptr offset, GLsizeiptr size, const void* data);
-    static PFNGLBUFFERSUBDATAPROC_LOCAL glBufferSubData_ptr = nullptr;
-
-    using PFNGLMEMORYBARRIEREXTPROC = void (*)(GLbitfield barriers);
-    static PFNGLMEMORYBARRIEREXTPROC glMemoryBarrierEXT_ptr = nullptr;
-    static bool symbols_probed = false;
-
-    if (!symbols_probed) {
-        glBufferSubData_ptr = reinterpret_cast<PFNGLBUFFERSUBDATAPROC_LOCAL>(eglGetProcAddress("glBufferSubData"));
-        glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrierEXT"));
-        if (!glMemoryBarrierEXT_ptr) glMemoryBarrierEXT_ptr = reinterpret_cast<PFNGLMEMORYBARRIEREXTPROC>(eglGetProcAddress("glMemoryBarrier"));
-        symbols_probed = true;
-    }
+    if (!app || app->width <= 0 || app->height <= 0) return frame;
 
     frame.width = app->width;
     frame.height = app->height;
     frame.keycode = keycode;
     frame.utf32 = app->current_utf32.load(std::memory_order_acquire);
 
-    // Update the static surface context only if dimensions changed or a keypress occurred
-    if (!app->static_layer_surface ||
-        !app->cachedCodeExtentsValid ||
-        app->cachedDisplayKeycode != frame.keycode ||
-        app->cachedDisplayUtf32 != frame.utf32) {
-        render_static_ui_layer(app, frame.keycode, frame.utf32);
-    }
-
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
-    size_t total_buffer_bytes = static_cast<size_t>(hardware_stride) * frame.height;
-    int next_idx = (app->current_ring_index + 1) % 2;
-    uint8_t* active_staging_ptr = app->staging_buffer_pool.data() + (next_idx * total_buffer_bytes);
-
-    cairo_surface_t* surface = cairo_image_surface_create_for_data(
-        active_staging_ptr, CAIRO_FORMAT_ARGB32, frame.width, frame.height, hardware_stride);
-    cairo_t* cr = cairo_create(surface);
-
-    // --- STEP 1: BLIT STATIC CACHE LAYER ---
-    // Instantly drops the background and right panel geometry via low-level memcpy blit
-    cairo_set_source_surface(cr, app->static_layer_surface, 0, 0);
-    cairo_paint(cr);
-
-    // --- STEP 2: RENDER DYNAMIC CONTENT - Handled directly by GLES pipeline ---
-
-    cairo_surface_flush(surface);
-    cairo_destroy(cr);
-    cairo_surface_destroy(surface);
-
-    // --- STEP 3: HIGH-SPEED DISPATCH VIA OPENGL PBO BOARDS ---
-    if (ensure_egl_current(app)) {
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[next_idx]);
-
-        if (glBufferSubData_ptr) {
-            glBufferSubData_ptr(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, active_staging_ptr);
-        } else {
-            glBufferSubData(GL_PIXEL_UNPACK_BUFFER, 0, total_buffer_bytes, active_staging_ptr);
-        }
-
-        if (glMemoryBarrierEXT_ptr) {
-            #ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT
-            #define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT 0x00004000
-            #endif
-            glMemoryBarrierEXT_ptr(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT_EXT);
-        }
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    }
-
     return frame;
 }
 
 static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, bool uploadTexture)
 {
+    (void)uploadTexture;
     if (!app) return false;
     if (!ensure_egl_current(app)) return false;
-
-    int hardware_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, frame.width);
 
     glViewport(0, 0, frame.width, frame.height);
     glClearColor(0.05f, 0.07f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    // --- PASS 1: DRAW BACKGROUND CONTAINERS & GRAPHICS SHADERS (GPU CORE) ---
     glUseProgram(app->program_id);
-
-    // --- INJECT HIGH-PERFORMANCE UNIFORM PARAMETERS TO GPU ---
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
     float time_secs = static_cast<float>(std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count());
 
     glUniform1f(glGetUniformLocation(app->program_id, "u_time"), time_secs);
     glUniform2f(glGetUniformLocation(app->program_id, "u_resolution"), static_cast<float>(frame.width), static_cast<float>(frame.height));
     glUniform1i(glGetUniformLocation(app->program_id, "u_pattern"), static_cast<int>(app->background_pattern));
-    // ---------------------------------------------------------
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, app->texture_id);
-
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, hardware_stride / 4);
-
-    if (uploadTexture && app->has_pbo_support && app->ring_allocated) {
-        int draw_idx = app->current_ring_index;
-        app->current_ring_index = (draw_idx + 1) % 2;
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, app->pbo_ids[draw_idx]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame.width, frame.height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, nullptr);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    }
-
-    glBindBuffer(GL_ARRAY_BUFFER, app->vbo_id);
-    glEnableVertexAttribArray(app->positionAttribLocation);
-    glVertexAttribPointer(app->positionAttribLocation, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
-    glEnableVertexAttribArray(app->texCoordAttribLocation);
-    glVertexAttribPointer(app->texCoordAttribLocation, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
-
+    // FIXED: Bind your screen-aligned video background quad array natively via its isolated VAO context
+    glBindVertexArray(app->main_quad_vao_id);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    glBindVertexArray(0); // Safely clear out state context boundaries
 
-    if (app->forceGlFinish) {
-        glFinish();
+    // --- PASS 2: DRAW DYNAMIC UI TEXT CHARACTERS (ZERO CPU COPY OVERHEAD) ---
+    if (app->text_pipeline_initialized) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        double split_x = frame.width * 0.60;
+        double right_width = frame.width - split_x;
+
+        float label_x = static_cast<float>(split_x + (right_width * 0.5f) - 150.0f);
+        float code_x  = static_cast<float>(split_x + (right_width * 0.5f) - 60.0f);
+
+        // Render "LAST KEYCODE" Label header string
+        draw_gpu_text_string(app, "LAST KEYCODE", label_x, static_cast<float>(frame.height * 0.4f), 0.7f, 1.0f, 1.0f, 1.0f);
+
+        // Convert the structural parameters to an active string entry and repaint on the fly
+        std::string code_str = format_key_display(frame.keycode, frame.utf32);
+        draw_gpu_text_string(app, code_str, code_x, static_cast<float>(frame.height * 0.55f), 1.3f, 0.0f, 0.70f, 0.95f);
+
+        glDisable(GL_BLEND);
     }
 
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     return (eglSwapBuffers(app->egl_display, app->egl_surface) == EGL_TRUE);
 }
 
@@ -1057,6 +1076,7 @@ static void keyboard_handle_leave(void* d, wl_keyboard* kb, uint32_t s, wl_surfa
     (void)d; (void)kb; (void)s;
     log_dbg("Keyboard focus left surface: {}", reinterpret_cast<uintptr_t>(surf));
 }
+
 static void keyboard_handle_modifiers(void* d, wl_keyboard* kb, uint32_t s, uint32_t dep, uint32_t lat, uint32_t lck, uint32_t g)
 {
     (void)kb;
@@ -1081,7 +1101,6 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
 {
     (void)keyboard; (void)serial; (void)time;
     AppContext* app = static_cast<AppContext*>(data);
-
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         uint32_t utf32 = 0;
 #ifdef HAVE_XKBCOMMON
@@ -1104,6 +1123,21 @@ static void keyboard_handle_key(void* data, wl_keyboard* keyboard, uint32_t seri
         }
     }
 }
+static void frame_handle_done(void* data, wl_callback* callback, uint32_t cookie) {
+    (void)cookie;
+    AppContext* app = static_cast<AppContext*>(data);
+    if (callback) {
+        wl_callback_destroy(callback);
+    }
+    if (app) {
+        app->keyFrameDirty.store(true, std::memory_order_release);
+        signal_run_loop(app);
+    }
+}
+
+static const wl_callback_listener frame_listener = {
+    frame_handle_done
+};
 
 static const wl_keyboard_listener keyboard_listener = {
     keyboard_handle_keymap, keyboard_handle_enter, keyboard_handle_leave, keyboard_handle_key, keyboard_handle_modifiers, keyboard_handle_repeat_info
@@ -1198,7 +1232,6 @@ bool GlApp::unregisterKeycodeCallback()
     m_ctx->keycodeCallback = nullptr;
     return true;
 }
-
 bool GlApp::init(const char* waylandDisplay)
 {
     if (!waylandDisplay) waylandDisplay = DEFAULT_DISPLAY;
@@ -1288,8 +1321,6 @@ bool GlApp::init(const char* waylandDisplay)
     if (!apply_simple_shell_state(m_ctx, "post-egl-setup", false) || !init_gles_pipeline(m_ctx)) return false;
 
     glFinish();
-
-    // Now that initialization is complete, release context ownership from the main thread
     eglMakeCurrent(m_ctx->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     m_ctx->lifecycle_state.store(RenderLifecycleState::Paused);
@@ -1298,38 +1329,16 @@ bool GlApp::init(const char* waylandDisplay)
 
 void GlApp::renderInitialFrame()
 {
-    // Transition staging parameters to active and wake the thread to claim context ownership.
     if (!m_ctx || m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Closing) return;
     resume();
 }
 
-// Callback for Wayland frame completion events - Invoked by compositor when a frame has been
-// fully processed and displayed.
-static void frame_handle_done(void* data, wl_callback* callback, uint32_t cookie)
-{
-    (void)cookie;
-    AppContext* app = static_cast<AppContext*>(data);
-    if (callback) {
-        wl_callback_destroy(callback);
-    }
-
-    // Unblock the main loop thread for the next animation frame step
-    if (app) {
-        app->keyFrameDirty.store(true, std::memory_order_release);
-        signal_run_loop(app);
-    }
-}
-
-static const wl_callback_listener frame_listener = { frame_handle_done };
-
 void GlApp::run()
 {
-    log_info("Starting Wayland dispatch loop with Hardware Frame Sync throttling");
+    log_info("Starting Hardware Throttled Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
     // --- PHASE 1: COMPOSITOR SURFACE LAYOUT HANDSHAKE LOOP ---
-    // Safely reads and dispatches socket events until the simple-shell protocol
-    // acknowledges the surface creation on the background thread context.
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
         if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
             stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
@@ -1339,7 +1348,6 @@ void GlApp::run()
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
-    // EXCLUSIVE ANCHOR POINT: Background render thread claims isolated context control
     if (!ensure_egl_current(m_ctx)) {
         log_err("Background render thread failed to claim EGL context ownership.");
         return;
@@ -1350,71 +1358,94 @@ void GlApp::run()
         std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
         log_info("Executing State 2: Rendering static bootstrap frame for window manager registration.");
         if (render_cairo_frame(m_ctx) != 0) {
-            stop_run_loop(m_ctx, "render_cairo_frame bootstrap execution failed");
+            stop_run_loop(m_ctx, "render_cairo_frame bootstrap failed");
+            return;
+        }
+
+        if (!init_gpu_font_atlas(m_ctx)) {
+            log_err("Failed to initialize GPU font atlas.");
             return;
         }
     }
 
-    auto last_shell_reapply = std::chrono::steady_clock::now();
-    static constexpr auto kShellReapplyInterval = std::chrono::seconds(2);
-
-    // Set up our tracking state for the Wayland hardware clock callback
     wl_callback* frame_callback = nullptr;
     m_ctx->keyFrameDirty.store(true, std::memory_order_release);
 
-    // --- PHASE 2: UNIFIED DISPATCH LOOP ---
+    // --- PHASE 2: EVENT-DRIVEN DISPATCH & RENDERING LOOP ---
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire)) {
 
         // --- STEP 0: PROCESS PENDING LIFECYCLE TRANSITIONS ---
+        bool should_close_loop = false;
         if (m_ctx->state_transition_pending.load(std::memory_order_acquire)) {
             std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
             RenderLifecycleState target = m_ctx->target_lifecycle_state.load(std::memory_order_acquire);
             m_ctx->lifecycle_state.store(target, std::memory_order_release);
             m_ctx->state_transition_pending.store(false, std::memory_order_release);
-            log_info("Lifecycle state transitioned smoothly to: {}", static_cast<int>(target));
-            if (target == RenderLifecycleState::Closing) break;
+            if (target == RenderLifecycleState::Closing) {
+                should_close_loop = true;
+            }
         }
+        if (should_close_loop) break;
 
         bool rendered_this_pass = false;
 
-        // --- STEP 1: SLEEP VIA POLL ---
+        // --- STEP 1: NATIVE WAYLAND PROTOCOL READ-LOCK AND KERNEL POLL ---
+        RenderLifecycleState loop_current_state = m_ctx->lifecycle_state.load(std::memory_order_acquire);
+
+        if (loop_current_state == RenderLifecycleState::Active) {
+            wl_display_flush(m_ctx->display);
+        }
+
+        // FIXED: Declare as a proper 2-element array to satisfy GLIBC fortification
         pollfd fds[2];
+
+        // Index 0: Main Wayland Display Connection Socket
         fds[0].fd = m_ctx->waylandFd;
         fds[0].events = POLLIN;
         fds[0].revents = 0;
 
+        // Index 1: Cross-Thread Wake Eventfd Descriptor Channel
         fds[1].fd = m_ctx->wakeEventFd;
         fds[1].events = POLLIN;
         fds[1].revents = 0;
 
-        int active_timeout = (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) ? 16 : 100;
+        int active_timeout = m_ctx->keyFrameDirty.load(std::memory_order_acquire) ? 0 : 33;
+        if (loop_current_state != RenderLifecycleState::Active) {
+            active_timeout = -1;
+        }
 
-        wl_display_flush(m_ctx->display);
+        // Pass the array pointer cleanly
         int pollResult = poll(fds, 2, active_timeout);
 
         if (pollResult > 0) {
-            // If the Wayland socket descriptor has data, dispatch and drain it natively
-            if ((fds[0].revents & POLLIN) != 0) {
-                if (wl_display_dispatch(m_ctx->display) < 0) {
-                    log_err("Hardware display connection lost.");
-                    break;
-                }
-            }
-
-            // Clear cross-thread signal buffer
+            // CASE A: Clear out cross-thread wakeup signals instantly (INDEX 1)
             if ((fds[1].revents & POLLIN) != 0) {
                 uint64_t wakeValue = 0;
                 ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
                 (void)bytesRead;
             }
+            // CASE B: If the Wayland socket descriptor has data, dispatch natively (INDEX 0)
+            if ((fds[0].revents & POLLIN) != 0) {
+                if (loop_current_state == RenderLifecycleState::Active) {
+                    if (wl_display_dispatch(m_ctx->display) < 0) {
+                        log_err("Hardware display connection lost.");
+                        break;
+                    }
+                } else {
+                    while (wl_display_dispatch_pending(m_ctx->display) > 0);
+                }
+            }
         }
         else if (pollResult == 0) {
-            // Timeout event: execute internal pending queue processing safely
             while (wl_display_dispatch_pending(m_ctx->display) > 0);
+        }
+        else {
+            log_err("Poll failed with errno={}", errno);
+            break;
         }
 
         // --- STEP 2: CADENCE PRESENTATION LOGIC ---
-        if (m_ctx->lifecycle_state.load(std::memory_order_acquire) == RenderLifecycleState::Active) {
+        if (loop_current_state == RenderLifecycleState::Active) {
             if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
                 m_ctx->keyFrameDirty.store(false, std::memory_order_release);
 
@@ -1426,18 +1457,11 @@ void GlApp::run()
                 }
                 rendered_this_pass = true;
             }
-
-            auto now = std::chrono::steady_clock::now();
-            if (now - last_shell_reapply >= kShellReapplyInterval) {
-                wl_surface_commit(m_ctx->surface);
-                wl_display_flush(m_ctx->display);
-                last_shell_reapply = now;
-            }
         }
 
-        // --- STEP 3: IDLE PROTECTION GATE ---
+        // --- STEP 3: IDLE PROTECTION PASS ---
         if (!rendered_this_pass && m_ctx->running.load(std::memory_order_acquire)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
     }
 
@@ -1446,7 +1470,6 @@ void GlApp::run()
     }
     log_warn("Wayland dispatch loop exited cleanly");
 }
-
 void GlApp::resume()
 {
     if (m_ctx) {
@@ -1549,7 +1572,6 @@ void GlApp::deinit()
     m_ctx->waylandFd = -1;
     release_run_wake_signal(m_ctx);
 
-    // Destroy cached Cairo patterns and surfaces
     if (m_ctx->cached_grid_pattern) {
         cairo_pattern_destroy(m_ctx->cached_grid_pattern);
         m_ctx->cached_grid_pattern = nullptr;
