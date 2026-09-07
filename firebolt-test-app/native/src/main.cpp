@@ -548,14 +548,13 @@ int main(int argc, char** argv)
     }
 
     // If the environment variable MODE_AUTO_RUN is set, enable auto-run mode.
-    const char* runmode = std::getenv("MODE_AUTO_RUN");
-    if (nullptr != runmode)
-    {
-        appConfig.autoRun = true;
-    } else {
-        log_err("Only AUTO mode is supported in firebolt app mode.");
-        printUsage(argv[0]);
-        return 1;
+    // Keep interactive mode available by default; this env var should only be an
+    // optional convenience override, not a hard requirement that blocks normal use.
+    if (const char* runmode = std::getenv("MODE_AUTO_RUN")) {
+        const std::string modeValue = runmode;
+        if (!modeValue.empty() && modeValue != "0" && modeValue != "false" && modeValue != "FALSE") {
+            appConfig.autoRun = true;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -630,6 +629,7 @@ int main(int argc, char** argv)
     log_info("Connected to Firebolt.");
 
     // --------------------------- GL App Lifecycle -------------------------------
+    ProgressController PC;
     BackgroundPatternMode glAppPattern = PATTERN_NONE;
     int glAppWidth = 1920, glAppHeight = 1080;
 
@@ -714,10 +714,10 @@ int main(int argc, char** argv)
             glAppPtr->run();
             log_info("GL render thread exited.");
         });
-        glAppProgressUpdateThread = std::thread([glAppPtr, &exitRequested, &progressController]() {
+        glAppProgressUpdateThread = std::thread([glAppPtr, &glAppMutex, &exitRequested, &PC]() {
             log_info("Starting GL progress update thread.");
             while (!exitRequested.load(std::memory_order_acquire)) {
-                float progressPercentage = progressController.wait_for_percentage_change(exitRequested);
+                float progressPercentage = PC.wait_for_percentage_change(exitRequested);
                 if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
                     break;
                 }
@@ -733,22 +733,24 @@ int main(int argc, char** argv)
     };
 
     // ------------------------- Firebolt Test Modules ----------------------------
-    ProgressController progressController;
     std::thread runTestModulesThread;
 
     auto startrunTestModules = [&]() {
-        runTestModulesThread = std::thread([&progressController,
+        if (!appConfig.autoRun || runTestModulesThread.joinable()) {
+            return;
+        }
+
+        runTestModulesThread = std::thread([&PC,
                                           &appConfig,
-                                          &exitRequested](...) {
+                                          &exitRequested]() {
             log_info("Test modules thread started.");
             auto testModules = buildModuleList(appConfig.fireboltVersion);
             int totalSteps = 0;
             for (const auto& mod : testModules) {
                 totalSteps += static_cast<int>(mod->methodCount());
             }
-            progressController.set_total(totalSteps);
-            progressController.updateProgress(0.0f);
-            runAutoMode(testModules, progressController);
+            PC.set_total(totalSteps);
+            runAutoMode(testModules, PC);
             log_info("Test modules thread completed.");
             while (!exitRequested.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -801,7 +803,9 @@ int main(int argc, char** argv)
                             glApp->resume();
                         }
                     }
-                    startrunTestModules();
+                    if (appConfig.autoRun) {
+                        startrunTestModules();
+                    }
                     currentAppState = newAppState;
                 }
                 break;
@@ -817,7 +821,7 @@ int main(int argc, char** argv)
                 case AppState::PAUSED_TO_SUSPENDED:
                 case AppState::SUSPENDED_TO_HIBERNATED:
                 {
-                    progressController.wake_for_shutdown();
+                    PC.wake_for_shutdown();
                     stopGlApp();
                     currentAppState = newAppState;
                 }
@@ -827,7 +831,7 @@ int main(int argc, char** argv)
                 case AppState::SUSPENDED_TO_TERMINATING:
                 {
                     sawLifecycleTerminating.store(true, std::memory_order_release);
-                    progressController.wake_for_shutdown();
+                    PC.wake_for_shutdown();
                     stopGlApp();
                     exitRequested.store(true, std::memory_order_release);
                     currentAppState = newAppState;
