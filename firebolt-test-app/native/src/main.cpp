@@ -113,6 +113,8 @@ void handleGlKeycode(const GlKeyEvent& keyEvent)
 
     if (kEscKeyCode == keyEvent.evdevKeycode || kBackspaceKeyCode == keyEvent.evdevKeycode) {
         gGlExitKeyRequested.store(true, std::memory_order_release);
+    } else {
+        // Create a producer signal
     }
 }
 }
@@ -424,6 +426,7 @@ int main(int argc, char** argv)
     std::string                url;
     std::optional<bool>        legacyRPCv1;
     Firebolt::LogLevel         logLevel = Firebolt::LogLevel::Notice;
+    float                      progressPercentage = 0.0f;
 
     // -----------------------------------------------------------------------
     // Parse command-line arguments
@@ -565,6 +568,7 @@ int main(int argc, char** argv)
     std::unique_ptr<GlApp> glApp = nullptr;
     std::mutex glAppMutex;
     std::thread glAppRunThread;
+    std::thread glAppProgressUpdateThread;
     bool glRunThreadStarted = false;
     Firebolt::SubscriptionId lifecycleSubId = 0;
     std::atomic<bool> sawLifecycleTerminating{ false };
@@ -636,6 +640,19 @@ int main(int argc, char** argv)
             log_info("Starting GL render thread.");
             glAppPtr->run();
             log_info("GL render thread exited.");
+        });
+        glAppProgressUpdateThread = std::thread([glAppPtr, &exitRequested]() {
+            log_info("Starting GL progress update thread.");
+            float progressPercentage = 1.0f;
+            while (!gGlExitKeyRequested.load(std::memory_order_acquire) && !exitRequested.load(std::memory_order_acquire)) {
+                if (glAppPtr) glAppPtr->updateProgress(progressPercentage);
+                progressPercentage += 1.0f;
+                if (progressPercentage > 100.0f) {
+                    progressPercentage = 1.0f;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            log_info("GL progress update thread exited.");
         });
         glRunThreadStarted = true;
         return true;
@@ -736,9 +753,8 @@ int main(int argc, char** argv)
         glAppRunThread.join();
     }
 
-    if (access("/data/skipfbtteardown", F_OK) == 0) {
-        log_info("Skipping teardown due to /data/skipfbtteardown file.");
-        return 0;
+    if (glAppProgressUpdateThread.joinable()) {
+        glAppProgressUpdateThread.join();
     }
 
     log_info("Exiting Firebolt Test App.");

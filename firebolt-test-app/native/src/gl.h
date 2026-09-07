@@ -80,6 +80,9 @@ class GlApp {
         // Release EGL and Wayland resources after the loop has stopped.
         void deinit();
 
+        // Updates the progress percentage for rendering.
+        void updateProgress(float percentage);
+
         // callback function pointer for get/clear keycode to external app.
         bool registerKeycodeCallback(void (*callback)(const GlKeyEvent& keyEvent));
         bool unregisterKeycodeCallback();

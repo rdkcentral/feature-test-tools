@@ -162,6 +162,8 @@ struct AppContext {
     std::atomic<bool> keyFrameDirty{ false };
     std::atomic<uint32_t> current_keycode{ 0 };
     std::atomic<uint32_t> current_utf32{ 0 };
+    std::atomic<float> progress_percentage{0.0f};
+
     int wakeEventFd = -1;
     int waylandFd = -1;
     EGLint glesClientVersion = 3;
@@ -460,40 +462,71 @@ bool init_gles_pipeline(AppContext* app)
         "#version 300 es\n"
         "precision mediump float;\n"
         "in vec2 v_texCoord;\n"
-        "uniform float u_time;\n"          // Global monotonic clock time
-        "uniform vec2 u_resolution;\n"     // Full-viewport resolution metrics (1920x1080)
-        "uniform int u_pattern;\n"         // Background overlay configuration mode
-        "uniform int u_keycode;\n"         // Active system input evdev code
-        "uniform int u_utf32;\n"           // Translated character metrics passed natively
+        "uniform float u_time;\n"      // Global monotonic clock time
+        "uniform vec2 u_resolution;\n" // Full-viewport resolution metrics (1920x1080)
+        "uniform int u_pattern;\n"     // Background overlay configuration mode
+        "uniform int u_keycode;\n"     // Active system input evdev code
+        "uniform int u_utf32;\n"       // Translated character metrics passed natively
+        "uniform float u_progress;\n"  // Progress percentage (0.0 - 100.0)
         "out vec4 fragColor;\n"
         "#define M_PI 3.14159265359\n"
         "void main() {\n"
         "   vec2 uv = v_texCoord * u_resolution;\n"
-        "   vec3 finalColor = vec3(0.04, 0.05, 0.08);\n" // Baseline solid clear layer
-            // Right Section: 40% User Input Panel and Container Background
-        "   if (v_texCoord.x > 0.60) {\n"
+        "   vec3 finalColor = vec3(0.04, 0.05, 0.08); // Baseline solid clear layer\n"
+        "   float split_ratio = 0.65;\n" // Repositioned: Shifted split line from 60% to 65%\n"
+        "   float split_x = u_resolution.x * split_ratio;\n"
+        "\n"
+        "   // --- Repositioned right section: 35% user input panel\n"
+        "   if (v_texCoord.x > split_ratio) {\n"
         "       finalColor = vec3(0.07, 0.09, 0.15);\n" // Container interior background
-        "       float split_x = u_resolution.x * 0.60;\n"
+        "       // Calculate 4px layout divider border boundary lines\n"
         "       if (uv.x < split_x + 4.0) {\n"
         "           finalColor = vec3(0.12, 0.16, 0.26);\n"
         "       }\n"
+        "       // Establish display boundaries matching Cairo padding limits\n"
         "       float right_width = u_resolution.x - split_x;\n"
         "       float box_size = min(520.0, max(100.0, right_width - 24.0));\n"
         "       vec2 box_center = vec2(split_x + right_width * 0.5, u_resolution.y * 0.5);\n"
-        "       vec2 box_min = box_center - vec2(box_size * 0.5);\n"
-        "       vec2 box_max = box_center + vec2(box_size * 0.5);\n"
+        "       // Repositioned central box bounds slightly higher to allow room for the progress bar\n"
+        "       vec2 box_min = box_center - vec2(box_size * 0.5, box_size * 0.5 + 40.0);\n"
+        "       vec2 box_max = box_center + vec2(box_size * 0.5, box_size * 0.5 - 40.0);\n"
+        "       // Structural container filling pass loops\n"
         "       if (uv.x > box_min.x && uv.x < box_max.x && uv.y > box_min.y && uv.y < box_max.y) {\n"
         "           finalColor = vec3(0.11, 0.14, 0.24);\n"
+        "           // Generate 6px Cyan Highlight stroke borders\n"
         "           if (uv.x < box_min.x + 6.0 || uv.x > box_max.x - 6.0 ||\n"
         "               uv.y < box_min.y + 6.0 || uv.y > box_max.y - 6.0) {\n"
         "               finalColor = vec3(0.0, 0.70, 0.95);\n"
         "           }\n"
         "       }\n"
+        "       // Hardware accelerated progress bar rendering logic\n"
+        "       // Align layout positions dynamically under the primary container box\n"
+        "       float bar_y_top = box_max.y + 50.0;\n"
+        "       float bar_y_bottom = bar_y_top + 32.0;\n" // 32px bar thickness height
+        "       float bar_left = box_min.x;\n"
+        "       float bar_right = box_max.x;\n"
+        "       float bar_total_width = bar_right - bar_left;\n"
+        "       if (uv.x > bar_left && uv.x < bar_right && uv.y > bar_y_top && uv.y < bar_y_bottom) {\n"
+        "           finalColor = vec3(0.11, 0.14, 0.24); // Inner background track clear color\n"
+        "           // Compute filled column pixels based on current progress percentage\n"
+        "           float progress_fraction = u_progress / 100.0;\n"
+        "           float fill_limit_x = bar_left + (bar_total_width * progress_fraction);\n"
+        "           if (uv.x <= fill_limit_x) {\n"
+        "               // Fill with active theme color (Solid Cyan)\n"
+        "               finalColor = vec3(0.0, 0.70, 0.95);\n"
+        "           }\n"
+        "           // Draw 2px subtle outer container outline borders\n"
+        "           if (uv.x < bar_left + 2.0 || uv.x > bar_right - 2.0 ||\n"
+        "               uv.y < bar_y_top + 2.0 || uv.y > bar_y_bottom - 2.0) {\n"
+        "               finalColor = vec3(0.12, 0.16, 0.26);\n"
+        "           }\n"
+        "       }\n"
+        "       \n"
         "       fragColor = vec4(finalColor, 1.0);\n"
         "       return;\n"
         "   }\n"
-            // Left Section Rendering: 60% Visual Dynamic Effects
-        "   vec2 left_res = vec2(u_resolution.x * 0.60, u_resolution.y);\n"
+        "   // --- LEFT SECTION RENDERING: 60% VISUAL DYNAMIC EFFECTS\n"
+        "   vec2 left_res = vec2(u_resolution.x * split_ratio, u_resolution.y);\n"
         "   vec2 center = left_res * 0.5;\n"
         "   if (u_pattern == 1) {\n"
         "       vec2 grid = mod(uv, 40.0);\n"
@@ -506,7 +539,7 @@ bool init_gles_pipeline(AppContext* app)
         "           finalColor = mix(finalColor, vec3(0.0, 0.6, 1.0), 0.10);\n"
         "       }\n"
         "   }\n"
-            // Effect A: Rotating Starburst
+        "   // B. Effect A: Rotating Starburst\n"
         "   vec2 toCenter = uv - center;\n"
         "   float dist = length(toCenter);\n"
         "   if (dist < 300.0) {\n"
@@ -517,10 +550,10 @@ bool init_gles_pipeline(AppContext* app)
         "       float total_spokes = 16.0;\n"
         "       float spoke_idx = floor(mod(baseAngle - rotation_speed, 2.0 * M_PI) / (2.0 * M_PI / total_spokes));\n"
         "       float local_angle = mod(baseAngle - rotation_speed, 2.0 * M_PI / total_spokes) - (M_PI / total_spokes);\n"
-                // Spokes thickness 35.0
+        "       // Spokes thickness 35.0\n"
         "       float max_half_width = atan(35.0 / 300.0);\n"
         "       float edge_bound = mix(0.0, max_half_width, dist / 300.0);\n"
-                // Soft anti-aliased edge smoothing
+        "       // Soft anti-aliased edge smoothing\n"
         "       float edge_smoothing = smoothstep(edge_bound, edge_bound - 0.015, abs(local_angle));\n"
         "       if (edge_smoothing > 0.0) {\n"
         "           float phase = color_phase + spoke_idx;\n"
@@ -531,7 +564,7 @@ bool init_gles_pipeline(AppContext* app)
         "           finalColor = mix(finalColor, gradientColor.rgb, gradientColor.a * edge_smoothing);\n"
         "       }\n"
         "   }\n"
-            // Effect B: Additive Sine Waves
+        "   // C. Effect B: Additive Sine Waves\n"
         "   float center_y = u_resolution.y / 2.0;\n"
         "   float frequency = 0.008;\n"
         "   float amplitude = 90.0 + sin(u_time * 0.5) * 30.0;\n"
@@ -889,7 +922,10 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     glUniform2f(glGetUniformLocation(app->program_id, "u_resolution"), static_cast<float>(frame.width), static_cast<float>(frame.height));
     glUniform1i(glGetUniformLocation(app->program_id, "u_pattern"), static_cast<int>(app->background_pattern));
 
-    // Bind your screen-aligned video background quad array natively via its isolated VAO context
+    // Load the atomic progress state float natively into fragment pipeline uniform array
+    float active_progress = app->progress_percentage.load(std::memory_order_acquire);
+    glUniform1f(glGetUniformLocation(app->program_id, "u_progress"), active_progress);
+
     glBindVertexArray(app->main_quad_vao_id);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     glBindVertexArray(0); // Safely clear out state context boundaries
@@ -899,18 +935,20 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        double split_x = frame.width * 0.60;
+        // Shift calculations to match the new 65% split position layout
+        double split_ratio = 0.65;
+        double split_x = frame.width * split_ratio;
         double right_width = frame.width - split_x;
 
-        float label_x = static_cast<float>(split_x + (right_width * 0.5f) - 150.0f);
-        float code_x  = static_cast<float>(split_x + (right_width * 0.5f) - 60.0f);
+        // Repositioned: Recalculate alignments inside the narrower right quadrant width
+        float label_x = static_cast<float>(split_x + (right_width * 0.5f) - 135.0f);
+        float code_x  = static_cast<float>(split_x + (right_width * 0.5f) - 50.0f);
 
-        // Render "LAST KEYCODE" Label header string
-        draw_gpu_text_string(app, "LAST KEYCODE", label_x, static_cast<float>(frame.height * 0.4f), 0.7f, 1.0f, 1.0f, 1.0f);
+        // Shift text placement slightly higher to match the repositioned container box center
+        draw_gpu_text_string(app, "LAST KEYCODE", label_x, static_cast<float>(frame.height * 0.36f), 0.65f, 1.0f, 1.0f, 1.0f);
 
-        // Convert the structural parameters to an active string entry and repaint on the fly
         std::string code_str = format_key_display(frame.keycode, frame.utf32);
-        draw_gpu_text_string(app, code_str, code_x, static_cast<float>(frame.height * 0.55f), 1.3f, 0.0f, 0.70f, 0.95f);
+        draw_gpu_text_string(app, code_str, code_x, static_cast<float>(frame.height * 0.51f), 1.2f, 0.0f, 0.70f, 0.95f);
 
         glDisable(GL_BLEND);
     }
@@ -1560,6 +1598,18 @@ void GlApp::close()
 void GlApp::shutdown()
 {
     close();
+}
+
+/**
+ * @brief Updates the progress percentage for rendering.
+ * @param percentage The new progress percentage (0.0 to 100.0).
+ */
+void GlApp::updateProgress(float percentage)
+{
+    if (!m_ctx) return;
+    float clamped = std::max(0.0f, std::min(100.0f, percentage));
+    m_ctx->progress_percentage.store(clamped, std::memory_order_release);
+    signal_run_loop(m_ctx);
 }
 
 /**
