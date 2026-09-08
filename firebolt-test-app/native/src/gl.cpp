@@ -449,7 +449,7 @@ bool init_gles_pipeline(AppContext* app)
 
     const char* vertex_shader_src =
         "#version 300 es\n"
-        "precision mediump float;\n"
+        "precision highp float;\n"
         "layout(location = 0) in vec4 position;\n"
         "layout(location = 1) in vec2 texCoord;\n"
         "out vec2 v_texCoord;\n"
@@ -460,7 +460,7 @@ bool init_gles_pipeline(AppContext* app)
 
     const char* fragment_shader_src =
         "#version 300 es\n"
-        "precision mediump float;\n"
+        "precision highp float;\n"
         "in vec2 v_texCoord;\n"
         "uniform float u_time;\n"      // Global monotonic clock time
         "uniform vec2 u_resolution;\n" // Full-viewport resolution metrics (1920x1080)
@@ -916,7 +916,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     // Draw background containers & graphics shaders (GPU CORE)
     glUseProgram(app->program_id);
     auto now_duration = std::chrono::steady_clock::now().time_since_epoch();
-    float time_secs = static_cast<float>(std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count());
+    float time_secs = static_cast<float>(std::fmod(std::chrono::duration_cast<std::chrono::duration<double>>(now_duration).count(), 60.0));
 
     glUniform1f(glGetUniformLocation(app->program_id, "u_time"), time_secs);
     glUniform2f(glGetUniformLocation(app->program_id, "u_resolution"), static_cast<float>(frame.width), static_cast<float>(frame.height));
