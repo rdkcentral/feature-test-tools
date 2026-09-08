@@ -183,7 +183,7 @@ public:
 
     const std::string&              name()    const { return name_; }
     const std::vector<std::string>& methods() const { return methods_; }
-    const std::size_t& methodCount() const { return static_cast<std::size_t>(methods_.size()); }
+    std::size_t methodCount() const { return methods_.size(); }
 
     virtual void runMethod(const std::string& method) = 0;
 

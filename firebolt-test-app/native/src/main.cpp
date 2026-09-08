@@ -80,6 +80,9 @@
 #include <thread>
 #include <type_traits>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <cerrno>
 #include <vector>
 
 #define ISATTY(fd) isatty(fd)
@@ -295,30 +298,39 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
 {
     std::vector<std::unique_ptr<TestModuleBase>> modules;
 
+    auto addModule = [&modules](const char* moduleName, auto&& factory) {
+        modules.emplace_back(factory());
+        log_info("TMT: constructed module {}", moduleName);
+    };
+
     // Base API modules (Firebolt 8 and later)
     if (version >= FIREBOLT_VERSION_8)
     {
-        modules.emplace_back(std::make_unique<AccessibilityTest>());
-        modules.emplace_back(std::make_unique<AdvertisingTest>());
-        modules.emplace_back(std::make_unique<DeviceTest>(version));
-        modules.emplace_back(std::make_unique<DiscoveryTest>());
-        modules.emplace_back(std::make_unique<DisplayTest>());
-        modules.emplace_back(std::make_unique<LifecycleTest>());
-        modules.emplace_back(std::make_unique<LocalizationTest>(version));
-        modules.emplace_back(std::make_unique<MetricsTest>());
-        modules.emplace_back(std::make_unique<NetworkTest>());
-        modules.emplace_back(std::make_unique<PresentationTest>());
-        modules.emplace_back(std::make_unique<TextToSpeechTest>());
+        addModule("Accessibility", []() { return std::make_unique<AccessibilityTest>(); });
+        addModule("Advertising", []() { return std::make_unique<AdvertisingTest>(); });
+        addModule("Device", [version]() { return std::make_unique<DeviceTest>(version); });
+        addModule("Discovery", []() { return std::make_unique<DiscoveryTest>(); });
+        addModule("Display", []() { return std::make_unique<DisplayTest>(); });
+#if 0 // This app is running as Firebolt App.
+        addModule("Lifecycle", []() { return std::make_unique<LifecycleTest>(); });
+#endif
+        addModule("Localization", [version]() { return std::make_unique<LocalizationTest>(version); });
+        addModule("Metrics", []() { return std::make_unique<MetricsTest>(); });
+        addModule("Network", []() { return std::make_unique<NetworkTest>(); });
+        addModule("Presentation", []() { return std::make_unique<PresentationTest>(); });
+        addModule("TextToSpeech", []() { return std::make_unique<TextToSpeechTest>(); });
     }
 
     // Firebolt 9 modules (Actions/Intents)
     if (version >= FIREBOLT_VERSION_9)
     {
-        modules.emplace_back(std::make_unique<ActionsTest>());
-        modules.emplace_back(std::make_unique<SpeechSynthesisTest>());
-        modules.emplace_back(std::make_unique<StatsTest>());
-        modules.emplace_back(std::make_unique<VideoOutputTest>());
+        addModule("Actions", []() { return std::make_unique<ActionsTest>(); });
+        addModule("SpeechSynthesis", []() { return std::make_unique<SpeechSynthesisTest>(); });
+        addModule("Stats", []() { return std::make_unique<StatsTest>(); });
+        addModule("VideoOutput", []() { return std::make_unique<VideoOutputTest>(); });
     }
+
+    log_info("TMT: module list build complete, total modules={}", modules.size());
 
     return modules;
 }
@@ -373,11 +385,59 @@ static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
 // ---------------------------------------------------------------------------
 static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, ProgressController& progressController)
 {
+    const auto isDeferredCleanupMethod = [](const std::string& methodName) {
+        static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
+        static constexpr const char* kUnsubscribeAllSuffix = ".unsubscribeAll";
+        const size_t methodLen = methodName.size();
+        const size_t unsubscribeLen = std::strlen(kUnsubscribeSuffix);
+        const size_t unsubscribeAllLen = std::strlen(kUnsubscribeAllSuffix);
+        return (methodLen >= unsubscribeLen &&
+                methodName.compare(methodLen - unsubscribeLen, unsubscribeLen, kUnsubscribeSuffix) == 0) ||
+               (methodLen >= unsubscribeAllLen &&
+                methodName.compare(methodLen - unsubscribeAllLen, unsubscribeAllLen, kUnsubscribeAllSuffix) == 0);
+    };
+
     for (auto& mod : modules)
     {
         std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
         for (const auto& m : mod->methods())
         {
+            if (isDeferredCleanupMethod(m))
+            {
+                // In auto mode, defer unsubscribe/unsubscribeAll until app shutdown phase.
+                continue;
+            }
+            std::cout << "--- " << m << " ---" << std::endl;
+            mod->runMethod(m);
+            progressController.increment_progress();
+        }
+    }
+}
+
+static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<TestModuleBase>>& modules,
+                                                  ProgressController& progressController)
+{
+    const auto isDeferredCleanupMethod = [](const std::string& methodName) {
+        static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
+        static constexpr const char* kUnsubscribeAllSuffix = ".unsubscribeAll";
+        const size_t methodLen = methodName.size();
+        const size_t unsubscribeLen = std::strlen(kUnsubscribeSuffix);
+        const size_t unsubscribeAllLen = std::strlen(kUnsubscribeAllSuffix);
+        return (methodLen >= unsubscribeLen &&
+                methodName.compare(methodLen - unsubscribeLen, unsubscribeLen, kUnsubscribeSuffix) == 0) ||
+               (methodLen >= unsubscribeAllLen &&
+                methodName.compare(methodLen - unsubscribeAllLen, unsubscribeAllLen, kUnsubscribeAllSuffix) == 0);
+    };
+
+    std::cout << "\n=== Auto Mode Deferred Unsubscribe Cleanup ===" << std::endl;
+    for (auto& mod : modules)
+    {
+        for (const auto& m : mod->methods())
+        {
+            if (!isDeferredCleanupMethod(m))
+            {
+                continue;
+            }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
             progressController.increment_progress();
@@ -634,6 +694,7 @@ int main(int argc, char** argv)
     int glAppWidth = 1920, glAppHeight = 1080;
 
     std::atomic<bool> exitRequested{ false };
+    std::atomic<bool> autoDeferredCleanupAllowed{ false };
     std::atomic<AppState> nextAppState{ AppState::UNKNOWN_STATE };
     AppState currentAppState{AppState::UNKNOWN_STATE};
 
@@ -715,9 +776,10 @@ int main(int argc, char** argv)
             log_info("GL render thread exited.");
         });
         glAppProgressUpdateThread = std::thread([glAppPtr, &glAppMutex, &exitRequested, &PC]() {
+            float progressPercentage = 0.0f;
             log_info("Starting GL progress update thread.");
             while (!exitRequested.load(std::memory_order_acquire)) {
-                float progressPercentage = PC.wait_for_percentage_change(exitRequested);
+                progressPercentage = PC.wait_for_percentage_change(exitRequested);
                 if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
                     break;
                 }
@@ -726,7 +788,7 @@ int main(int argc, char** argv)
                     glAppPtr->updateProgress(progressPercentage);
                 }
             }
-            log_info("GL progress update thread exited.");
+            log_info("GL progress update thread exited; Last progress percentage={}", progressPercentage);
         });
         glRunThreadStarted = true;
         return true;
@@ -742,19 +804,27 @@ int main(int argc, char** argv)
 
         runTestModulesThread = std::thread([&PC,
                                           &appConfig,
-                                          &exitRequested]() {
-            log_info("Test modules thread started.");
+                                          &exitRequested,
+                                          &autoDeferredCleanupAllowed]() {
+            log_info("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
             auto testModules = buildModuleList(appConfig.fireboltVersion);
             int totalSteps = 0;
             for (const auto& mod : testModules) {
                 totalSteps += static_cast<int>(mod->methodCount());
             }
             PC.set_total(totalSteps);
+            log_info("TMT: running auto mode, total steps = {}", totalSteps);
             runAutoMode(testModules, PC);
-            log_info("Test modules thread completed.");
+            log_info("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
             while (!exitRequested.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
+            log_info("TMT: waiting for auto mode deferred cleanup to be allowed.");
+            while (!autoDeferredCleanupAllowed.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            log_info("TMT: running auto mode deferred cleanup.");
+            runAutoModeDeferredUnsubscribeCleanup(testModules, PC);
         });
     };
 
@@ -853,6 +923,8 @@ int main(int argc, char** argv)
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    autoDeferredCleanupAllowed.store(true, std::memory_order_release);
 
     // Wait for the test modules thread to exit if it was started.
     if (runTestModulesThread.joinable()) {
