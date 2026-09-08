@@ -171,9 +171,9 @@ std::atomic<bool> gGlExitKeyRequested{ false };
 void handleGlKeycode(const GlKeyEvent& keyEvent)
 {
     if (keyEvent.hasUtf32 && keyEvent.utf32 >= 0x20 && keyEvent.utf32 <= 0x7E) {
-        log_info("GL key received: '{}' (U+{:04X}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
+        log_info("GL key received: '{}' (U+{}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
     } else if (keyEvent.hasUtf32) {
-        log_info("GL key received: U+{:04X}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
+        log_info("GL key received: U+{}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
     } else {
         log_info("GL keycode received: evdev={}", keyEvent.evdevKeycode);
     }
@@ -775,21 +775,26 @@ int main(int argc, char** argv)
             glAppPtr->run();
             log_info("GL render thread exited.");
         });
-        glAppProgressUpdateThread = std::thread([glAppPtr, &glAppMutex, &exitRequested, &PC]() {
-            float progressPercentage = 0.0f;
-            log_info("Starting GL progress update thread.");
-            while (!exitRequested.load(std::memory_order_acquire)) {
-                progressPercentage = PC.wait_for_percentage_change(exitRequested);
-                if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
-                    break;
+
+        // Keep a single progress thread for the process lifetime; it safely no-ops while glApp is null.
+        if (!glAppProgressUpdateThread.joinable()) {
+            glAppProgressUpdateThread = std::thread([&glApp, &glAppMutex, &exitRequested, &PC]() {
+                float progressPercentage = 0.0f;
+                log_info("Starting GL progress update thread.");
+                while (!exitRequested.load(std::memory_order_acquire)) {
+                    progressPercentage = PC.wait_for_percentage_change(exitRequested);
+                    if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
+                        break;
+                    }
+
+                    std::lock_guard<std::mutex> lock(glAppMutex);
+                    if (GlApp* app = glApp.get(); app != nullptr) {
+                        app->updateProgress(progressPercentage);
+                    }
                 }
-                std::lock_guard<std::mutex> lock(glAppMutex);
-                if (glAppPtr != nullptr) {
-                    glAppPtr->updateProgress(progressPercentage);
-                }
-            }
-            log_info("GL progress update thread exited; Last progress percentage={}", progressPercentage);
-        });
+                log_info("GL progress update thread exited; Last progress percentage={}", progressPercentage);
+            });
+        }
         glRunThreadStarted = true;
         return true;
     };
@@ -916,6 +921,7 @@ int main(int argc, char** argv)
         }
 
         if (gGlExitKeyRequested.load(std::memory_order_acquire)) {
+            PC.wake_for_shutdown();
             stopGlApp();
             exitRequested.store(true, std::memory_order_release);
             continue;

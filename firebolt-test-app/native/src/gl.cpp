@@ -1634,6 +1634,15 @@ void GlApp::deinit()
             if (m_ctx->vbo_id) { glDeleteBuffers(1, &m_ctx->vbo_id); m_ctx->vbo_id = 0; }
             if (m_ctx->program_id) { glDeleteProgram(m_ctx->program_id); m_ctx->program_id = 0; }
 
+            // Free the GPU font atlas resources if they were initialized
+            for (auto& glyph : m_ctx->gpu_glyph_atlas) {
+                 if (glyph.texture_id) {
+                     glDeleteTextures(1, &glyph.texture_id);
+                     glyph.texture_id = 0;
+                 }
+            }
+            m_ctx->gpu_glyph_atlas.clear();
+
             // Clean up pre-baked GPU font atlas pipeline assets
             if (m_ctx->text_vbo_id) { glDeleteBuffers(1, &m_ctx->text_vbo_id); m_ctx->text_vbo_id = 0; }
             if (m_ctx->text_vao_id) { glDeleteVertexArrays(1, &m_ctx->text_vao_id); m_ctx->text_vao_id = 0; }
