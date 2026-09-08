@@ -1,6 +1,6 @@
 # Firebolt C++ Test Application
 
-A native C++ test application that exercises the
+A native C++ firebolt test application that exercises the
 [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) APIs
 and events/notifications across all supported Firebolt modules.
 
@@ -82,8 +82,8 @@ PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell"
-RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell"
+DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell libxkbcommon"
+RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell libxkbcommon xkeyboard-config"
 
 EXTRA_OECMAKE:append = " \
     -DBUILD_FIREBOLT_APP=ON \
@@ -104,6 +104,10 @@ FILES:${PN} += " /usr/share/fonts"
 ---
 
 ## Running
+
+This is a Firebolt application aligning to Firebolt LifeCycle specifications requiring it to be running with these environments configured: `MODE_AUTO_RUN, WAYLAND_DISPLAY, XDG_RUNTIME_DIR` and `FIREBOLT_ENDPOINT`.
+
+Note: The commandline execution mode is no longer supported aliging to bolt app architecture format.
 
 ### Binary name
 ```
@@ -131,19 +135,28 @@ firebolt-test-app [--auto] [--url <URL>]
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
 
-### GL display window (optional)
+Additional runtime env vars:
 
-When `XDG_RUNTIME_DIR` is set, a Wayland/EGL overlay window launches in a background thread after
-connecting to Firebolt. It renders the last received key code using the bundled Liberation Sans Bold font.
+| Variable | Description |
+|---|---|
+| `MODE_AUTO_RUN` | If set to a non-empty value other than `0`/`false`, enables auto mode even without `--auto` |
+| `WAYLAND_DISPLAY` | Wayland socket name used by the GL app (default `wayland-0`) |
+| `WIDTH` | GL window width (default `1920`) |
+| `HEIGHT` | GL window height (default `1080`) |
+| `PATTERN_MODE` | GL background pattern (`GRID` or `DOT`) |
+
+### GL display window
+
+During lifecycle-driven startup, the app initializes a Wayland/EGL overlay window and renders the last
+received key code using the bundled Liberation Sans Bold font. `XDG_RUNTIME_DIR` must be set for GL init.
 The following environment variables control it:
 
 | Variable | Default | Description |
 |---|---|---|
 | `WAYLAND_DISPLAY` | `wayland-0` | Wayland socket name |
-| `WIDTH` | `1280` | Window width in pixels |
-| `HEIGHT` | `720` | Window height in pixels |
+| `WIDTH` | `1920` | Window width in pixels |
+| `HEIGHT` | `1080` | Window height in pixels |
 | `PATTERN_MODE` | *(none)* | Background pattern: `GRID` or `DOT` |
-| `GLAPP_POLL_NO_TIMEOUT` | NA | If `1` disables GL refresh poll() timeout |
 
 ---
 
@@ -153,21 +166,18 @@ Some modules expose additional methods depending on the selected Firebolt versio
 
 | Module | Firebolt 8 methods | Additional Firebolt 9 methods |
 |---|---|---|
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass` |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timezone`, `onTimezoneChanged` (subscribe / unsubscribe) |
 
 ---
 
 ## Run Modes
 
-### 1. Interactive (default when stdin is a TTY)
-Shows a two-level menu:
-1. Select a **module** (Accessibility, Device, Lifecycle, …)
-2. Select a **method** within that module
-3. Enter `q` or press Enter to go back / quit
+### 1. Lifecycle-driven app flow
+The app subscribes to lifecycle state changes and runs module tests only after an `INITIALIZING -> PAUSED -> ACTIVE` transition.
 
-### 2. Auto mode (`--auto`)
-Runs every method of every module sequentially. The set of modules and methods exercised is determined by the active version flag — only the methods registered for the selected version are run. Use this for CI / smoke testing.
+### 2. Auto mode (`--auto` or `MODE_AUTO_RUN`)
+Runs every registered method sequentially once active. In auto mode, `.unsubscribe` and `.unsubscribeAll` methods are deferred and executed during shutdown cleanup.
 ```bash
 # Run all Firebolt 8 + 9 modules (default)
 firebolt-test-app --auto
@@ -175,37 +185,25 @@ firebolt-test-app --auto
 # Run Firebolt 8 base modules only
 firebolt-test-app --auto --firebolt8
 
-# Run all modules including any future additions
+# Same module set as --firebolt9 in current implementation
 firebolt-test-app --auto --firebolt-all
 ```
 
-### 3. Piped stdin mode
-Reads one `Module.method` name per line from stdin. Only methods registered for the active version are recognized — requests for methods outside the active version will print `Method not found:` and be skipped.
-```bash
-# Firebolt 8 methods (default --firebolt9 mode includes these)
-printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --url ws://127.0.0.1:9998
-
-# Firebolt 9 methods — require --firebolt9 or --firebolt-all
-printf "Actions.intent\nVideoOutput.resolution\nSpeechSynthesis.voices\n" | firebolt-test-app --url ws://127.0.0.1:9998 --firebolt9
-
-# Version-specific method on a shared module — only available in --firebolt9 or --firebolt-all
-printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url ws://127.0.0.1:9998 --firebolt9
-```
+`runInteractiveMode()` and `runPipedMode()` helper functions are kept but not maintained due to requirement changes to be upgraded as a true Firebolt bolt app running inside container.
 
 ---
 
 ## Covered Modules & APIs
 
-### Firebolt 8 modules (available in all modes and restricted to `--firebolt8`)
+### Base modules (always included in `--firebolt9`/`--firebolt-all`, and also available in `--firebolt8`)
 
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll`, `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe; v9+) |
 | **Discovery** | `watched`, `watchedV2` |
 | **Display** | `size`, `maxResolution`, `edid` |
-| **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event` *(validates schema + JSON data input)*, `appInfo` |
 | **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
