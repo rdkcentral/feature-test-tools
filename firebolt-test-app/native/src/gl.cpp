@@ -404,7 +404,7 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
     if (!app->embedded_font) {
         FT_Done_Face(bundle->face); FT_Done_FreeType(bundle->library); delete bundle; return false;
     }
-    cairo_font_face_set_user_data(app->embedded_font, &g_font_bundle_key, bundle, [](void* data) {
+    cairo_status_t status = cairo_font_face_set_user_data(app->embedded_font, &g_font_bundle_key, bundle, [](void* data) {
         FontResourceBundle* b = static_cast<FontResourceBundle*>(data);
         if (b) {
             if (b->face) FT_Done_Face(b->face);
@@ -412,6 +412,15 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
             delete b;
         }
     });
+    if (CAIRO_STATUS_SUCCESS != status) {
+        log_err("Failed to attach user data bundle to Cairo font face: status={}", static_cast<int>(status));
+        cairo_font_face_destroy(app->embedded_font);
+        app->embedded_font = nullptr;
+        FT_Done_Face(bundle->face);
+        FT_Done_FreeType(bundle->library);
+        delete bundle;
+        return false;
+    }
     return true;
 }
 
