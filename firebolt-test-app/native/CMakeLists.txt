@@ -20,7 +20,13 @@
 cmake_minimum_required(VERSION 3.12)
 project(firebolt-test-app CXX)
 
-set(PROJECT_VERSION_MAJOR 1)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+set(PROJECT_VERSION_MAJOR 2)
 set(PROJECT_VERSION_MINOR 0)
 
 # get the patch version from short git sha if available, otherwise default to 0
@@ -39,23 +45,35 @@ set(PROJECT_VERSION_PATCH ${GIT_COMMIT_SHA})
 set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
 
 include(GNUInstallDirs)
+find_package(PkgConfig REQUIRED)
 
 # ---------------------------------------------------------------------------
-# Target
+# Targets
 # ---------------------------------------------------------------------------
 set(APP_TARGET firebolt-test-app)
+set(GL_MODULE_TARGET gl-module)
 
-add_compile_options(-Wall -Wextra -Wpedantic)
+option(GL_MODULE_SHARED "Build gl module as SHARED library (OFF=STATIC)" OFF)
+option(BUILD_FIREBOLT_APP "Build firebolt-test-app executable" ON)
+option(BUILD_GL_TEST "Build the standalone GlApp lifecycle test binary" OFF)
+
 add_compile_definitions(
     PROJECT_VERSION="${PROJECT_VERSION}"
 )
 
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
+set(SECURE_COMPILER_FLAGS
+    "-fstack-protector-strong"
+    "-Wformat"
+    "-Wformat-security"
+    "-Werror"
+    "-Wall"
+    "-Wextra"
+    "-Wpedantic"
+)
 
-add_executable(${APP_TARGET}
-    src/main.cpp
-    src/utils.cpp
-    ${TEST_SOURCES}
+set(SECURE_LINKER_FLAGS
+    "-Wl,-z,relro"
+    "-Wl,-z,now"
 )
 
 # ---------------------------------------------------------------------------
@@ -70,28 +88,265 @@ if(LINK_STATIC)
 endif()
 
 # ---------------------------------------------------------------------------
-# Dependencies: find installed FireboltClient (and its transport)
+# GL/Wayland display window dependencies (EGL + GLESv2 + Cairo + FreeType)
+# Westeros simple-shell is now the mandatory window management protocol.
 # ---------------------------------------------------------------------------
-find_package(FireboltTransport CONFIG REQUIRED)
-find_package(FireboltClient    CONFIG REQUIRED)
-find_package(nlohmann_json    CONFIG REQUIRED)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-target_link_libraries(${APP_TARGET}
-    PRIVATE
-        FireboltTransport::FireboltTransport
-        FireboltClient::FireboltClient
-        nlohmann_json::nlohmann_json
+set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS "")
+set(WESTEROS_SIMPLESHELL_LINK_LIBS "")
+
+# Prefer pkg-config when the client .pc file is available.
+pkg_check_modules(WESTEROS_SIMPLESHELL QUIET westeros-simpleshell-client)
+if(WESTEROS_SIMPLESHELL_FOUND)
+    set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
+    set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WESTEROS_SIMPLESHELL_LIBRARIES})
+    message(STATUS "Using Westeros simple-shell protocol backend (pkg-config)")
+else()
+    find_package(WesterosSimpleShell QUIET)
+    if(WesterosSimpleShell_FOUND)
+        set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS ${WesterosSimpleShell_INCLUDE_DIRS})
+        set(WESTEROS_SIMPLESHELL_LINK_LIBS ${WesterosSimpleShell_LIBRARIES})
+        message(STATUS "Using Westeros simple-shell protocol backend (find_package)")
+    else()
+        message(FATAL_ERROR "Westeros simple-shell client is required but was not found. Install westeros-simpleshell-client or provide a sysroot/CMAKE_PREFIX_PATH with simpleshell-client-protocol.h and libwesteros_simpleshell_client.")
+    endif()
+endif()
+
+# Some cross/Yocto sysroots ship Wayland libs/headers without pkg-config
+# metadata for wayland-client/wayland-egl. Try pkg-config first, then fall
+# back to direct library/header discovery.
+set(WAYLAND_INCLUDE_DIRS "")
+set(WAYLAND_LINK_LIBS "")
+
+set(WAYLAND_SEARCH_HINTS
+    ${CMAKE_SYSROOT}
+    ${CMAKE_SYSROOT}/usr
+    ${CMAKE_SYSROOT}/usr/local
+    ${CMAKE_PREFIX_PATH}
+    ${CMAKE_FIND_ROOT_PATH}
+)
+list(REMOVE_DUPLICATES WAYLAND_SEARCH_HINTS)
+
+pkg_check_modules(WAYLAND_CLIENT wayland-client)
+pkg_check_modules(WAYLAND_EGL wayland-egl)
+
+if(WAYLAND_CLIENT_FOUND)
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_CLIENT_INCLUDE_DIRS})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_CLIENT_LIBRARIES})
+else()
+    find_path(WAYLAND_CLIENT_INCLUDE_DIR
+        NAMES wayland-client.h
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES include include/wayland wayland
+    )
+    find_library(WAYLAND_CLIENT_LIBRARY
+        NAMES wayland-client
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES lib lib64
+    )
+    if(NOT WAYLAND_CLIENT_INCLUDE_DIR OR NOT WAYLAND_CLIENT_LIBRARY)
+        message(FATAL_ERROR "Could not find wayland-client (header/library). Set CMAKE_SYSROOT or CMAKE_PREFIX_PATH to a Wayland SDK/sysroot that provides wayland-client.h and libwayland-client.")
+    endif()
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_CLIENT_INCLUDE_DIR})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_CLIENT_LIBRARY})
+endif()
+
+if(WAYLAND_EGL_FOUND)
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_EGL_INCLUDE_DIRS})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_EGL_LIBRARIES})
+else()
+    find_path(WAYLAND_EGL_INCLUDE_DIR
+        NAMES wayland-egl.h
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES include include/wayland wayland
+    )
+    find_library(WAYLAND_EGL_LIBRARY
+        NAMES wayland-egl
+        HINTS ${WAYLAND_SEARCH_HINTS}
+        PATH_SUFFIXES lib lib64
+    )
+    if(NOT WAYLAND_EGL_INCLUDE_DIR OR NOT WAYLAND_EGL_LIBRARY)
+        message(FATAL_ERROR "Could not find wayland-egl (header/library). Set CMAKE_SYSROOT or CMAKE_PREFIX_PATH to a Wayland SDK/sysroot that provides wayland-egl.h and libwayland-egl.")
+    endif()
+    list(APPEND WAYLAND_INCLUDE_DIRS ${WAYLAND_EGL_INCLUDE_DIR})
+    list(APPEND WAYLAND_LINK_LIBS ${WAYLAND_EGL_LIBRARY})
+endif()
+
+list(APPEND WAYLAND_INCLUDE_DIRS ${WESTEROS_SIMPLESHELL_INCLUDE_DIRS})
+list(APPEND WAYLAND_LINK_LIBS ${WESTEROS_SIMPLESHELL_LINK_LIBS})
+
+list(REMOVE_DUPLICATES WAYLAND_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES WAYLAND_LINK_LIBS)
+
+pkg_check_modules(EGL         REQUIRED egl)
+pkg_check_modules(GLESV2      REQUIRED glesv2)
+pkg_check_modules(CAIRO_FT    REQUIRED cairo cairo-ft)
+pkg_check_modules(FREETYPE    REQUIRED freetype2)
+pkg_check_modules(XKBCOMMON   QUIET xkbcommon)
+
+set(FONT_BASE_DIR "${CMAKE_INSTALL_FULL_DATADIR}")
+set(APP_FONT_DIR "${FONT_BASE_DIR}/fonts/ttf/")
+set(APP_FONT_LIC_DIR "${FONT_BASE_DIR}/doc/liberation-fonts/")
+
+message("Application font directory: ${APP_FONT_DIR}")
+
+# ---------------------------------------------------------------------------
+# GL module library (static/shared selectable)
+# ---------------------------------------------------------------------------
+
+if(GL_MODULE_SHARED)
+    set(GL_MODULE_TYPE SHARED)
+else()
+    set(GL_MODULE_TYPE STATIC)
+endif()
+
+add_library(${GL_MODULE_TARGET} ${GL_MODULE_TYPE}
+    src/gl.cpp
+    src/gl.h
+    src/logger.hpp
 )
 
-target_include_directories(${APP_TARGET}
-    PRIVATE
+target_compile_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+# _FORTIFY_SOURCE=2 requires optimizations (e.g. -O2). Strip on Debug builds to avoid warnings.
+target_compile_definitions(${GL_MODULE_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+target_link_options(${GL_MODULE_TARGET} PRIVATE
+    $<$<STREQUAL:$<TARGET_PROPERTY:${GL_MODULE_TARGET},TYPE>,SHARED_LIBRARY>:${SECURE_LINKER_FLAGS}>
+)
+
+target_link_libraries(${GL_MODULE_TARGET}
+    PUBLIC
+        ${WAYLAND_LINK_LIBS}
+        ${EGL_LIBRARIES}
+        ${GLESV2_LIBRARIES}
+        ${CAIRO_FT_LIBRARIES}
+        ${FREETYPE_LIBRARIES}
+        $<$<BOOL:${XKBCOMMON_FOUND}>:${XKBCOMMON_LIBRARIES}>
+)
+
+target_include_directories(${GL_MODULE_TARGET}
+    PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
+    PRIVATE
+        ${WAYLAND_INCLUDE_DIRS}
+        ${EGL_INCLUDE_DIRS}
+        ${GLESV2_INCLUDE_DIRS}
+        ${CAIRO_FT_INCLUDE_DIRS}
+        ${FREETYPE_INCLUDE_DIRS}
+        $<$<BOOL:${XKBCOMMON_FOUND}>:${XKBCOMMON_INCLUDE_DIRS}>
 )
 
-set_target_properties(${APP_TARGET} PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED YES
+target_compile_definitions(${GL_MODULE_TARGET}
+    PRIVATE
+        USE_WESTEROS_SIMPLESHELL
+        APP_FONT_DIR=\"${APP_FONT_DIR}\"
+        $<$<BOOL:${XKBCOMMON_FOUND}>:HAVE_XKBCOMMON=1>
 )
 
-install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+set_target_properties(${GL_MODULE_TARGET} PROPERTIES
+    VERSION   "${PROJECT_VERSION}"
+    SOVERSION "${PROJECT_VERSION_MAJOR}"
+)
+
+install(TARGETS ${GL_MODULE_TARGET} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+# Install font files and license text to the appropriate directories
+install(FILES
+    assets/LiberationSans-Bold.ttf
+    DESTINATION "${APP_FONT_DIR}"
+)
+install(FILES
+    assets/OFL.txt
+    DESTINATION "${APP_FONT_LIC_DIR}"
+)
+
+# Print status reports
+if(XKBCOMMON_FOUND)
+    message(STATUS "xkbcommon detected: enabling Wayland keymap translation")
+else()
+    message(STATUS "xkbcommon not found: building with raw evdev keycodes only")
+endif()
+message(STATUS "GL module target=${GL_MODULE_TARGET}, type=${GL_MODULE_TYPE}")
+
+# ---------------------------------------------------------------------------
+# Firebolt Application target (executable)
+# ---------------------------------------------------------------------------
+
+if(BUILD_FIREBOLT_APP)
+    # -----------------------------------------------------------------------
+    # Dependencies: find installed FireboltClient (and its transport)
+    # -----------------------------------------------------------------------
+    find_package(FireboltTransport CONFIG REQUIRED)
+    find_package(FireboltClient    CONFIG REQUIRED)
+    find_package(nlohmann_json     CONFIG REQUIRED)
+
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
+
+    add_executable(${APP_TARGET}
+        src/main.cpp
+        src/utils.cpp
+        src/logger.hpp
+        ${TEST_SOURCES}
+    )
+
+    target_compile_options(${APP_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    target_compile_definitions(${APP_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+    target_link_options(${APP_TARGET} PRIVATE "-pie" ${SECURE_LINKER_FLAGS})
+
+    target_link_libraries(${APP_TARGET}
+        PRIVATE
+            FireboltTransport::FireboltTransport
+            FireboltClient::FireboltClient
+            nlohmann_json::nlohmann_json
+            ${GL_MODULE_TARGET}
+    )
+
+    target_include_directories(${APP_TARGET}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tests>
+    )
+
+    target_compile_definitions(${APP_TARGET}
+        PRIVATE
+            USE_WESTEROS_SIMPLESHELL
+            APP_FONT_DIR=\"${APP_FONT_DIR}\"
+    )
+
+    install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+# ---------------------------------------------------------------------------
+# Optional standalone GL lifecycle test (no Firebolt connection at runtime)
+# Build with: cmake -DBUILD_FIREBOLT_APP=OFF -DBUILD_GL_TEST=ON ...
+# ---------------------------------------------------------------------------
+if(BUILD_GL_TEST)
+    set(GL_TEST_TARGET gl-standalone-test)
+
+    add_executable(${GL_TEST_TARGET}
+        src/gltest/gl_standalone_test.cpp
+    )
+
+    target_compile_options(${GL_TEST_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    target_compile_definitions(${GL_TEST_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+    target_link_options(${GL_TEST_TARGET} PRIVATE "-pie" ${SECURE_LINKER_FLAGS})
+
+    target_link_libraries(${GL_TEST_TARGET}
+        PRIVATE
+            ${GL_MODULE_TARGET}
+    )
+
+    target_include_directories(${GL_TEST_TARGET}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/gltest>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    )
+
+    target_compile_definitions(${GL_TEST_TARGET}
+        PRIVATE
+            APP_FONT_DIR=\"${APP_FONT_DIR}\"
+    )
+
+    install(TARGETS ${GL_TEST_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    message(STATUS "GL standalone test enabled: target=${GL_TEST_TARGET}")
+endif()
