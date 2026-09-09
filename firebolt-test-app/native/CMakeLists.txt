@@ -243,6 +243,11 @@ target_compile_definitions(${GL_MODULE_TARGET}
         $<$<BOOL:${XKBCOMMON_FOUND}>:HAVE_XKBCOMMON=1>
 )
 
+set_target_properties(${GL_MODULE_TARGET} PROPERTIES
+    VERSION   "${PROJECT_VERSION}"
+    SOVERSION "${PROJECT_VERSION_MAJOR}"
+)
+
 install(TARGETS ${GL_MODULE_TARGET} DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 # Install font files and license text to the appropriate directories
