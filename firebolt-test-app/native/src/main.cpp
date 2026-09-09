@@ -215,7 +215,7 @@ constexpr AppState getAppStateFromLifeCycleEvent(const Firebolt::Lifecycle::Stat
     using KeyType = std::conditional_t<sizeof(void*) == 8, uint64_t, uint32_t>;
     constexpr size_t shift_bits = (sizeof(KeyType) == 8) ? 32 : 16;
 
-    auto unique_key = [](LC oldS, LC newS) constexpr -> KeyType {
+    constexpr auto unique_key = [](LC oldS, LC newS) constexpr -> KeyType {
         // Masking with 0xFFFF protects 32-bit builds from unexpected external enum values > 65535
         if constexpr (sizeof(KeyType) == 4) {
             return ((static_cast<uint32_t>(oldS) & 0xFFFF) << shift_bits) | (static_cast<uint32_t>(newS) & 0xFFFF);
