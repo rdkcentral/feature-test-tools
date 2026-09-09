@@ -1468,8 +1468,7 @@ void GlApp::run()
 
         // Claim the authoritative read synchronization lock
         if (wl_display_prepare_read(m_ctx->display) == 0) {
-
-            pollfd fds[2];
+            struct pollfd fds[2];
             fds[0].fd = m_ctx->waylandFd;
             fds[0].events = POLLIN;
             fds[0].revents = 0;
