@@ -220,8 +220,6 @@ firebolt-test-app --auto --firebolt8
 firebolt-test-app --auto --firebolt-all
 ```
 
-`runInteractiveMode()` and `runPipedMode()` helper functions are kept but not maintained due to requirement changes to be upgraded as a true Firebolt bolt app running inside container.
-
 ---
 
 ## Covered Modules & APIs

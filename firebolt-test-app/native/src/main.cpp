@@ -336,51 +336,6 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
 }
 
 // ---------------------------------------------------------------------------
-// runPipedMode – accepts "Module.method" names from stdin, one per line
-// ---------------------------------------------------------------------------
-static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
-{
-    std::string line;
-    while (std::getline(std::cin, line))
-    {
-        // Normalize stdin input so trailing spaces/CRLF do not break exact method matching.
-        const auto first = std::find_if_not(line.begin(), line.end(), [](unsigned char ch) {
-            return std::isspace(ch) != 0;
-        });
-        const auto last = std::find_if_not(line.rbegin(), line.rend(), [](unsigned char ch) {
-            return std::isspace(ch) != 0;
-        }).base();
-        const std::string methodName = (first < last) ? std::string(first, last) : std::string();
-
-        if (methodName.empty())
-        {
-            continue;
-        }
-        bool found = false;
-        for (auto& mod : modules)
-        {
-            for (const auto& m : mod->methods())
-            {
-                if (m == methodName)
-                {
-                    mod->runMethod(m);
-                    found = true;
-                    break;
-                }
-            }
-            if (found)
-            {
-                break;
-            }
-        }
-        if (!found)
-        {
-            std::cout << "Method not found: " << methodName << std::endl;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // runAutoMode – runs every method of every module sequentially
 // ---------------------------------------------------------------------------
 static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, ProgressController& progressController)
@@ -441,74 +396,6 @@ static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<Te
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
             progressController.increment_progress();
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// runInteractiveMode – two-level interactive menu
-// ---------------------------------------------------------------------------
-static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
-{
-    std::vector<std::string> moduleNames;
-    moduleNames.reserve(modules.size());
-    for (const auto& mod : modules)
-    {
-        moduleNames.push_back(mod->name());
-    }
-
-    while (true)
-    {
-        int modIdx = chooseFromList(moduleNames, "Select a module to test:", "exit");
-        if (modIdx == -1)
-        {
-            return;
-        }
-
-        auto& selectedModule = modules[static_cast<size_t>(modIdx)];
-        const std::vector<std::string>& methodNames = selectedModule->methods();
-
-        const auto isSubscribeMethod = [](const std::string& methodName) {
-            static constexpr const char* kSuffix = ".subscribe";
-            static constexpr size_t kSuffixLen = 10;
-            return methodName.size() >= kSuffixLen &&
-                   methodName.compare(methodName.size() - kSuffixLen, kSuffixLen, kSuffix) == 0;
-        };
-
-        const bool hasSubscribeMethods = std::any_of(methodNames.begin(), methodNames.end(), isSubscribeMethod);
-        const std::string subscribeAllMethod = selectedModule->name() + ".subscribeAll";
-
-        std::vector<std::string> methodMenu;
-        methodMenu.reserve(methodNames.size() + (hasSubscribeMethods ? 1 : 0));
-        methodMenu.insert(methodMenu.end(), methodNames.begin(), methodNames.end());
-        if (hasSubscribeMethods)
-        {
-            methodMenu.push_back(subscribeAllMethod);
-        }
-
-        while (true)
-        {
-            int methodIdx = chooseFromList(methodMenu, "Select a method to run:");
-            if (methodIdx == -1)
-            {
-                break;
-            }
-
-            const std::string& selectedMethod = methodMenu[static_cast<size_t>(methodIdx)];
-            if (hasSubscribeMethods && selectedMethod == subscribeAllMethod)
-            {
-                std::cout << "  Running all subscribe methods for " << selectedModule->name() << "..." << std::endl;
-                for (const auto& methodName : methodNames)
-                {
-                    if (isSubscribeMethod(methodName))
-                    {
-                        selectedModule->runMethod(methodName);
-                    }
-                }
-                continue;
-            }
-
-            selectedModule->runMethod(selectedMethod);
         }
     }
 }

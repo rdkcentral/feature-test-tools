@@ -20,6 +20,12 @@
 cmake_minimum_required(VERSION 3.12)
 project(firebolt-test-app CXX)
 
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 set(PROJECT_VERSION_MAJOR 2)
 set(PROJECT_VERSION_MINOR 0)
 
@@ -39,9 +45,10 @@ set(PROJECT_VERSION_PATCH ${GIT_COMMIT_SHA})
 set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
 
 include(GNUInstallDirs)
+find_package(PkgConfig REQUIRED)
 
 # ---------------------------------------------------------------------------
-# Target
+# Targets
 # ---------------------------------------------------------------------------
 set(APP_TARGET firebolt-test-app)
 set(GL_MODULE_TARGET gl-module)
@@ -56,10 +63,8 @@ add_compile_definitions(
 
 set(SECURE_COMPILER_FLAGS
     "-fstack-protector-strong"
-    "-D_FORTIFY_SOURCE=2"
     "-Wformat"
     "-Wformat-security"
-    "-fPIE"
     "-Werror"
     "-Wall"
     "-Wextra"
@@ -67,7 +72,6 @@ set(SECURE_COMPILER_FLAGS
 )
 
 set(SECURE_LINKER_FLAGS
-    "-pie"
     "-Wl,-z,relro"
     "-Wl,-z,now"
 )
@@ -88,8 +92,6 @@ endif()
 # Westeros simple-shell is now the mandatory window management protocol.
 # ---------------------------------------------------------------------------
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-
-find_package(PkgConfig REQUIRED)
 
 set(WESTEROS_SIMPLESHELL_INCLUDE_DIRS "")
 set(WESTEROS_SIMPLESHELL_LINK_LIBS "")
@@ -192,6 +194,7 @@ message("Application font directory: ${APP_FONT_DIR}")
 # ---------------------------------------------------------------------------
 # GL module library (static/shared selectable)
 # ---------------------------------------------------------------------------
+
 if(GL_MODULE_SHARED)
     set(GL_MODULE_TYPE SHARED)
 else()
@@ -205,7 +208,11 @@ add_library(${GL_MODULE_TARGET} ${GL_MODULE_TYPE}
 )
 
 target_compile_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
-target_link_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
+# _FORTIFY_SOURCE=2 requires optimizations (e.g. -O2). Strip on Debug builds to avoid warnings.
+target_compile_definitions(${GL_MODULE_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+target_link_options(${GL_MODULE_TARGET} PRIVATE
+    $<$<STREQUAL:$<TARGET_PROPERTY:${GL_MODULE_TARGET},TYPE>,SHARED_LIBRARY>:${SECURE_LINKER_FLAGS}>
+)
 
 target_link_libraries(${GL_MODULE_TARGET}
     PUBLIC
@@ -214,14 +221,8 @@ target_link_libraries(${GL_MODULE_TARGET}
         ${GLESV2_LIBRARIES}
         ${CAIRO_FT_LIBRARIES}
         ${FREETYPE_LIBRARIES}
+        $<$<BOOL:${XKBCOMMON_FOUND}>:${XKBCOMMON_LIBRARIES}>
 )
-
-if(XKBCOMMON_FOUND)
-    target_link_libraries(${GL_MODULE_TARGET} PUBLIC ${XKBCOMMON_LIBRARIES})
-    message(STATUS "xkbcommon detected: enabling Wayland keymap translation")
-else()
-    message(STATUS "xkbcommon not found: building with raw evdev keycodes only")
-endif()
 
 target_include_directories(${GL_MODULE_TARGET}
     PUBLIC
@@ -232,38 +233,44 @@ target_include_directories(${GL_MODULE_TARGET}
         ${GLESV2_INCLUDE_DIRS}
         ${CAIRO_FT_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
+        $<$<BOOL:${XKBCOMMON_FOUND}>:${XKBCOMMON_INCLUDE_DIRS}>
 )
-
-if(XKBCOMMON_FOUND)
-    target_include_directories(${GL_MODULE_TARGET} PRIVATE ${XKBCOMMON_INCLUDE_DIRS})
-endif()
 
 target_compile_definitions(${GL_MODULE_TARGET}
     PRIVATE
         USE_WESTEROS_SIMPLESHELL
         APP_FONT_DIR=\"${APP_FONT_DIR}\"
-)
-
-if(XKBCOMMON_FOUND)
-    target_compile_definitions(${GL_MODULE_TARGET} PRIVATE HAVE_XKBCOMMON=1)
-endif()
-
-set_target_properties(${GL_MODULE_TARGET} PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED YES
+        $<$<BOOL:${XKBCOMMON_FOUND}>:HAVE_XKBCOMMON=1>
 )
 
 install(TARGETS ${GL_MODULE_TARGET} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+# Install font files and license text to the appropriate directories
+install(FILES
+    assets/LiberationSans-Bold.ttf
+    DESTINATION "${APP_FONT_DIR}"
+)
+install(FILES
+    assets/OFL.txt
+    DESTINATION "${APP_FONT_LIC_DIR}"
+)
+
+# Print status reports
+if(XKBCOMMON_FOUND)
+    message(STATUS "xkbcommon detected: enabling Wayland keymap translation")
+else()
+    message(STATUS "xkbcommon not found: building with raw evdev keycodes only")
+endif()
 message(STATUS "GL module target=${GL_MODULE_TARGET}, type=${GL_MODULE_TYPE}")
 
 # ---------------------------------------------------------------------------
-# Firebolt Application target
+# Firebolt Application target (executable)
 # ---------------------------------------------------------------------------
 
 if(BUILD_FIREBOLT_APP)
-    # ---------------------------------------------------------------------------
+    # -----------------------------------------------------------------------
     # Dependencies: find installed FireboltClient (and its transport)
-    # ---------------------------------------------------------------------------
+    # -----------------------------------------------------------------------
     find_package(FireboltTransport CONFIG REQUIRED)
     find_package(FireboltClient    CONFIG REQUIRED)
     find_package(nlohmann_json     CONFIG REQUIRED)
@@ -276,6 +283,10 @@ if(BUILD_FIREBOLT_APP)
         src/logger.hpp
         ${TEST_SOURCES}
     )
+
+    target_compile_options(${APP_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    target_compile_definitions(${APP_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+    target_link_options(${APP_TARGET} PRIVATE "-pie" ${SECURE_LINKER_FLAGS})
 
     target_link_libraries(${APP_TARGET}
         PRIVATE
@@ -297,27 +308,8 @@ if(BUILD_FIREBOLT_APP)
             APP_FONT_DIR=\"${APP_FONT_DIR}\"
     )
 
-    # Enable later when the app is ready to support the Firebolt test modules.
-    #target_compile_options(${APP_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
-    #target_link_options(${APP_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
-
-    set_target_properties(${APP_TARGET} PROPERTIES
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED YES
-    )
-
     install(TARGETS ${APP_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-
-install(FILES
-    assets/LiberationSans-Bold.ttf
-    DESTINATION "${APP_FONT_DIR}"
-)
-
-install(FILES
-    assets/OFL.txt
-    DESTINATION "${APP_FONT_LIC_DIR}"
-)
 
 # ---------------------------------------------------------------------------
 # Optional standalone GL lifecycle test (no Firebolt connection at runtime)
@@ -329,6 +321,10 @@ if(BUILD_GL_TEST)
     add_executable(${GL_TEST_TARGET}
         src/gltest/gl_standalone_test.cpp
     )
+
+    target_compile_options(${GL_TEST_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
+    target_compile_definitions(${GL_TEST_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+    target_link_options(${GL_TEST_TARGET} PRIVATE "-pie" ${SECURE_LINKER_FLAGS})
 
     target_link_libraries(${GL_TEST_TARGET}
         PRIVATE
@@ -344,14 +340,6 @@ if(BUILD_GL_TEST)
     target_compile_definitions(${GL_TEST_TARGET}
         PRIVATE
             APP_FONT_DIR=\"${APP_FONT_DIR}\"
-    )
-
-    target_compile_options(${GL_TEST_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
-    target_link_options(${GL_TEST_TARGET} PRIVATE ${SECURE_LINKER_FLAGS})
-
-    set_target_properties(${GL_TEST_TARGET} PROPERTIES
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED YES
     )
 
     install(TARGETS ${GL_TEST_TARGET} DESTINATION ${CMAKE_INSTALL_BINDIR})
