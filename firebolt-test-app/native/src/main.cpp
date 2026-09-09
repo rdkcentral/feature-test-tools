@@ -133,7 +133,7 @@ public:
         count++;
         currentPercentage = (static_cast<float>(count) / total) * 100.0f;
         hasChanged = true;
-        // Notify the progress change detecetors
+        // Notify the progress change detectors
         cv.notify_one();
     }
 
@@ -802,7 +802,7 @@ int main(int argc, char** argv)
     // ------------------------- Firebolt Test Modules ----------------------------
     std::thread runTestModulesThread;
 
-    auto startrunTestModules = [&]() {
+    auto startRunTestModules = [&]() {
         if (!appConfig.autoRun || runTestModulesThread.joinable()) {
             return;
         }
@@ -879,7 +879,7 @@ int main(int argc, char** argv)
                         }
                     }
                     if (appConfig.autoRun) {
-                        startrunTestModules();
+                        startRunTestModules();
                     }
                     currentAppState = newAppState;
                 }
