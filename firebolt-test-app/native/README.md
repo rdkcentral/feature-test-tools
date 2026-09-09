@@ -105,9 +105,9 @@ FILES:${PN} += " /usr/share/fonts"
 
 ## Running
 
-This is a Firebolt application aligning to Firebolt LifeCycle specifications requiring it to be running with these environments configured: `MODE_AUTO_RUN, WAYLAND_DISPLAY, XDG_RUNTIME_DIR` and `FIREBOLT_ENDPOINT`.
+This is a lifecycle-driven Firebolt application; ensure `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, and `FIREBOLT_ENDPOINT` are configured. `MODE_AUTO_RUN` is optional and enables auto mode without `--auto`.
 
-Note: The commandline execution mode is no longer supported aliging to bolt app architecture format.
+Note: Command-line options are supported for development/testing; interactive and piped modes are deprecated in the lifecycle-driven app flow.
 
 ### Binary name
 ```

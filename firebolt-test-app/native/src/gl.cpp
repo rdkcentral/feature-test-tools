@@ -58,10 +58,12 @@
 
 #if __has_include(<GLES3/gl3.h>)
 #include <GLES3/gl3.h>
-#else
-#include <GLES2/gl2.h>
+#if __has_include(<GLES3/gl3ext.h>)
+#include <GLES3/gl3ext.h>
 #endif
-#include <GLES2/gl2ext.h>
+#else
+#error "GLES3 headers are required (Implementation uses OpenGL ES 3.0 APIs and GLSL ES 300)."
+#endif
 
 #ifndef EGL_PLATFORM_WAYLAND_KHR
 #define EGL_PLATFORM_WAYLAND_KHR 0x31D8

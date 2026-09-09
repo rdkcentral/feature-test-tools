@@ -171,9 +171,9 @@ std::atomic<bool> gGlExitKeyRequested{ false };
 void handleGlKeycode(const GlKeyEvent& keyEvent)
 {
     if (keyEvent.hasUtf32 && keyEvent.utf32 >= 0x20 && keyEvent.utf32 <= 0x7E) {
-        log_info("GL key received: '{}' (U+{}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
+        log_info("GL key received: '{}' (utf32={}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
     } else if (keyEvent.hasUtf32) {
-        log_info("GL key received: U+{}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
+        log_info("GL key received: utf32={}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
     } else {
         log_info("GL keycode received: evdev={}", keyEvent.evdevKeycode);
     }
