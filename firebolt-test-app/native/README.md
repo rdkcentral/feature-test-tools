@@ -65,7 +65,9 @@ cmake --build build --parallel
 ```
 
 <details>
-  <summary>Sample bitbake recipe</summary>
+  <summary>Sample bitbake recipe & bolt package configuration</summary>
+
+### Bitbake recipe
 
 ```bash
 SUMMARY = "Firebolt C++ Test Application"
@@ -92,6 +94,35 @@ EXTRA_OECMAKE:append = " \
     "
 
 FILES:${PN} += " /usr/share/fonts"
+```
+
+### Bolt package configuration
+
+```json
+{
+  "id": "com.rdkcentral.fbttest",
+  "version": "0.0.2",
+  "name": "fbttest",
+  "packageType": "application",
+  "entryPoint": "/usr/bin/firebolt-test-app",
+  "dependencies": {
+    "com.rdkcentral.base": "0.3.1"
+  },
+  "permissions": [
+      "urn:rdk:permission:firebolt",
+      "urn:rdk:permission:game-controller"
+  ],
+  "configuration": {
+      "urn:rdk:config:env": {
+          "PATTERN_MODE": "DOT",
+          "WIDTH": "1920",
+          "HEIGHT": "1080",
+          "GLLOGLEVEL":"DEBUG",
+          "MODE_AUTO_RUN":"true",
+          "APPLOGLEVEL":"DEBUG"
+      }
+  }
+}
 ```
 
 </details>
