@@ -13,7 +13,7 @@ native/
 ├── CMakeLists.txt          # Top-level CMake project
 ├── assets/
 │   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
-│   └── OFL.txt                 # License text installed from the Liberation font package (OFL 1.1)
+│   └── LICENSE                 # License text installed from the Liberation font package (OFL 1.1)
 └── src/
     ├── main.cpp            # Entry point, connection management, run-mode dispatch
     ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
@@ -129,7 +129,7 @@ FILES:${PN} += " /usr/share/fonts"
 
 ### Font License Note
 
-`assets/OFL.txt` is the license text installed from the Liberation font package for
+`assets/LICENSE` is the license text installed from the Liberation font package for
 `LiberationSans-Bold.ttf`.
 
 ---
@@ -278,6 +278,6 @@ Apache-2.0 – see [LICENSE](./../../LICENSE)
 | **Font** | Liberation Sans Bold |
 | **Copyright holders** | Google Corporation (digitized data); Red Hat, Inc. |
 | **Reserved Font Names** | Arimo, Tinos, Cousine, Liberation |
-| **License** | [SIL Open Font License, Version 1.1](./assets/OFL.txt) |
+| **License** | [SIL Open Font License, Version 1.1](./assets/LICENSE) |
 | **Source** | https://github.com/liberationfonts/liberation-fonts |
 | **Bundled at** | `assets/LiberationSans-Bold.ttf` |

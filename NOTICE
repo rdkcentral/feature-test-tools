@@ -8,4 +8,7 @@ conditions of these licenses. The LICENSE file contains the text of all the lice
 within this component.
 
 Copyright 2024 Comcast Cable Communications Management, LLC
+The assets directory within this component contains material which is licensed under
+the SIL Open Font License, version 1.1. The assets directory contains its own license
+file, called LICENSE, which describes the licensing of the material in the assets directory.
 Licensed under the Apache License, Version 2.0
