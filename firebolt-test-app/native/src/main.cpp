@@ -793,9 +793,9 @@ int main(int argc, char** argv)
                 case AppState::SUSPENDED_TO_TERMINATING:
                 {
                     sawLifecycleTerminating.store(true, std::memory_order_release);
+                    exitRequested.store(true, std::memory_order_release);
                     PC.wake_for_shutdown();
                     stopGlApp();
-                    exitRequested.store(true, std::memory_order_release);
                     currentAppState = newAppState;
                 }
                 break;

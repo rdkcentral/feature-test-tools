@@ -765,6 +765,14 @@ bool init_gpu_font_atlas(AppContext* app)
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    GLint textLinked = 0;
+    glGetProgramiv(app->text_program_id, GL_LINK_STATUS, &textLinked);
+    if (!textLinked) {
+        glDeleteProgram(app->text_program_id);
+        app->text_program_id = 0;
+        return false;
+    }
+
     app->text_pipeline_initialized = true;
     log_info("Pre-baked GPU Text Atlas and shader channels successfully generated.");
     return true;
@@ -1504,6 +1512,11 @@ void GlApp::run()
                 }
 
                 // Safe hardware descriptor read operation (INDEX 0)
+                if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                    wl_display_cancel_read(m_ctx->display);
+                    stop_run_loop(m_ctx, "POLLERR Wayland display connection lost.");
+                    break;
+                }
                 if ((fds[0].revents & POLLIN) != 0) {
                     if (wl_display_read_events(m_ctx->display) < 0) {
                         log_warn("Display connection lost while reading events.");
