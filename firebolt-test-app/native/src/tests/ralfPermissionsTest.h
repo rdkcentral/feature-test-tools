@@ -29,7 +29,6 @@
 #include <string>
 #include <cstdlib>
 #include <thread>
-#include "logger.hpp"
 
 #define ASIO_STANDALONE
 #define _WEBSOCKETPP_CPP11_STDLIB_
@@ -37,12 +36,6 @@
 #include <websocketpp/config/asio_no_tls_client.hpp>
 #include <websocketpp/client.hpp>
 #include <nlohmann/json.hpp>
-
-struct PTLoggerConfig {
-    static constexpr const char* kEnvVar = "PTLOGLEVEL";
-    static constexpr const char* kTag = "[PT]";
-};
-using LocalLogger = RuntimeLogger<PTLoggerConfig>;
 
 typedef websocketpp::client<websocketpp::config::asio_tls_client> TlsClient;
 typedef websocketpp::client<websocketpp::config::asio_client>     NoTlsClient;
@@ -87,13 +80,11 @@ public:
             "wss://echo.websocket.events"
         };
         for (const auto& url : test_urls) {
-            log_dbg("Endpoint reachability: {}", url);
             m_internet_success = false;
             std::thread worker(&PermissionTester::test_reachability_tls, this, url, 2000);
             worker.join();
 
             if (m_internet_success) {
-                log_dbg("Endpoint reachable: {}", url);
                 return true;
             }
         }
@@ -103,11 +94,9 @@ public:
     bool has_thunder_access() {
         const char* thunder_access_env = std::getenv("THUNDER_ACCESS");
         if (!thunder_access_env) {
-            log_dbg("THUNDER_ACCESS environment variable is not set.");
             return false;
         }
         std::string thunder_access_url("ws://" + std::string(thunder_access_env) + "/jsonrpc");
-        log_dbg("Testing Thunder reachability & schema verification: {}", thunder_access_url);
         m_thunder_success = false;
         std::thread worker(&PermissionTester::test_reachability_notls, this, thunder_access_url, 2000);
         worker.join();
@@ -118,14 +107,12 @@ public:
 private:
     void on_open_tls(websocketpp::connection_hdl hdl) {
         TlsClient::connection_ptr con = m_tls_client.get_con_from_hdl(hdl);
-        log_dbg("Connected successfully (TLS)!");
         m_internet_success = true;
         con->close(websocketpp::close::status::normal, "Reachability test finished");
         m_tls_client.stop();
     }
 
     void on_fail_tls(websocketpp::connection_hdl) {
-        log_dbg("Connection failed (TLS).");
         m_internet_success = false;
         m_tls_client.stop();
     }
@@ -139,7 +126,6 @@ private:
 
     void on_open_notls(websocketpp::connection_hdl hdl) {
         NoTlsClient::connection_ptr con = m_notls_client.get_con_from_hdl(hdl);
-        log_dbg("Connection opened to Thunder. Checking version");
         json request = {
             {"jsonrpc", "2.0"},
             {"id", 42},
@@ -147,7 +133,6 @@ private:
         };
         websocketpp::lib::error_code ec = con->send(request.dump(), websocketpp::frame::opcode::text);
         if (ec) {
-            log_err("Failed to transmit JSON request payload: {}", ec.message());
             con->close(websocketpp::close::status::normal, "Write failed");
             m_notls_client.stop();
         }
@@ -155,20 +140,16 @@ private:
 
     void on_message_notls(websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
         NoTlsClient::connection_ptr con = m_notls_client.get_con_from_hdl(hdl);
-        log_dbg("Received data payload from Thunder channel.");
         try {
             json response = json::parse(msg->get_payload());
             if (response.contains("jsonrpc") && response["jsonrpc"] == "2.0" &&
                 response.contains("id") && response["id"] == 42 &&
                 response.contains("result") && response["result"].is_object()) {
-                log_dbg("Valid Thunder schema signature verified!");
                 m_thunder_success = true;
             } else {
-                log_err("JSON-RPC layout signature verification failed.");
                 m_thunder_success = false;
             }
         } catch (const json::parse_error& e) {
-            log_err("Inbound payload parsing exception: {}", e.what());
             m_thunder_success = false;
         }
         con->close(websocketpp::close::status::normal, "Handshake validation complete");
@@ -176,7 +157,6 @@ private:
     }
 
     void on_fail_notls(websocketpp::connection_hdl) {
-        log_dbg("Connection failed (No-TLS).");
         m_thunder_success = false;
         m_notls_client.stop();
     }
