@@ -226,8 +226,8 @@ struct RuntimeLogger {
     }
 };
 
-#define log_dbg(...) do { LocalLogger::debug(__VA_ARGS__); } while(0)
-#define log_info(...) do { LocalLogger::info(__VA_ARGS__); } while(0)
-#define log_warn(...) do { LocalLogger::warn(__VA_ARGS__); } while(0)
-#define log_err(...) do { LocalLogger::err(__VA_ARGS__); } while(0)
-#define log_fatal(...) do { LocalLogger::fatal(__VA_ARGS__); } while(0)
+#define DBG(...) do { LocalLogger::debug(__VA_ARGS__); } while(0)
+#define INFO(...) do { LocalLogger::info(__VA_ARGS__); } while(0)
+#define WARN(...) do { LocalLogger::warn(__VA_ARGS__); } while(0)
+#define ERR(...) do { LocalLogger::err(__VA_ARGS__); } while(0)
+#define FATAL(...) do { LocalLogger::fatal(__VA_ARGS__); } while(0)

@@ -28,7 +28,6 @@
  */
 
 #include "gl.h"
-#include "logger.hpp"
 
 #include <atomic>
 #include <chrono>

@@ -205,7 +205,7 @@ endif()
 add_library(${GL_MODULE_TARGET} ${GL_MODULE_TYPE}
     src/gl.cpp
     src/gl.h
-    src/logger.hpp
+    src/native_logger.hpp
 )
 
 target_compile_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
@@ -290,7 +290,7 @@ if(BUILD_FIREBOLT_APP)
     add_executable(${APP_TARGET}
         src/main.cpp
         src/utils.cpp
-        src/logger.hpp
+        src/native_logger.hpp
         ${TEST_SOURCES}
     )
 

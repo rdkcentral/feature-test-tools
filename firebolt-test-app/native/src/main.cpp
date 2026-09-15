@@ -40,7 +40,7 @@
 
 #include "gl.h"
 #include "utils.h"
-#include "logger.hpp"
+#include "native_logger.hpp"
 
 #include "tests/accessibilityTest.h"
 #include "tests/actionsTest.h"
@@ -173,11 +173,11 @@ std::atomic<bool> gGlExitKeyRequested{ false };
 void handleGlKeycode(const GlKeyEvent& keyEvent)
 {
     if (keyEvent.hasUtf32 && keyEvent.utf32 >= 0x20 && keyEvent.utf32 <= 0x7E) {
-        log_info("GL key received: '{}' (utf32={}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
+        INFO("GL key received: '{}' (utf32={}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
     } else if (keyEvent.hasUtf32) {
-        log_info("GL key received: utf32={}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
+        INFO("GL key received: utf32={}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
     } else {
-        log_info("GL keycode received: evdev={}", keyEvent.evdevKeycode);
+        INFO("GL keycode received: evdev={}", keyEvent.evdevKeycode);
     }
 
     if (kEscKeyCode == keyEvent.evdevKeycode || kBackspaceKeyCode == keyEvent.evdevKeycode) {
@@ -302,7 +302,7 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
 
     auto addModule = [&modules](const char* moduleName, auto&& factory) {
         modules.emplace_back(factory());
-        log_info("TMT: constructed module {}", moduleName);
+        INFO("TMT: constructed module {}", moduleName);
     };
 
     // Base API modules (Firebolt 8 and later)
@@ -332,7 +332,7 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
         addModule("VideoOutput", []() { return std::make_unique<VideoOutputTest>(); });
     }
 
-    log_info("TMT: module list build complete, total modules={}", modules.size());
+    INFO("TMT: module list build complete, total modules={}", modules.size());
 
     return modules;
 }
@@ -419,7 +419,7 @@ static std::unique_ptr<GlApp> initGlApp(int width,
     auto glApp = std::make_unique<GlApp>(width, height, fontPath, pattern);
     if (!glApp->init(waylandDisplay))
     {
-        log_fatal("Failed to initialize GL context.");
+        FATAL("Failed to initialize GL context.");
         return nullptr;
     }
     return glApp;
@@ -454,7 +454,7 @@ int main(int argc, char** argv)
         {
             if (i + 1 >= argc)
             {
-                log_fatal("Missing argument for --url option");
+                FATAL("Missing argument for --url option");
                 return 1;
             }
             url = argv[++i];
@@ -491,7 +491,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            log_fatal("Unknown option: {} (use --help for usage)", arg);
+            FATAL("Unknown option: {} (use --help for usage)", arg);
             return 1;
         }
     }
@@ -516,7 +516,7 @@ int main(int argc, char** argv)
     }
     if (url.empty())
     {
-        log_fatal("No Firebolt endpoint URL specified. Use --url, or set FIREBOLT_ENDPOINT environment variable.");
+        FATAL("No Firebolt endpoint URL specified. Use --url, or set FIREBOLT_ENDPOINT environment variable.");
         return 1;
     }
     std::cout << "Using Firebolt endpoint: " << url << std::endl;
@@ -557,25 +557,25 @@ int main(int argc, char** argv)
 
     if (connectErr != Firebolt::Error::None)
     {
-        log_fatal("Failed to initiate Firebolt connection: error code {}", static_cast<int>(connectErr));
+        FATAL("Failed to initiate Firebolt connection: error code {}", static_cast<int>(connectErr));
         return 1;
     }
 
     if (connFuture.wait_for(std::chrono::seconds(2)) == std::future_status::timeout)
     {
-        log_fatal("Timed out waiting for Firebolt connection.");
+        FATAL("Timed out waiting for Firebolt connection.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
     if (!connFuture.get())
     {
-        log_fatal("Failed to connect to Firebolt endpoint.");
+        FATAL("Failed to connect to Firebolt endpoint.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
-    log_info("Connected to Firebolt.");
+    INFO("Connected to Firebolt.");
 
     // --------------------------- GL App Lifecycle -------------------------------
     ProgressController PC;
@@ -611,7 +611,7 @@ int main(int argc, char** argv)
     const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
     std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
     if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
-        log_fatal("Font file not found or not readable at " + fontFile);
+        FATAL("Font file not found or not readable at " + fontFile);
         return 1;
     }
 
@@ -664,16 +664,16 @@ int main(int argc, char** argv)
 
         GlApp* glAppPtr = glApp.get();
         glAppRunThread = std::thread([glAppPtr]() {
-            log_info("Starting GL render thread.");
+            INFO("Starting GL render thread.");
             glAppPtr->run();
-            log_info("GL render thread exited.");
+            INFO("GL render thread exited.");
         });
 
         // Keep a single progress thread for the process lifetime; it safely no-ops while glApp is null.
         if (!glAppProgressUpdateThread.joinable()) {
             glAppProgressUpdateThread = std::thread([&glApp, &glAppMutex, &exitRequested, &PC]() {
                 float progressPercentage = 0.0f;
-                log_info("Starting GL progress update thread.");
+                INFO("Starting GL progress update thread.");
                 while (!exitRequested.load(std::memory_order_acquire)) {
                     progressPercentage = PC.wait_for_percentage_change(exitRequested);
                     if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
@@ -685,7 +685,7 @@ int main(int argc, char** argv)
                         app->updateProgress(progressPercentage);
                     }
                 }
-                log_info("GL progress update thread exited; Last progress percentage={}", progressPercentage);
+                INFO("GL progress update thread exited; Last progress percentage={}", progressPercentage);
             });
         }
         glRunThreadStarted = true;
@@ -704,24 +704,24 @@ int main(int argc, char** argv)
                                           &appConfig,
                                           &exitRequested,
                                           &autoDeferredCleanupAllowed]() {
-            log_info("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
+            INFO("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
             auto testModules = buildModuleList(appConfig.fireboltVersion);
             int totalSteps = 0;
             for (const auto& mod : testModules) {
                 totalSteps += static_cast<int>(mod->methodCount());
             }
             PC.set_total(totalSteps);
-            log_info("TMT: running auto mode, total steps = {}", totalSteps);
+            INFO("TMT: running auto mode, total steps = {}", totalSteps);
             runAutoMode(testModules, PC);
-            log_info("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
+            INFO("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
             while (!exitRequested.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
-            log_info("TMT: waiting for auto mode deferred cleanup to be allowed.");
+            INFO("TMT: waiting for auto mode deferred cleanup to be allowed.");
             while (!autoDeferredCleanupAllowed.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
             }
-            log_info("TMT: running auto mode deferred cleanup.");
+            INFO("TMT: running auto mode deferred cleanup.");
             runAutoModeDeferredUnsubscribeCleanup(testModules, PC);
         });
     };
@@ -737,7 +737,7 @@ int main(int argc, char** argv)
                                   });
 
     if (!subscriptionResult) {
-        log_fatal("Failed to subscribe to lifecycle state changes.");
+        FATAL("Failed to subscribe to lifecycle state changes.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
@@ -757,17 +757,17 @@ int main(int argc, char** argv)
         }
 
         if (hasPendingState && newAppState != currentAppState) {
-            log_dbg("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
+            DBG("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {
                     if (!ensureGlAppInitialized()) {
-                        log_fatal("Failed to initialize GL context.");
+                        FATAL("Failed to initialize GL context.");
                         exitRequested.store(true, std::memory_order_release);
                     }
                     if (glApp != nullptr) {
                         if (!ensureGlRunThreadStarted()) {
-                            log_warn("Failed to start GL render thread during INITIALIZING_TO_PAUSED.");
+                            WARN("Failed to start GL render thread during INITIALIZING_TO_PAUSED.");
                             exitRequested.store(true, std::memory_order_release);
                         }
                     }
@@ -821,7 +821,7 @@ int main(int argc, char** argv)
                 break;
                 case AppState::SUSPENDED_TO_PAUSED:
                 default:
-                    log_warn("Lifecycle state changed: {} without specific action.", to_string(newAppState));
+                    WARN("Lifecycle state changed: {} without specific action.", to_string(newAppState));
                     currentAppState = newAppState;
                     break;
             }
@@ -854,24 +854,24 @@ int main(int argc, char** argv)
         glAppProgressUpdateThread.join();
     }
 
-    log_info("Exiting Firebolt Test App.");
+    INFO("Exiting Firebolt Test App.");
     if (!sawLifecycleTerminating.load(std::memory_order_acquire)) {
         auto closeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::DEACTIVATE);
         if (!closeResult) {
-            log_warn("Lifecycle.close(DEACTIVATE) failed during shutdown.");
+            WARN("Lifecycle.close(DEACTIVATE) failed during shutdown.");
         }
     }
 
     if (lifecycleSubId != 0) {
         auto unsubscribeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
         if (!unsubscribeResult) {
-            log_warn("Failed to unsubscribe lifecycle state change handler.");
+            WARN("Failed to unsubscribe lifecycle state change handler.");
         }
         lifecycleSubId = 0;
     }
     Firebolt::IFireboltAccessor::Instance().Disconnect();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    log_info("Exit complete.");
+    INFO("Exit complete.");
 
     return 0;
 }

@@ -22,7 +22,7 @@
  */
 
 #include "gl.h"
-#include "logger.hpp"
+#include "native_logger.hpp"
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -241,7 +241,7 @@ static bool ensure_run_wake_signal(AppContext* app)
 
     app->wakeEventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (app->wakeEventFd < 0) {
-        log_err("eventfd creation failed: errno={}", errno);
+        ERR("eventfd creation failed: errno={}", errno);
         return false;
     }
     return true;
@@ -257,7 +257,7 @@ static void signal_run_loop(AppContext* app)
     const uint64_t wakeValue = 1;
     const ssize_t written = write(app->wakeEventFd, &wakeValue, sizeof(wakeValue));
     if (written < 0 && errno != EAGAIN) {
-        log_warn("run-loop signal write failed: errno={}", errno);
+        WARN("run-loop signal write failed: errno={}", errno);
     }
 }
 
@@ -282,7 +282,7 @@ static void release_run_wake_signal(AppContext* app)
 static void stop_run_loop(AppContext* app, const char* reason)
 {
     if (!app) return;
-    log_warn("{}", reason ? reason : "run loop stopping");
+    WARN("{}", reason ? reason : "run loop stopping");
     app->running.store(false, std::memory_order_release);
     signal_run_loop(app);
 }
@@ -298,7 +298,7 @@ static void stop_run_loop(AppContext* app, const char* reason)
 static bool apply_simple_shell_state(AppContext* app, const char* reason, bool setFocus = true, bool setName = false)
 {
     if (!app || !app->simple_shell_ptr || app->simple_shell_surface_id == 0 || !app->surface || !app->display) {
-        log_dbg("Skipping simple-shell reapply ({}): invalid configurations", reason ? reason : "unknown");
+        DBG("Skipping simple-shell reapply ({}): invalid configurations", reason ? reason : "unknown");
         return false;
     }
 
@@ -327,7 +327,7 @@ static void update_simple_shell_configured_state(AppContext* app, const char* re
     if (app->simple_shell_surface_id != 0 && app->simple_shell_created_id == app->simple_shell_surface_id) {
         if (!app->configured) {
             app->configured = true;
-            log_info("simple-shell ready: id={}, reason={}", app->simple_shell_surface_id, reason ? reason : "unknown");
+            INFO("simple-shell ready: id={}, reason={}", app->simple_shell_surface_id, reason ? reason : "unknown");
             wl_simple_shell_set_name(app->simple_shell_ptr, app->simple_shell_surface_id, "Firebolt Wayland EGL App");
             {
                 std::lock_guard<std::mutex> lock(app->configuration_lock);
@@ -390,7 +390,7 @@ static const cairo_user_data_key_t g_font_bundle_key = {0};
 bool init_custom_font(AppContext* app, const std::string& font_path)
 {
     if (font_path.empty() || access(font_path.c_str(), F_OK | R_OK) != 0) {
-        log_err("font file missing or unreadable: {}", font_path);
+        ERR("font file missing or unreadable: {}", font_path);
         return false;
     }
 
@@ -414,7 +414,7 @@ bool init_custom_font(AppContext* app, const std::string& font_path)
         }
     });
     if (CAIRO_STATUS_SUCCESS != status) {
-        log_err("Failed to attach user data bundle to Cairo font face: status={}", static_cast<int>(status));
+        ERR("Failed to attach user data bundle to Cairo font face: status={}", static_cast<int>(status));
         cairo_font_face_destroy(app->embedded_font);
         app->embedded_font = nullptr;
         FT_Done_Face(bundle->face);
@@ -443,7 +443,7 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLen);
         std::vector<char> log(static_cast<size_t>(logLen > 0 ? logLen : 1), '\0');
         glGetShaderInfoLog(shader, logLen, nullptr, log.data());
-        log_err("shader compile failed: {}", std::string(log.data()));
+        ERR("shader compile failed: {}", std::string(log.data()));
         glDeleteShader(shader);
         return 0;
     }
@@ -457,7 +457,7 @@ GLuint compile_hardware_shader(GLenum type, const char* source)
  */
 bool init_gles_pipeline(AppContext* app)
 {
-    log_info("Initializing offloaded GLES pipeline and assembling hardware shaders");
+    INFO("Initializing offloaded GLES pipeline and assembling hardware shaders");
 
     const char* vertex_shader_src =
         "#version 300 es\n"
@@ -485,7 +485,7 @@ bool init_gles_pipeline(AppContext* app)
         "void main() {\n"
         "   vec2 uv = v_texCoord * u_resolution;\n"
         "   vec3 finalColor = vec3(0.04, 0.05, 0.08); // Baseline solid clear layer\n"
-        "   float split_ratio = 0.65;\n" // Repositioned: Shifted split line from 60% to 65%\n"
+        "   float split_ratio = 0.65;\n" // Repositioned: Shifted split line from 60% to 65%
         "   float split_x = u_resolution.x * split_ratio;\n"
         "\n"
         "   // --- Repositioned right section: 35% user input panel\n"
@@ -652,7 +652,7 @@ bool init_gles_pipeline(AppContext* app)
 bool init_gpu_font_atlas(AppContext* app)
 {
     if (!app || !app->embedded_font) {
-        log_err("Cannot build GPU font atlas: Embedded font resource is null.");
+        ERR("Cannot build GPU font atlas: Embedded font resource is null.");
         return false;
     }
 
@@ -660,7 +660,7 @@ bool init_gpu_font_atlas(AppContext* app)
         cairo_font_face_get_user_data(app->embedded_font, &g_font_bundle_key)
     );
     if (!bundle || !bundle->face) {
-        log_err("Failed to retrieve raw FT_Face configuration context from Cairo font wrapper.");
+        ERR("Failed to retrieve raw FT_Face configuration context from Cairo font wrapper.");
         return false;
     }
 
@@ -677,7 +677,7 @@ bool init_gpu_font_atlas(AppContext* app)
     // Generate atlas entries for printable standard characters (ASCII 32 to 126)
     for (unsigned char c = 32; c < 127; ++c) {
         if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
-            log_warn("FreeType failed to rasterize character glyph: ASCII={}", (int)c);
+            WARN("FreeType failed to rasterize character glyph: ASCII={}", (int)c);
             continue;
         }
 
@@ -775,7 +775,7 @@ bool init_gpu_font_atlas(AppContext* app)
     }
 
     app->text_pipeline_initialized = true;
-    log_info("Pre-baked GPU Text Atlas and shader channels successfully generated.");
+    INFO("Pre-baked GPU Text Atlas and shader channels successfully generated.");
     return true;
 }
 
@@ -988,7 +988,7 @@ static void keyboard_handle_keymap(void* userdata, wl_keyboard* kb, uint32_t for
 {
     (void)kb;
     AppContext* app = static_cast<AppContext*>(userdata);
-    log_dbg("Received keymap file descriptor: {}", fd);
+    DBG("Received keymap file descriptor: {}", fd);
 
 #ifdef HAVE_XKBCOMMON
     if (!app || !app->xkbContext) {
@@ -997,14 +997,14 @@ static void keyboard_handle_keymap(void* userdata, wl_keyboard* kb, uint32_t for
     }
 
     if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || size == 0) {
-        log_warn("Unsupported keymap format={}, size={}", format, size);
+        WARN("Unsupported keymap format={}, size={}", format, size);
         close(fd);
         return;
     }
 
     void* keymapData = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
     if (keymapData == MAP_FAILED) {
-        log_warn("mmap failed for keymap fd={}, errno={}", fd, errno);
+        WARN("mmap failed for keymap fd={}, errno={}", fd, errno);
         close(fd);
         return;
     }
@@ -1019,14 +1019,14 @@ static void keyboard_handle_keymap(void* userdata, wl_keyboard* kb, uint32_t for
     close(fd);
 
     if (!newKeymap) {
-        log_warn("Failed to create xkb keymap from compositor keymap");
+        WARN("Failed to create xkb keymap from compositor keymap");
         return;
     }
 
     xkb_state* newState = xkb_state_new(newKeymap);
     if (!newState) {
         xkb_keymap_unref(newKeymap);
-        log_warn("Failed to create xkb state from keymap");
+        WARN("Failed to create xkb state from keymap");
         return;
     }
 
@@ -1058,7 +1058,7 @@ static void keyboard_handle_keymap(void* userdata, wl_keyboard* kb, uint32_t for
 static void keyboard_handle_enter(void* userdata, wl_keyboard* kb, uint32_t evtslnum, wl_surface* surface, wl_array* keys)
 {
     (void)userdata; (void)kb; (void)evtslnum; (void)keys;
-    log_dbg("Keyboard focus entered surface: {}", reinterpret_cast<uintptr_t>(surface));
+    DBG("Keyboard focus entered surface: {}", reinterpret_cast<uintptr_t>(surface));
 }
 
 /**
@@ -1071,7 +1071,7 @@ static void keyboard_handle_enter(void* userdata, wl_keyboard* kb, uint32_t evts
 static void keyboard_handle_leave(void* userdata, wl_keyboard* kb, uint32_t evtslnum, wl_surface* surface)
 {
     (void)userdata; (void)kb; (void)evtslnum;
-    log_dbg("Keyboard focus left surface: {}", reinterpret_cast<uintptr_t>(surface));
+    DBG("Keyboard focus left surface: {}", reinterpret_cast<uintptr_t>(surface));
 }
 
 /**
@@ -1089,7 +1089,7 @@ static void keyboard_handle_modifiers(void* userdata, wl_keyboard* kb, uint32_t 
 {
     (void)kb;
     AppContext* app = static_cast<AppContext*>(userdata);
-    log_dbg("Keyboard modifiers changed: serial={}, depressed={}, latched={}, locked={}, group={}",
+    DBG("Keyboard modifiers changed: serial={}, depressed={}, latched={}, locked={}, group={}",
             evtslnum, depressed, latched, locked, group);
 #ifdef HAVE_XKBCOMMON
     if (app && app->xkbState) {
@@ -1110,7 +1110,7 @@ static void keyboard_handle_modifiers(void* userdata, wl_keyboard* kb, uint32_t 
 static void keyboard_handle_repeat_info(void* userdata, wl_keyboard* kb, int32_t rate, int32_t delay)
 {
     (void)userdata; (void)kb;
-    log_dbg("Keyboard repeat info: rate={}, delay={}", rate, delay);
+    DBG("Keyboard repeat info: rate={}, delay={}", rate, delay);
 }
 
 /**
@@ -1359,9 +1359,9 @@ bool GlApp::init(const char* waylandDisplay)
 #ifdef HAVE_XKBCOMMON
     m_ctx->xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     if (!m_ctx->xkbContext) {
-        log_warn("xkbcommon available but xkb context creation failed; key translation disabled");
+        WARN("xkbcommon available but xkb context creation failed; key translation disabled");
     } else if (!ensure_default_xkb_state(m_ctx)) {
-        log_warn("xkb default keymap init failed; waiting for compositor keymap");
+        WARN("xkb default keymap init failed; waiting for compositor keymap");
     }
 #endif
 
@@ -1385,7 +1385,7 @@ bool GlApp::init(const char* waylandDisplay)
 
     EGLint num_configs = 0;
     if (eglChooseConfig(m_ctx->egl_display, config_attribs, &m_ctx->egl_config, 1, &num_configs) != EGL_TRUE || num_configs == 0) {
-        log_err("eglChooseConfig failed: eglGetError={}, num_configs={}", eglGetError(), num_configs);
+        ERR("eglChooseConfig failed: eglGetError={}, num_configs={}", eglGetError(), num_configs);
         return false;
     }
 
@@ -1393,7 +1393,7 @@ bool GlApp::init(const char* waylandDisplay)
     EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
     m_ctx->egl_context = eglCreateContext(m_ctx->egl_display, m_ctx->egl_config, EGL_NO_CONTEXT, context_attribs);
     if (m_ctx->egl_context == EGL_NO_CONTEXT) {
-        log_err("eglCreateContext failed: eglGetError={}", eglGetError());
+        ERR("eglCreateContext failed: eglGetError={}", eglGetError());
         return false;
     }
 
@@ -1424,7 +1424,7 @@ bool GlApp::init(const char* waylandDisplay)
  */
 void GlApp::run()
 {
-    log_info("Starting Zero-Stutter Hardware Throttled Wayland dispatch loop");
+    INFO("Starting Zero-Stutter Hardware Throttled Wayland dispatch loop");
     if (!m_ctx || m_ctx->waylandFd < 0 || m_ctx->wakeEventFd < 0) return;
 
     // Compositor handshake phase: Wait for the compositor to configure the surface before proceeding to render.
@@ -1482,14 +1482,14 @@ void GlApp::run()
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
 
     if (!ensure_egl_current(m_ctx)) {
-        log_err("Background render thread failed to claim EGL context ownership.");
+        ERR("Background render thread failed to claim EGL context ownership.");
         return;
     }
 
     // Render Initial Frame for Window Manager Setup
     {
         std::lock_guard<std::mutex> lock(m_ctx->state_interlock_mutex);
-        log_info("Executing State 2: Rendering static bootstrap frame for window manager registration.");
+        INFO("Executing State 2: Rendering static bootstrap frame for window manager registration.");
 
         const PreparedFrame boot_frame = prepare_cairo_frame(m_ctx, m_ctx->current_keycode.load(std::memory_order_acquire));
         if (!present_prepared_frame(m_ctx, boot_frame, true)) {
@@ -1498,7 +1498,7 @@ void GlApp::run()
         }
 
         if (!init_gpu_font_atlas(m_ctx)) {
-            log_err("Failed to initialize GPU font atlas.");
+            ERR("Failed to initialize GPU font atlas.");
             stop_run_loop(m_ctx, "Failed to initialize GPU font atlas.");
             return;
         }
@@ -1568,7 +1568,7 @@ void GlApp::run()
                 }
                 if ((fds[0].revents & POLLIN) != 0) {
                     if (m_ctx && m_ctx->display && wl_display_read_events(m_ctx->display) < 0) {
-                        log_warn("Display connection lost while reading events.");
+                        WARN("Display connection lost while reading events.");
                         if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
                         stop_run_loop(m_ctx, "POLLERR Wayland display connection lost.");
                         break;
@@ -1618,7 +1618,7 @@ void GlApp::run()
         wl_callback_destroy(m_ctx->frame_callback);
         m_ctx->frame_callback = nullptr;
     }
-    log_warn("Wayland dispatch loop exited cleanly");
+    WARN("Wayland dispatch loop exited cleanly");
 }
 
 /**
@@ -1692,7 +1692,7 @@ void GlApp::updateProgress(float percentage)
  */
 void GlApp::deinit()
 {
-    log_info("GlApp::deinit called");
+    INFO("GlApp::deinit called");
     if (!m_ctx) return;
 
     bool expected = false;
@@ -1775,5 +1775,5 @@ void GlApp::deinit()
     m_ctx = nullptr;
     delete ctx;
 
-    log_info("GlApp::deinit completed");
+    INFO("GlApp::deinit completed");
 }
