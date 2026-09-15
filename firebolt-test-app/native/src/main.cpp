@@ -53,6 +53,7 @@
 #include "tests/metricsTest.h"
 #include "tests/networkTest.h"
 #include "tests/presentationTest.h"
+#include "tests/ralfPermissionsTest.h"
 #include "tests/SpeechSynthesisTest.h"
 #include "tests/statsTest.h"
 #include "tests/texttospeechTest.h"
@@ -596,6 +597,9 @@ int main(int argc, char** argv)
     Firebolt::SubscriptionId lifecycleSubId = 0;
     std::atomic<bool> sawLifecycleTerminating{ false };
 
+    // Internet and Thunder access tester
+    PermissionTester permissionTester;
+
     if (const char* w = std::getenv("WIDTH"))  try { glAppWidth = std::stoi(w); } catch (...) {}
     if (const char* h = std::getenv("HEIGHT")) try { glAppHeight = std::stoi(h); } catch (...) {}
 
@@ -781,6 +785,9 @@ int main(int argc, char** argv)
                     if (appConfig.autoRun) {
                         startRunTestModules();
                     }
+                    permissionTester.has_internet_access();
+                    permissionTester.has_thunder_access();
+
                     currentAppState = newAppState;
                 }
                 break;

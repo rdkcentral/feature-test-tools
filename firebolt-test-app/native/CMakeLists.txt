@@ -283,6 +283,7 @@ if(BUILD_FIREBOLT_APP)
     find_package(FireboltTransport CONFIG REQUIRED)
     find_package(FireboltClient    CONFIG REQUIRED)
     find_package(nlohmann_json     CONFIG REQUIRED)
+    find_package(websocketpp       CONFIG REQUIRED)
 
     file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
 
@@ -303,6 +304,7 @@ if(BUILD_FIREBOLT_APP)
             FireboltClient::FireboltClient
             nlohmann_json::nlohmann_json
             Threads::Threads
+            websocketpp::websocketpp
             ${GL_MODULE_TARGET}
     )
 
