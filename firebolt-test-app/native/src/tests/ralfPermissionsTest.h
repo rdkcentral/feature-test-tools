@@ -149,7 +149,7 @@ private:
             } else {
                 m_thunder_success = false;
             }
-        } catch (const json::parse_error& e) {
+        } catch (...) {
             m_thunder_success = false;
         }
         con->close(websocketpp::close::status::normal, "Handshake validation complete");

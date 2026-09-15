@@ -1499,6 +1499,7 @@ void GlApp::run()
 
         if (!init_gpu_font_atlas(m_ctx)) {
             log_err("Failed to initialize GPU font atlas.");
+            stop_run_loop(m_ctx, "Failed to initialize GPU font atlas.");
             return;
         }
     }
@@ -1569,6 +1570,7 @@ void GlApp::run()
                     if (m_ctx && m_ctx->display && wl_display_read_events(m_ctx->display) < 0) {
                         log_warn("Display connection lost while reading events.");
                         if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
+                        stop_run_loop(m_ctx, "POLLERR Wayland display connection lost.");
                         break;
                     }
                 } else {
@@ -1599,6 +1601,7 @@ void GlApp::run()
                 // Render the frame using Cairo and present it via EGL
                 const PreparedFrame active_frame = prepare_cairo_frame(m_ctx, m_ctx->current_keycode.load(std::memory_order_acquire));
                 if (!present_prepared_frame(m_ctx, active_frame, true)) {
+                    stop_run_loop(m_ctx, "Failed to present active frame");
                     break;
                 }
                 rendered_this_pass = true;

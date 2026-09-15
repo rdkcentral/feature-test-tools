@@ -17,7 +17,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.13)
 project(firebolt-test-app CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -284,7 +284,6 @@ if(BUILD_FIREBOLT_APP)
     find_package(FireboltClient    CONFIG REQUIRED)
     find_package(nlohmann_json     CONFIG REQUIRED)
     find_package(websocketpp       CONFIG REQUIRED)
-    find_package(OpenSSL           CONFIG REQUIRED)
 
     file(GLOB TEST_SOURCES CONFIGURE_DEPENDS src/tests/*.cpp)
 
@@ -305,8 +304,6 @@ if(BUILD_FIREBOLT_APP)
             FireboltClient::FireboltClient
             nlohmann_json::nlohmann_json
             Threads::Threads
-            OpenSSL::SSL
-            OpenSSL::Crypto
             ${GL_MODULE_TARGET}
     )
 
