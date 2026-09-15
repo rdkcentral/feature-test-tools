@@ -136,6 +136,7 @@ struct AppContext {
     uint32_t simple_shell_created_id = 0;
 
     wl_surface* surface = nullptr;
+    wl_callback* frame_callback = nullptr;
     wl_egl_window* egl_window = nullptr;
 
     EGLDisplay egl_display = EGL_NO_DISPLAY;
@@ -1158,6 +1159,9 @@ static void frame_handle_done(void* data, wl_callback* callback, uint32_t cookie
 {
     (void)cookie;
     AppContext* app = static_cast<AppContext*>(data);
+    if (app && app->frame_callback == callback) {
+        app->frame_callback = nullptr;
+    }
     if (callback) {
         wl_callback_destroy(callback);
     }
@@ -1455,7 +1459,7 @@ void GlApp::run()
         }
     }
 
-    wl_callback* frame_callback = nullptr;
+    m_ctx->frame_callback = nullptr;
     m_ctx->keyFrameDirty.store(true, std::memory_order_release);
 
     // Unified event dispatch and render loop that is throttled by the compositor's VSync signal.
@@ -1545,8 +1549,8 @@ void GlApp::run()
             if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
                 m_ctx->keyFrameDirty.store(false, std::memory_order_release);
 
-                frame_callback = wl_surface_frame(m_ctx->surface);
-                wl_callback_add_listener(frame_callback, &frame_listener, m_ctx);
+                m_ctx->frame_callback = wl_surface_frame(m_ctx->surface);
+                wl_callback_add_listener(m_ctx->frame_callback, &frame_listener, m_ctx);
 
                 // Render the frame using Cairo and present it via EGL
                 const PreparedFrame active_frame = prepare_cairo_frame(m_ctx, m_ctx->current_keycode.load(std::memory_order_acquire));
@@ -1563,8 +1567,9 @@ void GlApp::run()
         }
     }
 
-    if (frame_callback) {
-        wl_callback_destroy(frame_callback);
+    if (m_ctx->frame_callback) {
+        wl_callback_destroy(m_ctx->frame_callback);
+        m_ctx->frame_callback = nullptr;
     }
     log_warn("Wayland dispatch loop exited cleanly");
 }
