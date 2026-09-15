@@ -46,6 +46,7 @@ set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT
 
 include(GNUInstallDirs)
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 
 # ---------------------------------------------------------------------------
 # Targets
@@ -222,6 +223,7 @@ target_link_libraries(${GL_MODULE_TARGET}
         ${CAIRO_FT_LIBRARIES}
         ${FREETYPE_LIBRARIES}
         $<$<BOOL:${XKBCOMMON_FOUND}>:${XKBCOMMON_LIBRARIES}>
+        Threads::Threads
 )
 
 target_include_directories(${GL_MODULE_TARGET}
@@ -298,6 +300,7 @@ if(BUILD_FIREBOLT_APP)
             FireboltTransport::FireboltTransport
             FireboltClient::FireboltClient
             nlohmann_json::nlohmann_json
+            Threads::Threads
             ${GL_MODULE_TARGET}
     )
 
@@ -334,6 +337,7 @@ if(BUILD_GL_TEST)
     target_link_libraries(${GL_TEST_TARGET}
         PRIVATE
             ${GL_MODULE_TARGET}
+            Threads::Threads
     )
 
     target_include_directories(${GL_TEST_TARGET}

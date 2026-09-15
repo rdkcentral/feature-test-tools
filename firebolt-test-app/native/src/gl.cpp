@@ -109,14 +109,14 @@ struct FontResourceBundle {
 };
 
 struct CharacterGlyph {
-    GLuint texture_id;      // Shared atlas texture handle
-    int width;              // Size of glyph bounding box
-    int height;             // Size of glyph bounding box
-    int bearing_x;          // Offset from baseline to left of glyph
-    int bearing_y;          // Offset from baseline to top of glyph
-    GLuint advance;         // Horizontal offset to next character position
-    float tex_coord_min_x;  // UV bounding boxes inside the texture atlas
-    float tex_coord_max_x;
+    GLuint texture_id = 0;        // Shared atlas texture handle
+    int width = 0;                // Size of glyph bounding box
+    int height = 0;               // Size of glyph bounding box
+    int bearing_x = 0;            // Offset from baseline to left of glyph
+    int bearing_y = 0;            // Offset from baseline to top of glyph
+    GLuint advance = 0;           // Horizontal offset to next character position
+    float tex_coord_min_x = 0.0f; // UV bounding boxes inside the texture atlas
+    float tex_coord_max_x = 0.0f;
 };
 
 struct AppContext {
