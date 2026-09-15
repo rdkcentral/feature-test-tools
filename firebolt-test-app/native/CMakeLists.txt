@@ -258,7 +258,7 @@ install(FILES
     DESTINATION "${APP_FONT_DIR}"
 )
 install(FILES
-    assets/OFL.txt
+    assets/LICENSE
     DESTINATION "${APP_FONT_LIC_DIR}"
 )
 
