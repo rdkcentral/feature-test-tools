@@ -70,6 +70,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -582,7 +583,8 @@ int main(int argc, char** argv)
 
     std::atomic<bool> exitRequested{ false };
     std::atomic<bool> autoDeferredCleanupAllowed{ false };
-    std::atomic<AppState> nextAppState{ AppState::UNKNOWN_STATE };
+    std::mutex appStateQueueMutex;
+    std::deque<AppState> pendingAppStates;
     AppState currentAppState{AppState::UNKNOWN_STATE};
 
     // GLApp context
@@ -725,7 +727,8 @@ int main(int argc, char** argv)
                                   .LifecycleInterface()
                                   .subscribeOnStateChanged([&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
                                       for (const auto& change : changes) {
-                                          nextAppState.store(getAppStateFromLifeCycleEvent(change), std::memory_order_release);
+                                          std::lock_guard<std::mutex> lock(appStateQueueMutex);
+                                          pendingAppStates.push_back(getAppStateFromLifeCycleEvent(change));
                                       }
                                   });
 
@@ -738,8 +741,18 @@ int main(int argc, char** argv)
     lifecycleSubId = *subscriptionResult;
 
     while (!exitRequested.load(std::memory_order_acquire)) {
-        if (nextAppState.load(std::memory_order_acquire) != currentAppState) {
-            AppState newAppState = nextAppState.load(std::memory_order_acquire);
+        AppState newAppState = AppState::UNKNOWN_STATE;
+        bool hasPendingState = false;
+        {
+            std::lock_guard<std::mutex> lock(appStateQueueMutex);
+            if (!pendingAppStates.empty()) {
+                newAppState = pendingAppStates.front();
+                pendingAppStates.pop_front();
+                hasPendingState = true;
+            }
+        }
+
+        if (hasPendingState && newAppState != currentAppState) {
             log_dbg("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
