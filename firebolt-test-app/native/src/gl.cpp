@@ -1429,10 +1429,54 @@ void GlApp::run()
 
     // Compositor handshake phase: Wait for the compositor to configure the surface before proceeding to render.
     while (m_ctx && m_ctx->running.load(std::memory_order_acquire) && !m_ctx->configured) {
-        if (m_ctx && wl_display_dispatch(m_ctx->display) < 0) {
-            stop_run_loop(m_ctx, "wl_display_dispatch failed during handshake");
-            break;
+        if (m_ctx && wl_display_prepare_read(m_ctx->display) == 0) {
+            struct pollfd fds[2];
+            fds[0].fd = m_ctx->waylandFd;
+            fds[0].events = POLLIN;
+            fds[0].revents = 0;
+            fds[1].fd = m_ctx->wakeEventFd;
+            fds[1].events = POLLIN;
+            fds[1].revents = 0;
+
+            int pollResult = poll(fds, 2, 100);
+            if (pollResult < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
+                stop_run_loop(m_ctx, "poll failed during handshake");
+                break;
+            }
+
+            if ((fds[1].revents & POLLIN) != 0) {
+                uint64_t wakeValue = 0;
+                ssize_t bytesRead = read(m_ctx->wakeEventFd, &wakeValue, sizeof(wakeValue));
+                (void)bytesRead;
+                if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) {
+                    break;
+                }
+            }
+
+            if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
+                stop_run_loop(m_ctx, "Wayland socket error during handshake");
+                break;
+            }
+
+            if ((fds[0].revents & POLLIN) != 0) {
+                if (m_ctx && m_ctx->display && wl_display_read_events(m_ctx->display) < 0) {
+                    if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
+                    stop_run_loop(m_ctx, "wl_display_read_events failed during handshake");
+                    break;
+                }
+            } else {
+                if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
+            }
+        } else {
+            while (m_ctx && m_ctx->display && wl_display_dispatch_pending(m_ctx->display) > 0);
         }
+
+        while (m_ctx && m_ctx->display && wl_display_dispatch_pending(m_ctx->display) > 0);
     }
 
     if (!m_ctx || !m_ctx->running.load(std::memory_order_acquire)) return;
@@ -1481,14 +1525,14 @@ void GlApp::run()
 
         // Step 1: Safe pre-read dispatch assembly
         // Drain any client event states resting in internal queues before attempting a socket read
-        while (wl_display_dispatch_pending(m_ctx->display) > 0);
+        while (m_ctx && m_ctx->display && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         if (loop_current_state == RenderLifecycleState::Active) {
-            wl_display_flush(m_ctx->display);
+            if (m_ctx && m_ctx->display) wl_display_flush(m_ctx->display);
         }
 
         // Claim the authoritative read synchronization lock
-        if (wl_display_prepare_read(m_ctx->display) == 0) {
+        if (m_ctx && m_ctx->display && wl_display_prepare_read(m_ctx->display) == 0) {
             struct pollfd fds[2];
             fds[0].fd = m_ctx->waylandFd;
             fds[0].events = POLLIN;
@@ -1517,36 +1561,36 @@ void GlApp::run()
 
                 // Safe hardware descriptor read operation (INDEX 0)
                 if ((fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                    wl_display_cancel_read(m_ctx->display);
+                    if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
                     stop_run_loop(m_ctx, "POLLERR Wayland display connection lost.");
                     break;
                 }
                 if ((fds[0].revents & POLLIN) != 0) {
-                    if (wl_display_read_events(m_ctx->display) < 0) {
+                    if (m_ctx && m_ctx->display && wl_display_read_events(m_ctx->display) < 0) {
                         log_warn("Display connection lost while reading events.");
-                        wl_display_cancel_read(m_ctx->display);
+                        if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
                         break;
                     }
                 } else {
                     // Cancel the read reservation if woken up by eventfd
-                    wl_display_cancel_read(m_ctx->display);
+                    if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
                 }
             } else {
                 // Cancel read on timeout bounds or system execution interrupts
-                wl_display_cancel_read(m_ctx->display);
+                if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
             }
         } else {
             // If prepare_read failed, events arrived out-of-band in the internal queue.
             // Dispatch them immediately rather than tracking stale descriptors.
-            while (wl_display_dispatch_pending(m_ctx->display) > 0);
+            while (m_ctx && m_ctx->display && wl_display_dispatch_pending(m_ctx->display) > 0);
         }
 
         // Drain the parsed queue events down to keyboard listeners
-        while (wl_display_dispatch_pending(m_ctx->display) > 0);
+        while (m_ctx && m_ctx->display && wl_display_dispatch_pending(m_ctx->display) > 0);
 
         // Step 2: Render a new frame if the lifecycle state is active and a keyframe is marked dirty
         if (loop_current_state == RenderLifecycleState::Active) {
-            if (m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
+            if (m_ctx && m_ctx->keyFrameDirty.load(std::memory_order_acquire)) {
                 m_ctx->keyFrameDirty.store(false, std::memory_order_release);
 
                 m_ctx->frame_callback = wl_surface_frame(m_ctx->surface);
@@ -1567,7 +1611,7 @@ void GlApp::run()
         }
     }
 
-    if (m_ctx->frame_callback) {
+    if (m_ctx && m_ctx->frame_callback) {
         wl_callback_destroy(m_ctx->frame_callback);
         m_ctx->frame_callback = nullptr;
     }
