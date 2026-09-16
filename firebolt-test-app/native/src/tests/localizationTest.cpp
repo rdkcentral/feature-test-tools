@@ -109,10 +109,22 @@ void LocalizationTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .LocalizationInterface()
-                     .subscribeOnCountryChanged([](const std::string& country) {
-                         std::cout << "  [EVENT] onCountryChanged: country=" << country << std::endl;
-                     });
+                    .LocalizationInterface()
+                    .subscribeOnCountryChanged([](const std::string& country) {
+                        std::cout << "  [EVENT] onCountryChanged: country=" << country << std::endl;
+                        // Invoke related method to confirm what is the current state of country.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .LocalizationInterface()
+                                        .country();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  Query country: " << *r2 << std::endl;
+                            if (country != *r2)
+                            {
+                                std::cout << "  [ERROR] onCountryChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onCountryChangedSubId_ = *r;
@@ -147,16 +159,34 @@ void LocalizationTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .LocalizationInterface()
-                     .subscribeOnPreferredAudioLanguagesChanged([](const std::vector<std::string>& langs) {
-                         std::cout << "  [EVENT] onPreferredAudioLanguagesChanged: [";
-                         for (size_t i = 0; i < langs.size(); ++i)
-                         {
-                             if (i != 0) std::cout << ", ";
-                             std::cout << langs[i];
-                         }
-                         std::cout << "]" << std::endl;
-                     });
+                    .LocalizationInterface()
+                    .subscribeOnPreferredAudioLanguagesChanged([](const std::vector<std::string>& langs) {
+                        std::cout << "  [EVENT] onPreferredAudioLanguagesChanged: [";
+                        for (size_t i = 0; i < langs.size(); ++i)
+                        {
+                            if (i != 0) std::cout << ", ";
+                            std::cout << langs[i];
+                        }
+                        std::cout << "]" << std::endl;
+                        // Invoke related method to confirm what is the current state of preferred audio languages.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .LocalizationInterface()
+                                        .preferredAudioLanguages();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  Query preferredAudioLanguages: [";
+                            for (size_t i = 0; i < r2->size(); ++i)
+                            {
+                                if (i != 0) std::cout << ", ";
+                                std::cout << (*r2)[i];
+                            }
+                            std::cout << "]" << std::endl;
+                            if (langs != *r2)
+                            {
+                                std::cout << "  [ERROR] onPreferredAudioLanguagesChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onPreferredAudioLanguagesChangedSubId_ = *r;
@@ -191,10 +221,22 @@ void LocalizationTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .LocalizationInterface()
-                     .subscribeOnPresentationLanguageChanged([](const std::string& lang) {
-                         std::cout << "  [EVENT] onPresentationLanguageChanged: " << lang << std::endl;
-                     });
+                    .LocalizationInterface()
+                    .subscribeOnPresentationLanguageChanged([](const std::string& lang) {
+                        std::cout << "  [EVENT] onPresentationLanguageChanged: " << lang << std::endl;
+                        // Invoke related method to confirm what is the current state of presentation language.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .LocalizationInterface()
+                                        .presentationLanguage();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  Query presentationLanguage: " << *r2 << std::endl;
+                            if (lang != *r2)
+                            {
+                                std::cout << "  [ERROR] onPresentationLanguageChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onPresentationLanguageChangedSubId_ = *r;
@@ -229,10 +271,22 @@ void LocalizationTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .LocalizationInterface()
-                     .subscribeOnTimeZoneChanged([](const std::string& timeZone) {
-                         std::cout << "  [EVENT] onTimeZoneChanged: " << timeZone << std::endl;
-                     });
+                    .LocalizationInterface()
+                    .subscribeOnTimeZoneChanged([](const std::string& timeZone) {
+                        std::cout << "  [EVENT] onTimeZoneChanged: " << timeZone << std::endl;
+                        // Invoke related method to confirm what is the current state of time zone.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .LocalizationInterface()
+                                        .timeZone();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  Query timeZone: " << *r2 << std::endl;
+                            if (timeZone != *r2)
+                            {
+                                std::cout << "  [ERROR] onTimeZoneChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onTimezoneChangedSubId_ = *r;

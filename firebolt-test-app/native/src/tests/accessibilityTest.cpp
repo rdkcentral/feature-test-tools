@@ -134,10 +134,22 @@ void AccessibilityTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .AccessibilityInterface()
-                     .subscribeOnAudioDescriptionChanged([](bool enabled) {
-                         std::cout << "  [EVENT] onAudioDescriptionChanged: enabled="
-                                   << std::boolalpha << enabled << std::endl;
+                    .AccessibilityInterface()
+                    .subscribeOnAudioDescriptionChanged([](bool enabled) {
+                        std::cout << "  [EVENT] onAudioDescriptionChanged: enabled="
+                                  << std::boolalpha << enabled << std::endl;
+                        // Invoke related method to confirm what is the current state of audio description.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .AccessibilityInterface()
+                                        .audioDescription();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << " Query Response audioDescription enabled: " << std::boolalpha << *r2 << std::endl;
+                            if (enabled != *r2)
+                            {
+                                std::cout << "  [ERROR] audioDescription event value does not match query response." << std::endl;
+                            }
+                        }
                      });
         if (checkResult(r, method))
         {
@@ -156,8 +168,8 @@ void AccessibilityTest::runMethod(const std::string& method)
 
         std::cout << "  Unsubscribing ID: " << onAudioDescriptionChangedSubId_ << std::endl;
         auto r = IFireboltAccessor::Instance()
-                     .AccessibilityInterface()
-                     .unsubscribe(onAudioDescriptionChangedSubId_);
+                    .AccessibilityInterface()
+                    .unsubscribe(onAudioDescriptionChangedSubId_);
         if (checkResult(r, method))
         {
             onAudioDescriptionChangedSubId_ = 0;
@@ -173,11 +185,25 @@ void AccessibilityTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .AccessibilityInterface()
-                     .subscribeOnClosedCaptionsSettingsChanged([](const ClosedCaptionsSettings& settings) {
-                         std::cout << "  [EVENT] onClosedCaptionsSettingsChanged: ";
-                         printClosedCaptionsSettings(settings);
-                     });
+                    .AccessibilityInterface()
+                    .subscribeOnClosedCaptionsSettingsChanged([](const ClosedCaptionsSettings& settings) {
+                        std::cout << "  [EVENT] onClosedCaptionsSettingsChanged: ";
+                        printClosedCaptionsSettings(settings);
+                        // Invoke related method to confirm what is the current state of closed captions settings.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .AccessibilityInterface()
+                                        .closedCaptionsSettings();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  closedCaptions settings: ";
+                            printClosedCaptionsSettings(*r2);
+                            if (settings.enabled != r2->enabled ||
+                                settings.preferredLanguages != r2->preferredLanguages)
+                            {
+                                std::cout << "  [ERROR] closedCaptionsSettings event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onClosedCaptionsSettingsChangedSubId_ = *r;
@@ -212,11 +238,23 @@ void AccessibilityTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .AccessibilityInterface()
-                     .subscribeOnHighContrastUIChanged([](bool enabled) {
-                         std::cout << "  [EVENT] onHighContrastUIChanged: enabled="
-                                   << std::boolalpha << enabled << std::endl;
-                     });
+                    .AccessibilityInterface()
+                    .subscribeOnHighContrastUIChanged([](bool enabled) {
+                        std::cout << "  [EVENT] onHighContrastUIChanged: enabled="
+                                  << std::boolalpha << enabled << std::endl;
+                        // Invoke related method to confirm what is the current state of high contrast UI.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .AccessibilityInterface()
+                                        .highContrastUI();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  highContrastUI enabled: " << std::boolalpha << *r2 << std::endl;
+                            if (enabled != *r2)
+                            {
+                                std::cout << "  [ERROR] highContrastUI event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onHighContrastUIChangedSubId_ = *r;
@@ -251,11 +289,26 @@ void AccessibilityTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .AccessibilityInterface()
-                     .subscribeOnVoiceGuidanceSettingsChanged([](const VoiceGuidanceSettings& settings) {
-                         std::cout << "  [EVENT] onVoiceGuidanceSettingsChanged: ";
-                         printVoiceGuidanceSettings(settings);
-                     });
+                    .AccessibilityInterface()
+                    .subscribeOnVoiceGuidanceSettingsChanged([](const VoiceGuidanceSettings& settings) {
+                        std::cout << "  [EVENT] onVoiceGuidanceSettingsChanged: ";
+                        printVoiceGuidanceSettings(settings);
+                        // Invoke related method to confirm what is the current state of voice guidance settings.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .AccessibilityInterface()
+                                        .voiceGuidanceSettings();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  voiceGuidance settings: ";
+                            printVoiceGuidanceSettings(*r2);
+                            if (settings.enabled != r2->enabled ||
+                                settings.rate != r2->rate ||
+                                settings.navigationHints != r2->navigationHints)
+                            {
+                                std::cout << "  [ERROR] voiceGuidanceSettings event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onVoiceGuidanceSettingsChangedSubId_ = *r;

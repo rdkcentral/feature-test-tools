@@ -217,10 +217,20 @@ void VideoOutputTest::runMethod(const std::string& method)
 		}
 
 		auto r = IFireboltAccessor::Instance()
-					 .VideoOutputInterface()
-					 .subscribeOnResolutionChanged([](const VideoOutputResolution& res) {
-						 std::cout << "  [EVENT] onResolutionChanged: " << res.width << "x" << res.height << std::endl;
-					 });
+					.VideoOutputInterface()
+					.subscribeOnResolutionChanged([](const VideoOutputResolution& res) {
+						std::cout << "  [EVENT] onResolutionChanged: " << res.width << "x" << res.height << std::endl;
+						// Invoke related method to confirm what is the current state of the resolution.
+						auto r2 = IFireboltAccessor::Instance().VideoOutputInterface().resolution();
+						if (checkResult(r2, "Query VideoOutput.resolution"))
+						{
+							std::cout << "  Query resolution: " << r2->width << "x" << r2->height << std::endl;
+							if (res.width != r2->width || res.height != r2->height)
+							{
+								std::cout << "  [ERROR] onResolutionChanged event value does not match query response." << std::endl;
+							}
+						}
+					});
 		if (checkResult(r, method))
 		{
 			onResolutionChangedSubId_ = *r;
@@ -252,19 +262,38 @@ void VideoOutputTest::runMethod(const std::string& method)
 		}
 
 		auto r = IFireboltAccessor::Instance()
-					 .VideoOutputInterface()
-					 .subscribeOnHdcpChanged([](const HdcpState& hdcp) {
-						 const char* hdcpStr = "UNKNOWN";
-						 switch (hdcp)
-						 {
-							 case HdcpState::Direct: hdcpStr = "direct"; break;
-							 case HdcpState::Hdcp14: hdcpStr = "hdcp1.4"; break;
-							 case HdcpState::Hdcp22: hdcpStr = "hdcp2.2"; break;
-							 case HdcpState::None: hdcpStr = "none"; break;
-							 default: break;
-						 }
-						 std::cout << "  [EVENT] onHdcpChanged: " << hdcpStr << std::endl;
-					 });
+					.VideoOutputInterface()
+					.subscribeOnHdcpChanged([](const HdcpState& hdcp) {
+						const char* hdcpStr = "UNKNOWN";
+						switch (hdcp)
+						{
+							case HdcpState::Direct: hdcpStr = "direct"; break;
+							case HdcpState::Hdcp14: hdcpStr = "hdcp1.4"; break;
+							case HdcpState::Hdcp22: hdcpStr = "hdcp2.2"; break;
+							case HdcpState::None: hdcpStr = "none"; break;
+							default: break;
+						}
+						std::cout << "  [EVENT] onHdcpChanged: " << hdcpStr << std::endl;
+						// Invoke related method to confirm what is the current state of the HDCP.
+						auto r2 = IFireboltAccessor::Instance().VideoOutputInterface().hdcp();
+						if (checkResult(r2, "Query VideoOutput.hdcp"))
+						{
+							const char* hdcpStr2 = "UNKNOWN";
+							switch (*r2)
+							{
+								case HdcpState::Direct: hdcpStr2 = "direct"; break;
+								case HdcpState::Hdcp14: hdcpStr2 = "hdcp1.4"; break;
+								case HdcpState::Hdcp22: hdcpStr2 = "hdcp2.2"; break;
+								case HdcpState::None: hdcpStr2 = "none"; break;
+								default: break;
+							}
+							std::cout << "  Query hdcp: " << hdcpStr2 << std::endl;
+							if (hdcp != *r2)
+							{
+								std::cout << "  [ERROR] onHdcpChanged event value does not match query response." << std::endl;
+							}
+						}
+					});
 		if (checkResult(r, method))
 		{
 			onHdcpChangedSubId_ = *r;
@@ -296,18 +325,36 @@ void VideoOutputTest::runMethod(const std::string& method)
 		}
 
 		auto r = IFireboltAccessor::Instance()
-					 .VideoOutputInterface()
-					 .subscribeOnCecStateChanged([](const CecStateValue& cec) {
-						 const char* cecStr = "UNKNOWN";
-						 switch (cec)
-						 {
-							 case CecStateValue::Active: cecStr = "active"; break;
-							 case CecStateValue::Inactive: cecStr = "inactive"; break;
-							 case CecStateValue::Unsupported: cecStr = "unsupported"; break;
-							 default: break;
-						 }
-						 std::cout << "  [EVENT] onCecStateChanged: " << cecStr << std::endl;
-					 });
+					.VideoOutputInterface()
+					.subscribeOnCecStateChanged([](const CecStateValue& cec) {
+						const char* cecStr = "UNKNOWN";
+						switch (cec)
+						{
+							case CecStateValue::Active: cecStr = "active"; break;
+							case CecStateValue::Inactive: cecStr = "inactive"; break;
+							case CecStateValue::Unsupported: cecStr = "unsupported"; break;
+							default: break;
+						}
+						std::cout << "  [EVENT] onCecStateChanged: " << cecStr << std::endl;
+						// Invoke related method to confirm what is the current state of the CEC.
+						auto r2 = IFireboltAccessor::Instance().VideoOutputInterface().cecState();
+						if (checkResult(r2, "Query VideoOutput.cecState"))
+						{
+							const char* cecStr2 = "UNKNOWN";
+							switch (*r2)
+							{
+								case CecStateValue::Active: cecStr2 = "active"; break;
+								case CecStateValue::Inactive: cecStr2 = "inactive"; break;
+								case CecStateValue::Unsupported: cecStr2 = "unsupported"; break;
+								default: break;
+							}
+							std::cout << "  Query cecState: " << cecStr2 << std::endl;
+							if (cec != *r2)
+							{
+								std::cout << "  [ERROR] onCecStateChanged event value does not match query response." << std::endl;
+							}
+						}
+					});
 		if (checkResult(r, method))
 		{
 			onCecStateChangedSubId_ = *r;
@@ -339,24 +386,48 @@ void VideoOutputTest::runMethod(const std::string& method)
 		}
 
 		auto r = IFireboltAccessor::Instance()
-					 .VideoOutputInterface()
-					 .subscribeOnRefreshRateChanged([](const RefreshRateValue& rate) {
-						 const char* rateStr = "UNKNOWN";
-						 switch (rate)
-						 {
-							 case RefreshRateValue::R0: rateStr = "0"; break;
-							 case RefreshRateValue::R23976: rateStr = "23.976"; break;
-							 case RefreshRateValue::R24: rateStr = "24"; break;
-							 case RefreshRateValue::R25: rateStr = "25"; break;
-							 case RefreshRateValue::R2997: rateStr = "29.97"; break;
-							 case RefreshRateValue::R30: rateStr = "30"; break;
-							 case RefreshRateValue::R50: rateStr = "50"; break;
-							 case RefreshRateValue::R5994: rateStr = "59.94"; break;
-							 case RefreshRateValue::R60: rateStr = "60"; break;
-							 default: break;
-						 }
-						 std::cout << "  [EVENT] onRefreshRateChanged: " << rateStr << std::endl;
-					 });
+					.VideoOutputInterface()
+					.subscribeOnRefreshRateChanged([](const RefreshRateValue& rate) {
+						const char* rateStr = "UNKNOWN";
+						switch (rate)
+						{
+							case RefreshRateValue::R0: rateStr = "0"; break;
+							case RefreshRateValue::R23976: rateStr = "23.976"; break;
+							case RefreshRateValue::R24: rateStr = "24"; break;
+							case RefreshRateValue::R25: rateStr = "25"; break;
+							case RefreshRateValue::R2997: rateStr = "29.97"; break;
+							case RefreshRateValue::R30: rateStr = "30"; break;
+							case RefreshRateValue::R50: rateStr = "50"; break;
+							case RefreshRateValue::R5994: rateStr = "59.94"; break;
+							case RefreshRateValue::R60: rateStr = "60"; break;
+							default: break;
+						}
+						std::cout << "  [EVENT] onRefreshRateChanged: " << rateStr << std::endl;
+						// Invoke related method to confirm what is the current state of the refresh rate.
+						auto r2 = IFireboltAccessor::Instance().VideoOutputInterface().refreshRate();
+						if (checkResult(r2, "Query VideoOutput.refreshRate"))
+						{
+							const char* rateStr2 = "UNKNOWN";
+							switch (*r2)
+							{
+								case RefreshRateValue::R0: rateStr2 = "0"; break;
+								case RefreshRateValue::R23976: rateStr2 = "23.976"; break;
+								case RefreshRateValue::R24: rateStr2 = "24"; break;
+								case RefreshRateValue::R25: rateStr2 = "25"; break;
+								case RefreshRateValue::R2997: rateStr2 = "29.97"; break;
+								case RefreshRateValue::R30: rateStr2 = "30"; break;
+								case RefreshRateValue::R50: rateStr2 = "50"; break;
+								case RefreshRateValue::R5994: rateStr2 = "59.94"; break;
+								case RefreshRateValue::R60: rateStr2 = "60"; break;
+								default: break;
+							}
+							std::cout << "  Query refreshRate: " << rateStr2 << std::endl;
+							if (rate != *r2)
+							{
+								std::cout << "  [ERROR] onRefreshRateChanged event value does not match query response." << std::endl;
+							}
+						}
+					});
 		if (checkResult(r, method))
 		{
 			onRefreshRateChangedSubId_ = *r;

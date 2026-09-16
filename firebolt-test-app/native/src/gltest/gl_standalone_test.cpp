@@ -33,9 +33,11 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -66,10 +68,10 @@ static const char* argValue(int argc, char** argv, const char* flag, const char*
 // ---------------------------------------------------------------------------
 static void keycodeCallback(const GlKeyEvent& keyEvent)
 {
-    DBG("keycode={}", keyEvent.evdevKeycode);
-    if (keyEvent.hasUtf32) {
-        DBG(" utf32=U+{}", keyEvent.utf32);
-    }
+    std::ostringstream utf32Hex;
+    utf32Hex << "U+" << std::uppercase << std::hex << keyEvent.utf32;
+
+    INFO("keycode={} utf32={}", keyEvent.evdevKeycode, utf32Hex.str());
     std::cout << "\n";
 }
 

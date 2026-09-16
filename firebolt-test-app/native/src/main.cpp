@@ -758,7 +758,8 @@ int main(int argc, char** argv)
 
         if (hasPendingState && newAppState != currentAppState) {
             DBG("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
-            INFO("Query Response Lifecycle.state = {}", Firebolt::IFireboltAccessor::Instance().LifecycleInterface().state());
+            auto lifecycleState = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().state();
+            INFO("Query Response Lifecycle.state = {}", lifecycleState ? static_cast<int>(*lifecycleState) : -1);
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {

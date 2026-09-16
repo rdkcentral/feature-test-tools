@@ -105,10 +105,20 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 		}
 
 		auto r = IFireboltAccessor::Instance()
-					 .SpeechSynthesisInterface()
-					 .subscribeOnVoicesChanged([](const std::pmr::vector<Voice>& voices) {
-						 std::cout << "  [EVENT] onVoicesChanged: " << voices.size() << " voices available" << std::endl;
-					 });
+					.SpeechSynthesisInterface()
+					.subscribeOnVoicesChanged([](const std::pmr::vector<Voice>& voices) {
+						std::cout << "  [EVENT] onVoicesChanged: " << voices.size() << " voices available" << std::endl;
+						// Invoke related method to confirm what is the current state of voices.
+						auto r2 = IFireboltAccessor::Instance().SpeechSynthesisInterface().voices();
+						if (checkResult(r2, "Query SpeechSynthesis.voices"))
+						{
+							std::cout << "  Query voices: " << r2->size() << " voices available" << std::endl;
+							if (voices != *r2)
+							{
+								std::cout << "  [ERROR] onVoicesChanged event value does not match query response." << std::endl;
+							}
+						}
+					});
 		if (checkResult(r, method))
 		{
 			onVoicesChangedSubId_ = *r;
@@ -140,24 +150,34 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 		}
 
 		auto r = IFireboltAccessor::Instance()
-					 .SpeechSynthesisInterface()
-					 .subscribeOnUtteranceEvent([](const UtteranceEvent& event) {
-						 const char* eventStr = "UNKNOWN";
-						 switch (event.event)
-						 {
-							 case UtteranceEventEnum::synthesisStarting: eventStr = "synthesisStarting"; break;
-							 case UtteranceEventEnum::playbackStarting: eventStr = "playbackStarting"; break;
-							 case UtteranceEventEnum::paused: eventStr = "paused"; break;
-							 case UtteranceEventEnum::resumed: eventStr = "resumed"; break;
-							 case UtteranceEventEnum::completed: eventStr = "completed"; break;
-							 case UtteranceEventEnum::interrupted: eventStr = "interrupted"; break;
-							 case UtteranceEventEnum::networkFailed: eventStr = "networkFailed"; break;
-							 case UtteranceEventEnum::synthesisFailed: eventStr = "synthesisFailed"; break;
-							 case UtteranceEventEnum::playbackFailed: eventStr = "playbackFailed"; break;
-							 default: break;
-						 }
-						 std::cout << "  [EVENT] onUtteranceEvent: utteranceId=" << event.utteranceId << " event=" << eventStr
+					.SpeechSynthesisInterface()
+					.subscribeOnUtteranceEvent([](const UtteranceEvent& event) {
+						const char* eventStr = "UNKNOWN";
+						switch (event.event)
+						{
+							case UtteranceEventEnum::synthesisStarting: eventStr = "synthesisStarting"; break;
+							case UtteranceEventEnum::playbackStarting: eventStr = "playbackStarting"; break;
+							case UtteranceEventEnum::paused: eventStr = "paused"; break;
+							case UtteranceEventEnum::resumed: eventStr = "resumed"; break;
+							case UtteranceEventEnum::completed: eventStr = "completed"; break;
+							case UtteranceEventEnum::interrupted: eventStr = "interrupted"; break;
+							case UtteranceEventEnum::networkFailed: eventStr = "networkFailed"; break;
+							case UtteranceEventEnum::synthesisFailed: eventStr = "synthesisFailed"; break;
+							case UtteranceEventEnum::playbackFailed: eventStr = "playbackFailed"; break;
+							default: break;
+						}
+						std::cout << "  [EVENT] onUtteranceEvent: utteranceId=" << event.utteranceId << " event=" << eventStr
 								   << std::endl;
+						// Invoke related method to confirm what is the current state of the utterance.
+						auto r2 = IFireboltAccessor::Instance().SpeechSynthesisInterface().utteranceState(event.utteranceId);
+						if (checkResult(r2, "Query SpeechSynthesis.utteranceState"))
+						{
+							std::cout << "  Query utteranceState: " << static_cast<int>(*r2) << std::endl;
+							if (static_cast<int>(event.event) != *r2)
+							{
+								std::cout << "  [ERROR] onUtteranceEvent event value does not match query response." << std::endl;
+							}
+						}
 					 });
 		if (checkResult(r, method))
 		{

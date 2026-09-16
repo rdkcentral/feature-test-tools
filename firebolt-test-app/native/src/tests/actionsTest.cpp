@@ -183,10 +183,26 @@ void ActionsTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .ActionsInterface()
-                     .subscribeOnIntent([](const Intent& intent) {
-                         printIntentSummary(intent, "  [EVENT] onIntent");
-                     });
+                    .ActionsInterface()
+                    .subscribeOnIntent([](const Intent& intent) {
+                        printIntentSummary(intent, "  [EVENT] onIntent");
+                        // Invoke related method to confirm what is the current state of the intent.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .ActionsInterface()
+                                        .intent();
+                        if (checkResult(r2, "Actions.intent"))
+                        {
+                            printIntentSummary(*r2, "  Querying Actions.intent");
+                            if (intent.intentId != r2->intentId || intent.intent.action != r2->intent.action ||
+                                (intent.intent.context && r2->intent.context &&
+                                 intent.intent.context->source != r2->intent.context->source) ||
+                                (intent.intent.context && !r2->intent.context) ||
+                                (!intent.intent.context && r2->intent.context))
+                            {
+                                std::cout << "  [ERROR] onIntent event intentId does not match Actions.intent query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onIntentSubId_ = *r;

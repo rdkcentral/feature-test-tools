@@ -176,16 +176,35 @@ void DeviceTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .DeviceInterface()
-                     .subscribeOnHdrChanged([](const HDRFormat& fmt) {
-                         std::cout << std::boolalpha
-                                   << "  [EVENT] onHdrChanged:"
-                                   << " hdr10=" << fmt.hdr10
-                                   << " hdr10Plus=" << fmt.hdr10Plus
-                                   << " dolbyVision=" << fmt.dolbyVision
-                                   << " hlg=" << fmt.hlg
-                                   << std::endl;
-                     });
+                    .DeviceInterface()
+                    .subscribeOnHdrChanged([](const HDRFormat& fmt) {
+                        std::cout << std::boolalpha
+                                  << "  [EVENT] onHdrChanged:"
+                                  << " hdr10=" << fmt.hdr10
+                                  << " hdr10Plus=" << fmt.hdr10Plus
+                                  << " dolbyVision=" << fmt.dolbyVision
+                                  << " hlg=" << fmt.hlg
+                                  << std::endl;
+                        // Invoke related method to confirm what is the current state of HDR.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .DeviceInterface()
+                                        .hdr();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << std::boolalpha
+                                      << "  HDR10:       " << r2->hdr10      << "\n"
+                                      << "  HDR10+:      " << r2->hdr10Plus  << "\n"
+                                      << "  DolbyVision: " << r2->dolbyVision << "\n"
+                                      << "  HLG:         " << r2->hlg        << std::endl;
+                            if (fmt.hdr10 != r2->hdr10 ||
+                                fmt.hdr10Plus != r2->hdr10Plus ||
+                                fmt.dolbyVision != r2->dolbyVision ||
+                                fmt.hlg != r2->hlg)
+                            {
+                                std::cout << "  [ERROR] onHdrChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onHdrChangedSubId_ = *r;
@@ -224,6 +243,18 @@ void DeviceTest::runMethod(const std::string& method)
                     .subscribeOnDolbyAtmosExperienceAvailableChanged([](bool available) {
                         std::cout << "  [EVENT] onDolbyAtmosExperienceAvailableChanged: available="
                                   << std::boolalpha << available << std::endl;
+                        // Invoke related method to confirm what is the current state of Dolby Atmos Experience availability.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .DeviceInterface()
+                                        .dolbyAtmosExperienceAvailable();
+                        if (checkResult(r2, method))
+                        {
+                            std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r2 << std::endl;
+                            if (available != *r2)
+                            {
+                                std::cout << "  [ERROR] onDolbyAtmosExperienceAvailableChanged event value does not match query response." << std::endl;
+                            }
+                        }
                     });
         if (checkResult(r, method))
         {
