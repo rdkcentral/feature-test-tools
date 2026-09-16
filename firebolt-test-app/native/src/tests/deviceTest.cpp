@@ -84,15 +84,11 @@ void DeviceTest::runMethod(const std::string& method)
     }
     else if ("Device.uptime" == method)
     {
-#if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().uptime();
         if (checkResult(r, method))
         {
             std::cout << "  uptime (s): " << *r << std::endl;
         }
-#else
-        std::cout << "  [WARN] Device.uptime is not supported yet." << std::endl;
-#endif
     }
     else if ("Device.timeInActiveState" == method)
     {
