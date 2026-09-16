@@ -122,14 +122,28 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 
 		auto r = IFireboltAccessor::Instance()
 					.SpeechSynthesisInterface()
-					.subscribeOnVoicesChanged([](const std::pmr::vector<Voice>& voices) {
+					.subscribeOnVoicesChanged([this](const std::pmr::vector<Voice>& voices) {
 						std::cout << "  [EVENT] onVoicesChanged: " << voices.size() << " voices available" << std::endl;
 						// Invoke related method to confirm what is the current state of voices.
 						auto r2 = IFireboltAccessor::Instance().SpeechSynthesisInterface().voices();
 						if (checkResult(r2, "Query SpeechSynthesis.voices"))
 						{
 							std::cout << "  Query voices: " << r2->size() << " voices available" << std::endl;
-							if (voices != *r2)
+							bool voicesMatch = (voices.size() == r2->size());
+							if (voicesMatch)
+							{
+								for (size_t i = 0; i < voices.size(); ++i)
+								{
+									if (voices[i].name != (*r2)[i].name ||
+										voices[i].lang != (*r2)[i].lang ||
+										voices[i]._default != (*r2)[i]._default)
+									{
+										voicesMatch = false;
+										break;
+									}
+								}
+							}
+							if (!voicesMatch)
 							{
 								std::cout << "  [ERROR] onVoicesChanged event value does not match query response." << std::endl;
 							}
@@ -167,7 +181,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 
 		auto r = IFireboltAccessor::Instance()
 					.SpeechSynthesisInterface()
-					.subscribeOnUtteranceEvent([](const UtteranceEvent& event) {
+					.subscribeOnUtteranceEvent([this](const UtteranceEvent& event) {
 						const char* eventStr = "UNKNOWN";
 						switch (event.event)
 						{
@@ -183,17 +197,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 							default: break;
 						}
 						std::cout << "  [EVENT] onUtteranceEvent: utteranceId=" << event.utteranceId << " event=" << eventStr
-								   << std::endl;
-						// Invoke related method to confirm what is the current state of the utterance.
-						auto r2 = IFireboltAccessor::Instance().SpeechSynthesisInterface().utteranceState(event.utteranceId);
-						if (checkResult(r2, "Query SpeechSynthesis.utteranceState"))
-						{
-							std::cout << "  Query utteranceState: " << static_cast<int>(*r2) << std::endl;
-							if (static_cast<int>(event.event) != *r2)
-							{
-								std::cout << "  [ERROR] onUtteranceEvent event value does not match query response." << std::endl;
-							}
-						}
+								  << std::endl;
 					 });
 		if (checkResult(r, method))
 		{

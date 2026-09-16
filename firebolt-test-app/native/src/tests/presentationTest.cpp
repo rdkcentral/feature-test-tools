@@ -62,7 +62,7 @@ void PresentationTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .PresentationInterface()
-                    .subscribeOnFocusedChanged([](bool focused) {
+                    .subscribeOnFocusedChanged([this](bool focused) {
                         std::cout << "  [EVENT] onFocusedChanged: focused="
                                   << std::boolalpha << focused << std::endl;
                         // Invoke related method to confirm what is the current state of focused.

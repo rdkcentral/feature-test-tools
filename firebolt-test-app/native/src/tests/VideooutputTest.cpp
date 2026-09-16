@@ -218,7 +218,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 
 		auto r = IFireboltAccessor::Instance()
 					.VideoOutputInterface()
-					.subscribeOnResolutionChanged([](const VideoOutputResolution& res) {
+					.subscribeOnResolutionChanged([this](const VideoOutputResolution& res) {
 						std::cout << "  [EVENT] onResolutionChanged: " << res.width << "x" << res.height << std::endl;
 						// Invoke related method to confirm what is the current state of the resolution.
 						auto r2 = IFireboltAccessor::Instance().VideoOutputInterface().resolution();
@@ -263,7 +263,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 
 		auto r = IFireboltAccessor::Instance()
 					.VideoOutputInterface()
-					.subscribeOnHdcpChanged([](const HdcpState& hdcp) {
+					.subscribeOnHdcpChanged([this](const HdcpState& hdcp) {
 						const char* hdcpStr = "UNKNOWN";
 						switch (hdcp)
 						{
@@ -326,7 +326,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 
 		auto r = IFireboltAccessor::Instance()
 					.VideoOutputInterface()
-					.subscribeOnCecStateChanged([](const CecStateValue& cec) {
+					.subscribeOnCecStateChanged([this](const CecStateValue& cec) {
 						const char* cecStr = "UNKNOWN";
 						switch (cec)
 						{
@@ -387,7 +387,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 
 		auto r = IFireboltAccessor::Instance()
 					.VideoOutputInterface()
-					.subscribeOnRefreshRateChanged([](const RefreshRateValue& rate) {
+					.subscribeOnRefreshRateChanged([this](const RefreshRateValue& rate) {
 						const char* rateStr = "UNKNOWN";
 						switch (rate)
 						{

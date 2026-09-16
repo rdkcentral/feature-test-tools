@@ -60,7 +60,7 @@ void NetworkTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .NetworkInterface()
-                    .subscribeOnConnectedChanged([](bool connected) {
+                    .subscribeOnConnectedChanged([this](bool connected) {
                         std::cout << "  [EVENT] onConnectedChanged: connected="
                                   << std::boolalpha << connected << std::endl;
                         // Invoke related method to confirm what is the current state of network connectivity.

@@ -135,7 +135,7 @@ void AccessibilityTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .AccessibilityInterface()
-                    .subscribeOnAudioDescriptionChanged([](bool enabled) {
+                    .subscribeOnAudioDescriptionChanged([this](bool enabled) {
                         std::cout << "  [EVENT] onAudioDescriptionChanged: enabled="
                                   << std::boolalpha << enabled << std::endl;
                         // Invoke related method to confirm what is the current state of audio description.
@@ -186,7 +186,7 @@ void AccessibilityTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .AccessibilityInterface()
-                    .subscribeOnClosedCaptionsSettingsChanged([](const ClosedCaptionsSettings& settings) {
+                    .subscribeOnClosedCaptionsSettingsChanged([this](const ClosedCaptionsSettings& settings) {
                         std::cout << "  [EVENT] onClosedCaptionsSettingsChanged: ";
                         printClosedCaptionsSettings(settings);
                         // Invoke related method to confirm what is the current state of closed captions settings.
@@ -239,7 +239,7 @@ void AccessibilityTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .AccessibilityInterface()
-                    .subscribeOnHighContrastUIChanged([](bool enabled) {
+                    .subscribeOnHighContrastUIChanged([this](bool enabled) {
                         std::cout << "  [EVENT] onHighContrastUIChanged: enabled="
                                   << std::boolalpha << enabled << std::endl;
                         // Invoke related method to confirm what is the current state of high contrast UI.
@@ -290,7 +290,7 @@ void AccessibilityTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .AccessibilityInterface()
-                    .subscribeOnVoiceGuidanceSettingsChanged([](const VoiceGuidanceSettings& settings) {
+                    .subscribeOnVoiceGuidanceSettingsChanged([this](const VoiceGuidanceSettings& settings) {
                         std::cout << "  [EVENT] onVoiceGuidanceSettingsChanged: ";
                         printVoiceGuidanceSettings(settings);
                         // Invoke related method to confirm what is the current state of voice guidance settings.

@@ -110,7 +110,7 @@ void LocalizationTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .LocalizationInterface()
-                    .subscribeOnCountryChanged([](const std::string& country) {
+                    .subscribeOnCountryChanged([this](const std::string& country) {
                         std::cout << "  [EVENT] onCountryChanged: country=" << country << std::endl;
                         // Invoke related method to confirm what is the current state of country.
                         auto r2 = IFireboltAccessor::Instance()
@@ -160,7 +160,7 @@ void LocalizationTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .LocalizationInterface()
-                    .subscribeOnPreferredAudioLanguagesChanged([](const std::vector<std::string>& langs) {
+                    .subscribeOnPreferredAudioLanguagesChanged([this](const std::vector<std::string>& langs) {
                         std::cout << "  [EVENT] onPreferredAudioLanguagesChanged: [";
                         for (size_t i = 0; i < langs.size(); ++i)
                         {
@@ -222,7 +222,7 @@ void LocalizationTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .LocalizationInterface()
-                    .subscribeOnPresentationLanguageChanged([](const std::string& lang) {
+                    .subscribeOnPresentationLanguageChanged([this](const std::string& lang) {
                         std::cout << "  [EVENT] onPresentationLanguageChanged: " << lang << std::endl;
                         // Invoke related method to confirm what is the current state of presentation language.
                         auto r2 = IFireboltAccessor::Instance()
@@ -272,7 +272,7 @@ void LocalizationTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .LocalizationInterface()
-                    .subscribeOnTimeZoneChanged([](const std::string& timeZone) {
+                    .subscribeOnTimeZoneChanged([this](const std::string& timeZone) {
                         std::cout << "  [EVENT] onTimeZoneChanged: " << timeZone << std::endl;
                         // Invoke related method to confirm what is the current state of time zone.
                         auto r2 = IFireboltAccessor::Instance()

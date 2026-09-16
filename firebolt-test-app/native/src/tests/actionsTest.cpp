@@ -184,7 +184,7 @@ void ActionsTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .ActionsInterface()
-                    .subscribeOnIntent([](const Intent& intent) {
+                    .subscribeOnIntent([this](const Intent& intent) {
                         printIntentSummary(intent, "  [EVENT] onIntent");
                         // Invoke related method to confirm what is the current state of the intent.
                         auto r2 = IFireboltAccessor::Instance()

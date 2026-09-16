@@ -177,7 +177,7 @@ void DeviceTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .DeviceInterface()
-                    .subscribeOnHdrChanged([](const HDRFormat& fmt) {
+                    .subscribeOnHdrChanged([this](const HDRFormat& fmt) {
                         std::cout << std::boolalpha
                                   << "  [EVENT] onHdrChanged:"
                                   << " hdr10=" << fmt.hdr10
@@ -240,7 +240,7 @@ void DeviceTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .DeviceInterface()
-                    .subscribeOnDolbyAtmosExperienceAvailableChanged([](bool available) {
+                    .subscribeOnDolbyAtmosExperienceAvailableChanged([this](bool available) {
                         std::cout << "  [EVENT] onDolbyAtmosExperienceAvailableChanged: available="
                                   << std::boolalpha << available << std::endl;
                         // Invoke related method to confirm what is the current state of Dolby Atmos Experience availability.
