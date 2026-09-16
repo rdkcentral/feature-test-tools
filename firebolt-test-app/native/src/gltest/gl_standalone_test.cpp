@@ -28,7 +28,7 @@
  */
 
 #include "gl.h"
-
+#include "native_logger.hpp"
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -42,6 +42,12 @@
 #ifndef APP_FONT_DIR
 #define APP_FONT_DIR "/usr/share/fonts/ttf/"
 #endif
+
+struct GLTestLoggerConfig {
+    static constexpr const char* kEnvVar = "GLTESTLOGLEVEL";
+    static constexpr const char* kTag = "[GL-TEST]";
+};
+using LocalLogger = RuntimeLogger<GLTestLoggerConfig>;
 
 // ---------------------------------------------------------------------------
 // Simple argument parser (no external deps)
@@ -60,9 +66,9 @@ static const char* argValue(int argc, char** argv, const char* flag, const char*
 // ---------------------------------------------------------------------------
 static void keycodeCallback(const GlKeyEvent& keyEvent)
 {
-    std::cout << "[GL-TEST] keycode=" << keyEvent.evdevKeycode;
+    DBG("keycode={}", keyEvent.evdevKeycode);
     if (keyEvent.hasUtf32) {
-        std::cout << " utf32=U+" << std::hex << std::uppercase << keyEvent.utf32 << std::dec;
+        DBG(" utf32=U+{}", keyEvent.utf32);
     }
     std::cout << "\n";
 }
@@ -77,17 +83,15 @@ int main(int argc, char** argv)
     const int   width          = std::atoi(argValue(argc, argv, "--width",    "1280"));
     const int   height         = std::atoi(argValue(argc, argv, "--height",   "720"));
 
-    std::cout << "[GL-TEST] Starting standalone GL test: "
-              << width << "x" << height
-              << " display=" << waylandDisplay
-              << " duration=" << durationSecs << "s\n";
+    INFO("Starting standalone GL test: {}x{} display={} duration={}s",
+          width, height, waylandDisplay, durationSecs);
 
     auto glApp = std::make_unique<GlApp>(width, height,
                                          APP_FONT_DIR "LiberationSans-Bold.ttf");
     glApp->registerKeycodeCallback(keycodeCallback);
 
     if (!glApp->init(waylandDisplay)) {
-        std::cerr << "[GL-TEST] GlApp::init() failed\n";
+        ERR("GlApp::init() failed");
         return 1;
     }
 
@@ -100,7 +104,7 @@ int main(int argc, char** argv)
 
     // Close after the requested duration.
     std::this_thread::sleep_for(std::chrono::seconds(durationSecs));
-    std::cout << "[GL-TEST] Duration elapsed – closing GL app\n";
+    INFO("Duration elapsed - closing GL app");
     glApp->close();
 
     if (glThread.joinable())
@@ -109,6 +113,6 @@ int main(int argc, char** argv)
     // Destroy GlApp; ~GlApp() calls deinit() – no explicit call needed.
     glApp.reset();
 
-    std::cout << "[GL-TEST] Standalone GL test complete\n";
+    INFO("Standalone GL test complete");
     return 0;
 }

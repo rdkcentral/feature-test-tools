@@ -72,7 +72,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     };
 
     auto unsubscribeById = [&](Firebolt::SubscriptionId& subId, const std::string& label) {
-        if (subId == 0)
+        if (0 == subId)
         {
             std::cout << "  [WARN] No active " << label << " subscription. Subscribe first."
                       << std::endl;
@@ -88,7 +88,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
     };
 
-    if (method == "TextToSpeech.speak")
+    if ("TextToSpeech.speak" == method)
     {
         const std::string text = paramFromConsole("text", "Hello from Firebolt test application.");
         auto r = IFireboltAccessor::Instance()
@@ -101,7 +101,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
                       << "  ttsStatus: " << r->ttsStatus << std::endl;
         }
     }
-    else if (method == "TextToSpeech.getSpeechState")
+    else if ("TextToSpeech.getSpeechState" == method)
     {
         if (!hasSpeechId())
         {
@@ -116,7 +116,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
                       << ": " << static_cast<int>(r->speechState) << std::endl;
         }
     }
-    else if (method == "TextToSpeech.listVoices")
+    else if ("TextToSpeech.listVoices" == method)
     {
         const std::string locale = paramFromConsole("locale", "en-US");
         auto r = IFireboltAccessor::Instance()
@@ -131,7 +131,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
             }
         }
     }
-    else if (method == "TextToSpeech.pause")
+    else if ("TextToSpeech.pause" == method)
     {
         if (!hasSpeechId())
         {
@@ -142,7 +142,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      .pause(lastSpeechId_);
         checkResult(r, method);
     }
-    else if (method == "TextToSpeech.resume")
+    else if ("TextToSpeech.resume" == method)
     {
         if (!hasSpeechId())
         {
@@ -153,7 +153,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      .resume(lastSpeechId_);
         checkResult(r, method);
     }
-    else if (method == "TextToSpeech.cancel")
+    else if ("TextToSpeech.cancel" == method)
     {
         if (!hasSpeechId())
         {
@@ -164,9 +164,9 @@ void TextToSpeechTest::runMethod(const std::string& method)
                      .cancel(lastSpeechId_);
         checkResult(r, method);
     }
-    else if (method == "TextToSpeech.onSpeechStart.subscribe")
+    else if ("TextToSpeech.onSpeechStart.subscribe" == method)
     {
-        if (onSpeechStartSubId_ != 0)
+        if (0 != onSpeechStartSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechStart (ID: "
                       << onSpeechStartSubId_ << "). Unsubscribe first." << std::endl;
@@ -185,13 +185,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onSpeechStart, sub ID: " << onSpeechStartSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onSpeechStart.unsubscribe")
+    else if ("TextToSpeech.onSpeechStart.unsubscribe" == method)
     {
         unsubscribeById(onSpeechStartSubId_, "onSpeechStart");
     }
-    else if (method == "TextToSpeech.onSpeechPause.subscribe")
+    else if ("TextToSpeech.onSpeechPause.subscribe" == method)
     {
-        if (onSpeechPauseSubId_ != 0)
+        if (0 != onSpeechPauseSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechPause (ID: "
                       << onSpeechPauseSubId_ << "). Unsubscribe first." << std::endl;
@@ -210,13 +210,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onSpeechPause, sub ID: " << onSpeechPauseSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onSpeechPause.unsubscribe")
+    else if ("TextToSpeech.onSpeechPause.unsubscribe" == method)
     {
         unsubscribeById(onSpeechPauseSubId_, "onSpeechPause");
     }
-    else if (method == "TextToSpeech.onSpeechResume.subscribe")
+    else if ("TextToSpeech.onSpeechResume.subscribe" == method)
     {
-        if (onSpeechResumeSubId_ != 0)
+        if (0 != onSpeechResumeSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechResume (ID: "
                       << onSpeechResumeSubId_ << "). Unsubscribe first." << std::endl;
@@ -235,13 +235,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onSpeechResume, sub ID: " << onSpeechResumeSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onSpeechResume.unsubscribe")
+    else if ("TextToSpeech.onSpeechResume.unsubscribe" == method)
     {
         unsubscribeById(onSpeechResumeSubId_, "onSpeechResume");
     }
-    else if (method == "TextToSpeech.onWillSpeak.subscribe")
+    else if ("TextToSpeech.onWillSpeak.subscribe" == method)
     {
-        if (onWillSpeakSubId_ != 0)
+        if (0 != onWillSpeakSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onWillSpeak (ID: "
                       << onWillSpeakSubId_ << "). Unsubscribe first." << std::endl;
@@ -260,13 +260,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onWillSpeak, sub ID: " << onWillSpeakSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onWillSpeak.unsubscribe")
+    else if ("TextToSpeech.onWillSpeak.unsubscribe" == method)
     {
         unsubscribeById(onWillSpeakSubId_, "onWillSpeak");
     }
-    else if (method == "TextToSpeech.onSpeechComplete.subscribe")
+    else if ("TextToSpeech.onSpeechComplete.subscribe" == method)
     {
-        if (onSpeechCompleteSubId_ != 0)
+        if (0 != onSpeechCompleteSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechComplete (ID: "
                       << onSpeechCompleteSubId_ << "). Unsubscribe first." << std::endl;
@@ -285,13 +285,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onSpeechComplete, sub ID: " << onSpeechCompleteSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onSpeechComplete.unsubscribe")
+    else if ("TextToSpeech.onSpeechComplete.unsubscribe" == method)
     {
         unsubscribeById(onSpeechCompleteSubId_, "onSpeechComplete");
     }
-    else if (method == "TextToSpeech.onSpeechInterrupted.subscribe")
+    else if ("TextToSpeech.onSpeechInterrupted.subscribe" == method)
     {
-        if (onSpeechInterruptedSubId_ != 0)
+        if (0 != onSpeechInterruptedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechInterrupted (ID: "
                       << onSpeechInterruptedSubId_ << "). Unsubscribe first." << std::endl;
@@ -310,13 +310,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onSpeechInterrupted, sub ID: " << onSpeechInterruptedSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onSpeechInterrupted.unsubscribe")
+    else if ("TextToSpeech.onSpeechInterrupted.unsubscribe" == method)
     {
         unsubscribeById(onSpeechInterruptedSubId_, "onSpeechInterrupted");
     }
-    else if (method == "TextToSpeech.onNetworkError.subscribe")
+    else if ("TextToSpeech.onNetworkError.subscribe" == method)
     {
-        if (onNetworkErrorSubId_ != 0)
+        if (0 != onNetworkErrorSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onNetworkError (ID: "
                       << onNetworkErrorSubId_ << "). Unsubscribe first." << std::endl;
@@ -335,13 +335,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onNetworkError, sub ID: " << onNetworkErrorSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onNetworkError.unsubscribe")
+    else if ("TextToSpeech.onNetworkError.unsubscribe" == method)
     {
         unsubscribeById(onNetworkErrorSubId_, "onNetworkError");
     }
-    else if (method == "TextToSpeech.onPlaybackError.subscribe")
+    else if ("TextToSpeech.onPlaybackError.subscribe" == method)
     {
-        if (onPlaybackErrorSubId_ != 0)
+        if (0 != onPlaybackErrorSubId_)
         {
             std::cout << "  [WARN] Already subscribed to TextToSpeech.onPlaybackError (ID: "
                       << onPlaybackErrorSubId_ << "). Unsubscribe first." << std::endl;
@@ -360,11 +360,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
             std::cout << "  Subscribed onPlaybackError, sub ID: " << onPlaybackErrorSubId_ << std::endl;
         }
     }
-    else if (method == "TextToSpeech.onPlaybackError.unsubscribe")
+    else if ("TextToSpeech.onPlaybackError.unsubscribe" == method)
     {
         unsubscribeById(onPlaybackErrorSubId_, "onPlaybackError");
     }
-    else if (method == "TextToSpeech.unsubscribeAll")
+    else if ("TextToSpeech.unsubscribeAll" == method)
     {
         IFireboltAccessor::Instance().TextToSpeechInterface().unsubscribeAll();
         onSpeechStartSubId_ = 0;

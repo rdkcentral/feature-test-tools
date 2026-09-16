@@ -34,5 +34,8 @@ public:
     void runMethod(const std::string& method) override;
 
 private:
-    Firebolt::SubscriptionId onVideoOutputChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onResolutionChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onHdcpChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onCecStateChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onRefreshRateChangedSubId_{ 0 };
 };

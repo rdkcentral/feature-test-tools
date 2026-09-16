@@ -54,7 +54,7 @@ void LocalizationTest::runMethod(const std::string& method)
 {
     std::cout << "[Localization] Running: " << method << std::endl;
 
-    if (method == "Localization.country")
+    if ("Localization.country" == method)
     {
         auto r = IFireboltAccessor::Instance()
                      .LocalizationInterface()
@@ -64,7 +64,7 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  country: " << *r << std::endl;
         }
     }
-    else if (method == "Localization.preferredAudioLanguages")
+    else if ("Localization.preferredAudioLanguages" == method)
     {
         auto r = IFireboltAccessor::Instance()
                      .LocalizationInterface()
@@ -79,7 +79,7 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << std::endl;
         }
     }
-    else if (method == "Localization.presentationLanguage")
+    else if ("Localization.presentationLanguage" == method)
     {
         auto r = IFireboltAccessor::Instance()
                      .LocalizationInterface()
@@ -89,7 +89,7 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  presentationLanguage: " << *r << std::endl;
         }
     }
-    else if (method == "Localization.timeZone")
+    else if ("Localization.timeZone" == method)
     {
         auto r = IFireboltAccessor::Instance()
                      .LocalizationInterface()
@@ -99,9 +99,9 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  timeZone: " << *r << std::endl;
         }
     }
-    else if (method == "Localization.onCountryChanged.subscribe")
+    else if ("Localization.onCountryChanged.subscribe" == method)
     {
-        if (onCountryChangedSubId_ != 0)
+        if (0 != onCountryChangedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to Localization.onCountryChanged (ID: "
                       << onCountryChangedSubId_ << "). Unsubscribe first." << std::endl;
@@ -119,9 +119,9 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  Subscribed. Subscription ID: " << onCountryChangedSubId_ << std::endl;
         }
     }
-    else if (method == "Localization.onCountryChanged.unsubscribe")
+    else if ("Localization.onCountryChanged.unsubscribe" == method)
     {
-        if (onCountryChangedSubId_ == 0)
+        if (0 == onCountryChangedSubId_)
         {
             std::cout << "  [WARN] No active Localization.onCountryChanged subscription. Subscribe first."
                       << std::endl;
@@ -137,9 +137,9 @@ void LocalizationTest::runMethod(const std::string& method)
             onCountryChangedSubId_ = 0;
         }
     }
-    else if (method == "Localization.onPreferredAudioLanguagesChanged.subscribe")
+    else if ("Localization.onPreferredAudioLanguagesChanged.subscribe" == method)
     {
-        if (onPreferredAudioLanguagesChangedSubId_ != 0)
+        if (0 != onPreferredAudioLanguagesChangedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to Localization.onPreferredAudioLanguagesChanged (ID: "
                       << onPreferredAudioLanguagesChangedSubId_ << "). Unsubscribe first." << std::endl;
@@ -163,9 +163,9 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  Subscribed. Subscription ID: " << onPreferredAudioLanguagesChangedSubId_ << std::endl;
         }
     }
-    else if (method == "Localization.onPreferredAudioLanguagesChanged.unsubscribe")
+    else if ("Localization.onPreferredAudioLanguagesChanged.unsubscribe" == method)
     {
-        if (onPreferredAudioLanguagesChangedSubId_ == 0)
+        if (0 == onPreferredAudioLanguagesChangedSubId_)
         {
             std::cout << "  [WARN] No active Localization.onPreferredAudioLanguagesChanged subscription. Subscribe first."
                       << std::endl;
@@ -181,9 +181,9 @@ void LocalizationTest::runMethod(const std::string& method)
             onPreferredAudioLanguagesChangedSubId_ = 0;
         }
     }
-    else if (method == "Localization.onPresentationLanguageChanged.subscribe")
+    else if ("Localization.onPresentationLanguageChanged.subscribe" == method)
     {
-        if (onPresentationLanguageChangedSubId_ != 0)
+        if (0 != onPresentationLanguageChangedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to Localization.onPresentationLanguageChanged (ID: "
                       << onPresentationLanguageChangedSubId_ << "). Unsubscribe first." << std::endl;
@@ -201,9 +201,9 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  Subscribed. Subscription ID: " << onPresentationLanguageChangedSubId_ << std::endl;
         }
     }
-    else if (method == "Localization.onPresentationLanguageChanged.unsubscribe")
+    else if ("Localization.onPresentationLanguageChanged.unsubscribe" == method)
     {
-        if (onPresentationLanguageChangedSubId_ == 0)
+        if (0 == onPresentationLanguageChangedSubId_)
         {
             std::cout << "  [WARN] No active Localization.onPresentationLanguageChanged subscription. Subscribe first."
                       << std::endl;
@@ -219,9 +219,9 @@ void LocalizationTest::runMethod(const std::string& method)
             onPresentationLanguageChangedSubId_ = 0;
         }
     }
-    else if (method == "Localization.onTimeZoneChanged.subscribe")
+    else if ("Localization.onTimeZoneChanged.subscribe" == method)
     {
-        if (onTimezoneChangedSubId_ != 0)
+        if (0 != onTimezoneChangedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to Localization.onTimeZoneChanged (ID: "
                       << onTimezoneChangedSubId_ << "). Unsubscribe first." << std::endl;
@@ -239,9 +239,9 @@ void LocalizationTest::runMethod(const std::string& method)
             std::cout << "  Subscribed. Subscription ID: " << onTimezoneChangedSubId_ << std::endl;
         }
     }
-    else if (method == "Localization.onTimeZoneChanged.unsubscribe")
+    else if ("Localization.onTimeZoneChanged.unsubscribe" == method)
     {
-        if (onTimezoneChangedSubId_ == 0)
+        if (0 == onTimezoneChangedSubId_)
         {
             std::cout << "  [WARN] No active Localization.onTimeZoneChanged subscription. Subscribe first."
                       << std::endl;
@@ -257,7 +257,7 @@ void LocalizationTest::runMethod(const std::string& method)
             onTimezoneChangedSubId_ = 0;
         }
     }
-    else if (method == "Localization.unsubscribeAll")
+    else if ("Localization.unsubscribeAll" == method)
     {
         IFireboltAccessor::Instance().LocalizationInterface().unsubscribeAll();
         onCountryChangedSubId_ = 0;

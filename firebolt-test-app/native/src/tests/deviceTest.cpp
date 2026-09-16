@@ -58,7 +58,7 @@ void DeviceTest::runMethod(const std::string& method)
 {
     std::cout << "[Device] Running: " << method << std::endl;
 
-    if (method == "Device.uid")
+    if ("Device.uid" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().uid();
         if (checkResult(r, method))
@@ -66,7 +66,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  uid: " << *r << std::endl;
         }
     }
-    else if (method == "Device.deviceClass")
+    else if ("Device.deviceClass" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().deviceClass();
         if (checkResult(r, method))
@@ -82,7 +82,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  deviceClass: " << classStr << std::endl;
         }
     }
-    else if (method == "Device.uptime")
+    else if ("Device.uptime" == method)
     {
 #if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().uptime();
@@ -94,7 +94,7 @@ void DeviceTest::runMethod(const std::string& method)
         std::cout << "  [WARN] Device.uptime is not supported yet." << std::endl;
 #endif
     }
-    else if (method == "Device.timeInActiveState")
+    else if ("Device.timeInActiveState" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().timeInActiveState();
         if (checkResult(r, method))
@@ -102,7 +102,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  timeInActiveState (s): " << *r << std::endl;
         }
     }
-    else if (method == "Device.chipsetId")
+    else if ("Device.chipsetId" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().chipsetId();
         if (checkResult(r, method))
@@ -110,7 +110,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  chipsetId: " << *r << std::endl;
         }
     }
-    else if (method == "Device.hdr")
+    else if ("Device.hdr" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().hdr();
         if (checkResult(r, method))
@@ -122,7 +122,7 @@ void DeviceTest::runMethod(const std::string& method)
                       << "  HLG:         " << r->hlg        << std::endl;
         }
     }
-    else if (method == "Device.dolbyAtmosExperienceAvailable")
+    else if ("Device.dolbyAtmosExperienceAvailable" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().dolbyAtmosExperienceAvailable();
         if (checkResult(r, method))
@@ -130,7 +130,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r << std::endl;
         }
     }
-    else if (method == "Device.osName")
+    else if ("Device.osName" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().osName();
         if (checkResult(r, method))
@@ -138,7 +138,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  osName: " << *r << std::endl;
         }
     }
-    else if (method == "Device.setOsName")
+    else if ("Device.setOsName" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().setOsName("Linux");
         if (checkResult(r, method))
@@ -146,7 +146,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  setOsName succeeded." << std::endl;
         }
     }
-    else if (method == "Device.osVersion")
+    else if ("Device.osVersion" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().osVersion();
         if (checkResult(r, method))
@@ -154,7 +154,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  osVersion: " << *r << std::endl;
         }
     }
-    else if (method == "Device.setOsVersion")
+    else if ("Device.setOsVersion" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().setOsVersion("5.15.0");
         if (checkResult(r, method))
@@ -162,7 +162,7 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  setOsVersion succeeded." << std::endl;
         }
     }
-    else if (method == "Device.firmware")
+    else if ("Device.firmware" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().firmware();
         if (checkResult(r, method))
@@ -170,9 +170,9 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  firmware: " << *r << std::endl;
         }
     }
-    else if (method == "Device.onHdrChanged.subscribe")
+    else if ("Device.onHdrChanged.subscribe" == method)
     {
-        if (onHdrChangedSubId_ != 0)
+        if (0 != onHdrChangedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to Device.onHdrChanged (ID: "
                       << onHdrChangedSubId_ << "). Unsubscribe first." << std::endl;
@@ -196,9 +196,9 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  Subscribed. Subscription ID: " << onHdrChangedSubId_ << std::endl;
         }
     }
-    else if (method == "Device.onHdrChanged.unsubscribe")
+    else if ("Device.onHdrChanged.unsubscribe" == method)
     {
-        if (onHdrChangedSubId_ == 0)
+        if (0 == onHdrChangedSubId_)
         {
             std::cout << "  [WARN] No active Device.onHdrChanged subscription. Subscribe first."
                       << std::endl;
@@ -214,9 +214,9 @@ void DeviceTest::runMethod(const std::string& method)
             onHdrChangedSubId_ = 0;
         }
     }
-    else if (method == "Device.onDolbyAtmosExperienceAvailableChanged.subscribe")
+    else if ("Device.onDolbyAtmosExperienceAvailableChanged.subscribe" == method)
     {
-        if (onDolbyAtmosExperienceAvailableChangedSubId_ != 0)
+        if (0 != onDolbyAtmosExperienceAvailableChangedSubId_)
         {
             std::cout << "  [WARN] Already subscribed to Device.onDolbyAtmosExperienceAvailableChanged (ID: "
                       << onDolbyAtmosExperienceAvailableChangedSubId_ << "). Unsubscribe first." << std::endl;
@@ -235,9 +235,9 @@ void DeviceTest::runMethod(const std::string& method)
             std::cout << "  Subscribed. Subscription ID: " << onDolbyAtmosExperienceAvailableChangedSubId_ << std::endl;
         }
     }
-    else if (method == "Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe")
+    else if ("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe" == method)
     {
-        if (onDolbyAtmosExperienceAvailableChangedSubId_ == 0)
+        if (0 == onDolbyAtmosExperienceAvailableChangedSubId_)
         {
             std::cout << "  [WARN] No active Device.onDolbyAtmosExperienceAvailableChanged subscription. Subscribe first."
                       << std::endl;
@@ -253,7 +253,7 @@ void DeviceTest::runMethod(const std::string& method)
             onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
         }
     }
-    else if (method == "Device.unsubscribeAll")
+    else if ("Device.unsubscribeAll" == method)
     {
         IFireboltAccessor::Instance().DeviceInterface().unsubscribeAll();
         onHdrChangedSubId_ = 0;

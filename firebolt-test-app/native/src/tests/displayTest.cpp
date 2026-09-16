@@ -40,7 +40,7 @@ void DisplayTest::runMethod(const std::string& method)
 {
     std::cout << "[Display] Running: " << method << std::endl;
 
-    if (method == "Display.size")
+    if ("Display.size" == method)
     {
         auto r = IFireboltAccessor::Instance().DisplayInterface().size();
         if (checkResult(r, method))
@@ -49,7 +49,7 @@ void DisplayTest::runMethod(const std::string& method)
                       << r->width << "x" << r->height << std::endl;
         }
     }
-    else if (method == "Display.edid")
+    else if ("Display.edid" == method)
     {
         auto r = IFireboltAccessor::Instance().DisplayInterface().edid();
         if (checkResult(r, method))
@@ -57,7 +57,7 @@ void DisplayTest::runMethod(const std::string& method)
             std::cout << "  EDID: " << *r << std::endl;
         }
     }
-    else if (method == "Display.maxResolution")
+    else if ("Display.maxResolution" == method)
     {
         auto r = IFireboltAccessor::Instance().DisplayInterface().maxResolution();
         if (checkResult(r, method))

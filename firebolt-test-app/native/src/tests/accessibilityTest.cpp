@@ -22,7 +22,6 @@
  */
 
 #include "accessibilityTest.h"
-
 #include <firebolt/firebolt.h>
 #include <iostream>
 
