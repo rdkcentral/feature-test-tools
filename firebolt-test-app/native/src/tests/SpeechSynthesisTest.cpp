@@ -68,12 +68,18 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 					 .speak(text, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt);
 		if (checkResult(r, method))
 		{
-			std::cout << "  Speak utterance ID: " << *r << std::endl;
+			lastUtteranceId_ = *r;
+			std::cout << "  Speak utterance ID: " << lastUtteranceId_ << std::endl;
 		}
 	}
 	else if ("SpeechSynthesis.cancel" == method)
 	{
-		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().cancel(1);
+		if (lastUtteranceId_ == 0)
+		{
+			std::cout << "  [WARN] No utterance ID available. Run SpeechSynthesis.speak first." << std::endl;
+			return;
+		}
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().cancel(lastUtteranceId_);
 		if (checkResult(r, method))
 		{
 			std::cout << "  Cancel succeeded." << std::endl;
@@ -81,7 +87,12 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 	}
 	else if ("SpeechSynthesis.pause" == method)
 	{
-		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().pause(1);
+		if (lastUtteranceId_ == 0)
+		{
+			std::cout << "  [WARN] No utterance ID available. Run SpeechSynthesis.speak first." << std::endl;
+			return;
+		}
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().pause(lastUtteranceId_);
 		if (checkResult(r, method))
 		{
 			std::cout << "  Pause succeeded." << std::endl;
@@ -89,7 +100,12 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 	}
 	else if ("SpeechSynthesis.resume" == method)
 	{
-		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().resume(1);
+		if (lastUtteranceId_ == 0)
+		{
+			std::cout << "  [WARN] No utterance ID available. Run SpeechSynthesis.speak first." << std::endl;
+			return;
+		}
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().resume(lastUtteranceId_);
 		if (checkResult(r, method))
 		{
 			std::cout << "  Resume succeeded." << std::endl;
@@ -203,6 +219,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 	else if ("SpeechSynthesis.unsubscribeAll" == method)
 	{
 		IFireboltAccessor::Instance().SpeechSynthesisInterface().unsubscribeAll();
+		lastUtteranceId_ = 0;
 		onVoicesChangedSubId_ = 0;
 		onUtteranceEventSubId_ = 0;
 		std::cout << "  Unsubscribed from all SpeechSynthesis events." << std::endl;
