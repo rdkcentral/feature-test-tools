@@ -142,7 +142,7 @@ void AccessibilityTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .AccessibilityInterface()
                                         .audioDescription();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Accessibility.audioDescription"))
                         {
                             std::cout << " Query Response audioDescription enabled: " << std::boolalpha << *r2 << std::endl;
                             if (enabled != *r2)
@@ -193,7 +193,7 @@ void AccessibilityTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .AccessibilityInterface()
                                         .closedCaptionsSettings();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Accessibility.closedCaptionsSettings"))
                         {
                             std::cout << "  closedCaptions settings: ";
                             printClosedCaptionsSettings(*r2);
@@ -246,7 +246,7 @@ void AccessibilityTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .AccessibilityInterface()
                                         .highContrastUI();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Accessibility.highContrastUI"))
                         {
                             std::cout << "  highContrastUI enabled: " << std::boolalpha << *r2 << std::endl;
                             if (enabled != *r2)
@@ -297,7 +297,7 @@ void AccessibilityTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .AccessibilityInterface()
                                         .voiceGuidanceSettings();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Accessibility.voiceGuidanceSettings"))
                         {
                             std::cout << "  voiceGuidance settings: ";
                             printVoiceGuidanceSettings(*r2);

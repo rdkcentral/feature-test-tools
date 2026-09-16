@@ -25,6 +25,7 @@
 #pragma once
 
 #include "../utils.h"
+#include <firebolt/speechsynthesis.h>
 
 class SpeechSynthesisTest : public TestModuleBase
 {

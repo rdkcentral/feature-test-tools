@@ -189,7 +189,7 @@ void DeviceTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .DeviceInterface()
                                         .hdr();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Device.hdr"))
                         {
                             std::cout << std::boolalpha
                                       << "  HDR10:       " << r2->hdr10      << "\n"
@@ -247,7 +247,7 @@ void DeviceTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .DeviceInterface()
                                         .dolbyAtmosExperienceAvailable();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Device.dolbyAtmosExperienceAvailable"))
                         {
                             std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r2 << std::endl;
                             if (available != *r2)

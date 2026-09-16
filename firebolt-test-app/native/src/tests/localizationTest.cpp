@@ -116,7 +116,7 @@ void LocalizationTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .LocalizationInterface()
                                         .country();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Localization.country"))
                         {
                             std::cout << "  Query country: " << *r2 << std::endl;
                             if (country != *r2)
@@ -172,7 +172,7 @@ void LocalizationTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .LocalizationInterface()
                                         .preferredAudioLanguages();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Localization.preferredAudioLanguages"))
                         {
                             std::cout << "  Query preferredAudioLanguages: [";
                             for (size_t i = 0; i < r2->size(); ++i)
@@ -228,7 +228,7 @@ void LocalizationTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .LocalizationInterface()
                                         .presentationLanguage();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Localization.presentationLanguage"))
                         {
                             std::cout << "  Query presentationLanguage: " << *r2 << std::endl;
                             if (lang != *r2)
@@ -278,7 +278,7 @@ void LocalizationTest::runMethod(const std::string& method)
                         auto r2 = IFireboltAccessor::Instance()
                                         .LocalizationInterface()
                                         .timeZone();
-                        if (checkResult(r2, method))
+                        if (checkResult(r2, "Query Localization.timeZone"))
                         {
                             std::cout << "  Query timeZone: " << *r2 << std::endl;
                             if (timeZone != *r2)
