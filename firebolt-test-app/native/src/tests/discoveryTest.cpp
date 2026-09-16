@@ -85,8 +85,7 @@ void DiscoveryTest::runMethod(const std::string& method)
                                 watchedOn, agePolicy);
         if (checkResult(r, method))
         {
-            std::cout << "  watchedV2 reported; accepted="
-                      << std::boolalpha << *r << std::noboolalpha << std::endl;
+            std::cout << "  watchedV2 reported successfully" << std::endl;
         }
     }
     else

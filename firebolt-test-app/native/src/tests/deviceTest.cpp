@@ -42,11 +42,14 @@ DeviceTest::DeviceTest(fireboltVersion version)
     if (version >= FIREBOLT_VERSION_9)
     {
         methods_.push_back("Device.deviceClass");
-#if 0   // TODO: Enable when ClientWrapper supports this
         methods_.push_back("Device.dolbyAtmosExperienceAvailable");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.subscribe");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe");
-#endif
+        methods_.push_back("Device.osName");
+        methods_.push_back("Device.setOsName");
+        methods_.push_back("Device.osVersion");
+        methods_.push_back("Device.setOsVersion");
+        methods_.push_back("Device.firmware");
     }
     methods_.push_back("Device.unsubscribeAll");
 }
@@ -121,63 +124,51 @@ void DeviceTest::runMethod(const std::string& method)
     }
     else if (method == "Device.dolbyAtmosExperienceAvailable")
     {
-#if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().dolbyAtmosExperienceAvailable();
         if (checkResult(r, method))
         {
             std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r << std::endl;
         }
-#else
-        std::cout << "  [WARN] Device.dolbyAtmosExperienceAvailable is not supported yet." << std::endl;
-#endif
-    }
-    else if (method == "Device.modelId")
-    {
-#if 0 // TODO: enable when client wrapper supports this.
-        auto r = IFireboltAccessor::Instance().DeviceInterface().modelId();
-        if (checkResult(r, method))
-        {
-            std::cout << "  modelId: " << *r << std::endl;
-        }
-#else
-        std::cout << "  [WARN] Device.modelId is not supported yet." << std::endl;
-#endif
     }
     else if (method == "Device.osName")
     {
-#if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().osName();
         if (checkResult(r, method))
         {
             std::cout << "  osName: " << *r << std::endl;
         }
-#else
-        std::cout << "  [WARN] Device.osName is not supported yet." << std::endl;
-#endif
+    }
+    else if (method == "Device.setOsName")
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().setOsName("Linux");
+        if (checkResult(r, method))
+        {
+            std::cout << "  setOsName succeeded." << std::endl;
+        }
     }
     else if (method == "Device.osVersion")
     {
-#if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().osVersion();
         if (checkResult(r, method))
         {
             std::cout << "  osVersion: " << *r << std::endl;
         }
-#else
-        std::cout << "  [WARN] Device.osVersion is not supported yet." << std::endl;
-#endif
+    }
+    else if (method == "Device.setOsVersion")
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().setOsVersion("5.15.0");
+        if (checkResult(r, method))
+        {
+            std::cout << "  setOsVersion succeeded." << std::endl;
+        }
     }
     else if (method == "Device.firmware")
     {
-#if 0 // TODO: enable when client wrapper supports this.
         auto r = IFireboltAccessor::Instance().DeviceInterface().firmware();
         if (checkResult(r, method))
         {
             std::cout << "  firmware: " << *r << std::endl;
         }
-#else
-        std::cout << "  [WARN] Device.firmware is not supported yet." << std::endl;
-#endif
     }
     else if (method == "Device.onHdrChanged.subscribe")
     {
@@ -231,7 +222,7 @@ void DeviceTest::runMethod(const std::string& method)
                       << onDolbyAtmosExperienceAvailableChangedSubId_ << "). Unsubscribe first." << std::endl;
             return;
         }
-#if 0 // TODO: enable when client wrapper supports this.
+
         auto r = IFireboltAccessor::Instance()
                     .DeviceInterface()
                     .subscribeOnDolbyAtmosExperienceAvailableChanged([](bool available) {
@@ -243,9 +234,6 @@ void DeviceTest::runMethod(const std::string& method)
             onDolbyAtmosExperienceAvailableChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onDolbyAtmosExperienceAvailableChangedSubId_ << std::endl;
         }
-#else
-        std::cout << "  [WARN] Device.onDolbyAtmosExperienceAvailableChanged.subscribe is not supported yet." << std::endl;
-#endif
     }
     else if (method == "Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe")
     {
@@ -255,18 +243,15 @@ void DeviceTest::runMethod(const std::string& method)
                       << std::endl;
             return;
         }
-#if 0 // TODO: enable when client wrapper supports this.
+
         std::cout << "  Unsubscribing ID: " << onDolbyAtmosExperienceAvailableChangedSubId_ << std::endl;
         auto r = IFireboltAccessor::Instance()
                      .DeviceInterface()
                      .unsubscribe(onDolbyAtmosExperienceAvailableChangedSubId_);
         if (checkResult(r, method))
         {
-                onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
+            onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
         }
-#else
-        std::cout << "  [WARN] Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe is not supported yet." << std::endl;
-#endif
     }
     else if (method == "Device.unsubscribeAll")
     {

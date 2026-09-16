@@ -152,7 +152,8 @@ void ActionsTest::runMethod(const std::string& method)
         const std::string contextSrc     = paramFromConsole("intent.context.source (leave empty to omit)", "system");
         const std::string handlerAppIdIn = paramFromConsole("handlerAppId (leave empty to use default)", "com.rdkcentral.refui");
 
-        IntentData intentData{ action };
+        IntentData intentData{};
+        intentData.action = action;
         if (!contextSrc.empty())
         {
             intentData.context = IntentContext{ contextSrc };

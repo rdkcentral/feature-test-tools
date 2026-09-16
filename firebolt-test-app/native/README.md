@@ -1,6 +1,6 @@
 # Firebolt C++ Test Application
 
-A native C++ test application that exercises the
+A native C++ firebolt test application that exercises the
 [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) APIs
 and events/notifications across all supported Firebolt modules.
 
@@ -10,10 +10,16 @@ and events/notifications across all supported Firebolt modules.
 
 ```
 native/
-├── CMakeLists.txt          # Top-level CMake project
+├── CMakeLists.txt              # Top-level CMake project
+├── assets/
+│   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
+│   └── LICENSE                 # License text installed from the Liberation font package (OFL 1.1)
 └── src/
-    ├── main.cpp            # Entry point, connection management, run-mode dispatch
-    ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
+    ├── main.cpp                # Entry point, connection management, run-mode dispatch
+    ├── utils.h / utils.cpp     # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
+    ├── gl.h                    # GlApp class declaration (Wayland/EGL/GLES keycode display window)
+    ├── gl.cpp                  # GlApp implementation
+    ├── native_logger.hpp       # Shared logging infrastructure (DBG/INFO/WARN/ERR/FATAL macros)
     └── tests/
         ├── accessibilityTest.h/.cpp
         ├── actionsTest.h/.cpp
@@ -26,10 +32,10 @@ native/
         ├── metricsTest.h/.cpp
         ├── networkTest.h/.cpp
         ├── presentationTest.h/.cpp
-        ├── SpeechSynthesisTest.h/.cpp  ← To be implemented
+        ├── SpeechSynthesisTest.h/.cpp
         ├── statsTest.h/.cpp
         ├── texttospeechTest.h/.cpp
-        └── VideoOutputTest.h/.cpp      ← To be implemented
+        └── VideoOutputTest.h/.cpp
 ```
 
 ---
@@ -38,26 +44,36 @@ native/
 
 | Requirement | Notes |
 |---|---|
-| **CMake ≥ 3.12** | |
+| **CMake ≥ 3.13** | |
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
-| **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
-| **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
+| **FireboltClient v0.7.0** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
+| **FireboltTransport v1.1.12** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
 | **nlohmann-json** installed | Used for JSON input/response validation in tests |
+| **OpenSSL ≥ 3.0** | Required for secure WebSocket transport (libssl, libcrypto) |
+| **websocketpp** | Required for WebSocket communication |
+| **wayland-client / wayland-egl** | Required for the GL display window (`gl.cpp`) |
+| **EGL / GLESv2** | Required for the GL display window (`gl.cpp`) |
+| **Cairo / cairo-ft / FreeType** | Required for the GL display window (`gl.cpp`) |
+| **xkbcommon** (optional) | Enables XKB keymap translation in the GL window; falls back to raw evdev codes without it |
 
-The `FireboltClient`, `FireboltTransport`, and `nlohmann_json` CMake packages must be findable via
-`CMAKE_PREFIX_PATH` (or `SYSROOT_PATH` for cross-compilation).
+The `FireboltClient`, `FireboltTransport`, `nlohmann_json`, `OpenSSL`, and `websocketpp` CMake packages must be findable via
+`CMAKE_PREFIX_PATH` (or `CMAKE_SYSROOT` for cross-compilation).
+
+Logging level is controlled via the `GLLOGLEVEL` (GL module) and `APPLOGLEVEL` (app module) environment variables.
 
 ---
 
 ## Building
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build -DBUILD_FIREBOLT_APP=ON -DGL_MODULE_SHARED=ON
 cmake --build build --parallel
 ```
 
 <details>
-  <summary>Sample bitbake recipe</summary>
+  <summary>Sample bitbake recipe & bolt package configuration</summary>
+
+### Bitbake recipe
 
 ```bash
 SUMMARY = "Firebolt C++ Test Application"
@@ -69,29 +85,64 @@ inherit cmake pkgconfig
 
 SRC_URI = "${CMF_GITHUB_ROOT}/feature-test-tools;${CMF_GITHUB_SRC_URI_SUFFIX}"
 SRCREV = "${AUTOREV}"  <=== Replace with SHA
-PV = "1.0.0"
+PV = "3.0.0"
 PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client nlohmann-json"
-RDEPENDS:${PN} += "firebolt-cpp-client"
+DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell libxkbcommon websocketpp asio openssl"
+RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell libxkbcommon xkeyboard-config openssl"
 
-EXTRA_OECMAKE = ""
+EXTRA_OECMAKE:append = " \
+    -DBUILD_FIREBOLT_APP=ON \
+    -DGL_MODULE_SHARED=ON \
+    "
 
-do_install() {
-    install -d ${D}${bindir}
-    install -m 0755 ${B}/firebolt-test-app ${D}${bindir}/firebolt-test-app
+FILES:${PN} += " /usr/share/*"
+```
+
+### Bolt package configuration
+
+```json
+{
+  "id": "com.rdkcentral.fbttest",
+  "version": "0.0.3",
+  "name": "fbttest",
+  "packageType": "application",
+  "entryPoint": "/usr/bin/firebolt-test-app",
+  "dependencies": {
+    "com.rdkcentral.base": "0.3.1"
+  },
+  "permissions": [
+      "urn:rdk:permission:firebolt"
+  ],
+  "configuration": {
+      "urn:rdk:config:env": {
+          "PATTERN_MODE": "DOT",
+          "WIDTH": "1920",
+          "HEIGHT": "1080",
+          "GLLOGLEVEL":"DEBUG",
+          "MODE_AUTO_RUN":"true",
+          "APPLOGLEVEL":"DEBUG"
+      }
+  }
 }
-
-FILES:${PN} += "${bindir}/firebolt-test-app"
 ```
 
 </details>
 
+### Font License Note
+
+`assets/LICENSE` is the license text installed from the Liberation font package for
+`LiberationSans-Bold.ttf`.
+
 ---
 
 ## Running
+
+This is a lifecycle-driven Firebolt application; ensure `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, and `FIREBOLT_ENDPOINT` are configured. `MODE_AUTO_RUN` is optional and enables auto mode without `--auto`.
+
+Note: Command-line options are supported for development/testing; interactive and piped modes are deprecated in the lifecycle-driven app flow.
 
 ### Binary name
 ```
@@ -119,6 +170,29 @@ firebolt-test-app [--auto] [--url <URL>]
 
 Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
 
+Additional runtime env vars:
+
+| Variable | Description |
+|---|---|
+| `MODE_AUTO_RUN` | If set to a non-empty value other than `0`/`false`, enables auto mode even without `--auto` |
+| `WAYLAND_DISPLAY` | Wayland socket name used by the GL app (default `wayland-0`) |
+| `WIDTH` | GL window width (default `1920`) |
+| `HEIGHT` | GL window height (default `1080`) |
+| `PATTERN_MODE` | GL background pattern (`GRID` or `DOT`) |
+
+### GL display window
+
+During lifecycle-driven startup, the app initializes a Wayland/EGL overlay window and renders the last
+received key code using the bundled Liberation Sans Bold font. `XDG_RUNTIME_DIR` must be set for GL init.
+The following environment variables control it:
+
+| Variable | Default | Description |
+|---|---|---|
+| `WAYLAND_DISPLAY` | `wayland-0` | Wayland socket name |
+| `WIDTH` | `1920` | Window width in pixels |
+| `HEIGHT` | `1080` | Window height in pixels |
+| `PATTERN_MODE` | *(none)* | Background pattern: `GRID` or `DOT` |
+
 ---
 
 ## Version-Aware Modules
@@ -127,21 +201,18 @@ Some modules expose additional methods depending on the selected Firebolt versio
 
 | Module | Firebolt 8 methods | Additional Firebolt 9 methods |
 |---|---|---|
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass` |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timezone`, `onTimezoneChanged` (subscribe / unsubscribe) |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
+| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timeZone`, `onTimeZoneChanged` (subscribe / unsubscribe) |
 
 ---
 
 ## Run Modes
 
-### 1. Interactive (default when stdin is a TTY)
-Shows a two-level menu:
-1. Select a **module** (Accessibility, Device, Lifecycle, …)
-2. Select a **method** within that module
-3. Enter `q` or press Enter to go back / quit
+### 1. Lifecycle-driven app flow
+The app subscribes to lifecycle state changes and runs module tests only after an `INITIALIZING -> PAUSED -> ACTIVE` transition.
 
-### 2. Auto mode (`--auto`)
-Runs every method of every module sequentially. The set of modules and methods exercised is determined by the active version flag — only the methods registered for the selected version are run. Use this for CI / smoke testing.
+### 2. Auto mode (`--auto` or `MODE_AUTO_RUN`)
+Runs every registered method sequentially once active. In auto mode, `.unsubscribe` and `.unsubscribeAll` methods are deferred and executed during shutdown cleanup.
 ```bash
 # Run all Firebolt 8 + 9 modules (default)
 firebolt-test-app --auto
@@ -149,37 +220,23 @@ firebolt-test-app --auto
 # Run Firebolt 8 base modules only
 firebolt-test-app --auto --firebolt8
 
-# Run all modules including any future additions
+# Same module set as --firebolt9 in current implementation
 firebolt-test-app --auto --firebolt-all
-```
-
-### 3. Piped stdin mode
-Reads one `Module.method` name per line from stdin. Only methods registered for the active version are recognized — requests for methods outside the active version will print `Method not found:` and be skipped.
-```bash
-# Firebolt 8 methods (default --firebolt9 mode includes these)
-printf "Device.uid\nNetwork.connected\nLifecycle.state\n" | firebolt-test-app --url ws://127.0.0.1:9998
-
-# Firebolt 9 methods — require --firebolt9 or --firebolt-all
-printf "Actions.intent\nVideoOutput.resolution\nSpeechSynthesis.voices\n" | firebolt-test-app --url ws://127.0.0.1:9998 --firebolt9
-
-# Version-specific method on a shared module — only available in --firebolt9 or --firebolt-all
-printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url ws://127.0.0.1:9998 --firebolt9
 ```
 
 ---
 
 ## Covered Modules & APIs
 
-### Firebolt 8 modules (available in all modes and restricted to `--firebolt8`)
+### Base modules (always included in `--firebolt9`/`--firebolt-all`, and also available in `--firebolt8`)
 
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
-| **Discovery** | `watched`, `watchedV2` |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll`, `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe; v9+) |
+| **Discovery** | `watched`, `watchedV2` *(returns void; reports success/failure)* |
 | **Display** | `size`, `maxResolution`, `edid` |
-| **Lifecycle** | `state`, `close`, `onStateChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event` *(validates schema + JSON data input)*, `appInfo` |
 | **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
@@ -213,3 +270,18 @@ printf "Device.deviceClass\nLocalization.timezone\n" | firebolt-test-app --url w
 ## License
 
 Apache-2.0 – see [LICENSE](./../../LICENSE)
+
+---
+
+## Third-Party Attributions
+
+#### Font used in this app: Liberation Sans Bold (LiberationSans-Bold.ttf)
+
+| Field | Value |
+|---|---|
+| **Font** | Liberation Sans Bold |
+| **Copyright holders** | Google Corporation (digitized data); Red Hat, Inc. |
+| **Reserved Font Names** | Arimo, Tinos, Cousine, Liberation |
+| **License** | [SIL Open Font License, Version 1.1](./assets/LICENSE) |
+| **Source** | https://github.com/liberationfonts/liberation-fonts |
+| **Bundled at** | `assets/LiberationSans-Bold.ttf` |
