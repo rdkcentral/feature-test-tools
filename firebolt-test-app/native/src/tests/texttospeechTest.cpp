@@ -168,8 +168,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechStartSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechStart (ID: "
-                      << onSpeechStartSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
@@ -193,8 +192,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechPauseSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechPause (ID: "
-                      << onSpeechPauseSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
@@ -218,8 +216,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechResumeSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechResume (ID: "
-                      << onSpeechResumeSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
@@ -243,8 +240,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onWillSpeakSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onWillSpeak (ID: "
-                      << onWillSpeakSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
@@ -268,8 +264,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechCompleteSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechComplete (ID: "
-                      << onSpeechCompleteSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
@@ -293,8 +288,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechInterruptedSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechInterrupted (ID: "
-                      << onSpeechInterruptedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
@@ -343,8 +337,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onPlaybackErrorSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onPlaybackError (ID: "
-                      << onPlaybackErrorSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 

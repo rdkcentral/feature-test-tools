@@ -186,6 +186,21 @@ void handleGlKeycode(const GlKeyEvent& keyEvent)
 }
 } // namespace
 
+static const char* lifecycleStateStr(Firebolt::Lifecycle::LifecycleState& state)
+{
+    using namespace Firebolt::Lifecycle;
+    switch (state)
+    {
+        case LifecycleState::INITIALIZING: return "INITIALIZING";
+        case LifecycleState::ACTIVE:       return "ACTIVE";
+        case LifecycleState::PAUSED:       return "PAUSED";
+        case LifecycleState::SUSPENDED:    return "SUSPENDED";
+        case LifecycleState::HIBERNATED:   return "HIBERNATED";
+        case LifecycleState::TERMINATING:  return "TERMINATING";
+        default:                           return "UNKNOWN";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // LifeCycleState to AppState mapping
 // ---------------------------------------------------------------------------
@@ -367,6 +382,7 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, P
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
             progressController.increment_progress();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
 }
@@ -757,9 +773,10 @@ int main(int argc, char** argv)
         }
 
         if (hasPendingState && newAppState != currentAppState) {
-            DBG("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
+            DBG("Lifecycle derived state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
             auto lifecycleState = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().state();
-            INFO("Query Response Lifecycle.state = {}", lifecycleState ? static_cast<int>(*lifecycleState) : -1);
+            INFO("Query Response Lifecycle.state = {}, {}",
+                    (lifecycleState ? static_cast<int>(*lifecycleState) : -1), lifecycleStateStr(*lifecycleState));
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {

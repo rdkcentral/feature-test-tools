@@ -112,10 +112,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << std::boolalpha
-                      << "  HDR10:       " << r->hdr10      << "\n"
-                      << "  HDR10+:      " << r->hdr10Plus  << "\n"
-                      << "  DolbyVision: " << r->dolbyVision << "\n"
-                      << "  HLG:         " << r->hlg        << std::endl;
+                      << "  HDR10: " << r->hdr10
+                      << ", HDR10+: " << r->hdr10Plus
+                      << ", DolbyVision: " << r->dolbyVision
+                      << ", HLG: " << r->hlg << std::endl;
         }
     }
     else if ("Device.dolbyAtmosExperienceAvailable" == method)
@@ -136,7 +136,7 @@ void DeviceTest::runMethod(const std::string& method)
     }
     else if ("Device.setOsName" == method)
     {
-        auto r = IFireboltAccessor::Instance().DeviceInterface().setOsName("Linux");
+        auto r = IFireboltAccessor::Instance().DeviceInterface().setOsName("RDKE Linux");
         if (checkResult(r, method))
         {
             std::cout << "  setOsName succeeded." << std::endl;
@@ -170,8 +170,7 @@ void DeviceTest::runMethod(const std::string& method)
     {
         if (0 != onHdrChangedSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to Device.onHdrChanged (ID: "
-                      << onHdrChangedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 
@@ -180,10 +179,10 @@ void DeviceTest::runMethod(const std::string& method)
                     .subscribeOnHdrChanged([this](const HDRFormat& fmt) {
                         std::cout << std::boolalpha
                                   << "  [EVENT] onHdrChanged:"
-                                  << " hdr10=" << fmt.hdr10
-                                  << " hdr10Plus=" << fmt.hdr10Plus
-                                  << " dolbyVision=" << fmt.dolbyVision
-                                  << " hlg=" << fmt.hlg
+                                  << " HDR10: " << fmt.hdr10
+                                  << ", HDR10+: " << fmt.hdr10Plus
+                                  << ", DolbyVision: " << fmt.dolbyVision
+                                  << ", HLG: " << fmt.hlg
                                   << std::endl;
                         // Invoke related method to confirm what is the current state of HDR.
                         auto r2 = IFireboltAccessor::Instance()
@@ -192,10 +191,11 @@ void DeviceTest::runMethod(const std::string& method)
                         if (checkResult(r2, "Query Device.hdr"))
                         {
                             std::cout << std::boolalpha
-                                      << "  HDR10:       " << r2->hdr10      << "\n"
-                                      << "  HDR10+:      " << r2->hdr10Plus  << "\n"
-                                      << "  DolbyVision: " << r2->dolbyVision << "\n"
-                                      << "  HLG:         " << r2->hlg        << std::endl;
+                                      << "  HDR10: " << r2->hdr10
+                                      << ", HDR10+: " << r2->hdr10Plus
+                                      << ", DolbyVision: " << r2->dolbyVision
+                                      << ", HLG: " << r2->hlg
+                                      << std::endl;
                             if (fmt.hdr10 != r2->hdr10 ||
                                 fmt.hdr10Plus != r2->hdr10Plus ||
                                 fmt.dolbyVision != r2->dolbyVision ||
@@ -233,8 +233,7 @@ void DeviceTest::runMethod(const std::string& method)
     {
         if (0 != onDolbyAtmosExperienceAvailableChangedSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to Device.onDolbyAtmosExperienceAvailableChanged (ID: "
-                      << onDolbyAtmosExperienceAvailableChangedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 

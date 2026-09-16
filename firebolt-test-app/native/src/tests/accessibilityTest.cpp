@@ -128,8 +128,7 @@ void AccessibilityTest::runMethod(const std::string& method)
     {
         if (onAudioDescriptionChangedSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Accessibility.onAudioDescriptionChanged (ID: "
-                      << onAudioDescriptionChangedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 
@@ -179,8 +178,7 @@ void AccessibilityTest::runMethod(const std::string& method)
     {
         if (onClosedCaptionsSettingsChangedSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Accessibility.onClosedCaptionsSettingsChanged (ID: "
-                      << onClosedCaptionsSettingsChangedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 
@@ -232,8 +230,7 @@ void AccessibilityTest::runMethod(const std::string& method)
     {
         if (onHighContrastUIChangedSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Accessibility.onHighContrastUIChanged (ID: "
-                      << onHighContrastUIChangedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 
@@ -283,8 +280,7 @@ void AccessibilityTest::runMethod(const std::string& method)
     {
         if (onVoiceGuidanceSettingsChangedSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Accessibility.onVoiceGuidanceSettingsChanged (ID: "
-                      << onVoiceGuidanceSettingsChangedSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 

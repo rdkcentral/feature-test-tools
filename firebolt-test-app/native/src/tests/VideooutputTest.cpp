@@ -211,8 +211,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 	{
 		if (0 != onResolutionChangedSubId_)
 		{
-			std::cout << "  [WARN] Already subscribed to VideoOutput.onResolutionChanged (ID: "
-					  << onResolutionChangedSubId_ << "). Unsubscribe first." << std::endl;
+			// Already subscribed, drop to avoid multiple subscriptions.
 			return;
 		}
 
@@ -256,8 +255,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 	{
 		if (0 != onHdcpChangedSubId_)
 		{
-			std::cout << "  [WARN] Already subscribed to VideoOutput.onHdcpChanged (ID: "
-					  << onHdcpChangedSubId_ << "). Unsubscribe first." << std::endl;
+			// Already subscribed, drop to avoid multiple subscriptions.
 			return;
 		}
 
@@ -319,8 +317,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 	{
 		if (0 != onCecStateChangedSubId_)
 		{
-			std::cout << "  [WARN] Already subscribed to VideoOutput.onCecStateChanged (ID: "
-					  << onCecStateChangedSubId_ << "). Unsubscribe first." << std::endl;
+			// Already subscribed, drop to avoid multiple subscriptions.
 			return;
 		}
 
@@ -380,8 +377,7 @@ void VideoOutputTest::runMethod(const std::string& method)
 	{
 		if (0 != onRefreshRateChangedSubId_)
 		{
-			std::cout << "  [WARN] Already subscribed to VideoOutput.onRefreshRateChanged (ID: "
-					  << onRefreshRateChangedSubId_ << "). Unsubscribe first." << std::endl;
+			// Already subscribed, drop to avoid multiple subscriptions.
 			return;
 		}
 

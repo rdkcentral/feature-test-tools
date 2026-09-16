@@ -103,7 +103,7 @@ void printIntentSummary(const Intent& intent, const std::string& prefix)
     std::string schemaError;
     if (!validateIntentResponseSchema(responseJson, schemaError))
     {
-        std::cout << prefix << " [INVALID_RESPONSE_SCHEMA] " << schemaError << std::endl;
+        std::cout << prefix << " [ERROR] Invalid response schema: " << schemaError << std::endl;
         return;
     }
 
@@ -177,8 +177,7 @@ void ActionsTest::runMethod(const std::string& method)
     {
         if (onIntentSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Actions.onIntent (ID: "
-                      << onIntentSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 

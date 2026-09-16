@@ -115,8 +115,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 	{
 		if (0 != onVoicesChangedSubId_)
 		{
-			std::cout << "  [WARN] Already subscribed to SpeechSynthesis.onVoicesChanged (ID: "
-					  << onVoicesChangedSubId_ << "). Unsubscribe first." << std::endl;
+			// Already subscribed, drop to avoid multiple subscriptions.
 			return;
 		}
 
@@ -174,8 +173,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 	{
 		if (0 != onUtteranceEventSubId_)
 		{
-			std::cout << "  [WARN] Already subscribed to SpeechSynthesis.onUtteranceEvent (ID: "
-					  << onUtteranceEventSubId_ << "). Unsubscribe first." << std::endl;
+			// Already subscribed, drop to avoid multiple subscriptions.
 			return;
 		}
 
