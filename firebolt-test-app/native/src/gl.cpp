@@ -1441,6 +1441,7 @@ void GlApp::run()
             int pollResult = poll(fds, 2, 100);
             if (pollResult < 0) {
                 if (errno == EINTR) {
+                    if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);
                     continue;
                 }
                 if (m_ctx && m_ctx->display) wl_display_cancel_read(m_ctx->display);

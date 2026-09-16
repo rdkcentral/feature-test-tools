@@ -188,7 +188,8 @@ struct RuntimeLogger {
     template<typename... Args>
     static void debug(std::string_view fmt, Args&&... args)
     {
-        if (get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Debug) {
+        if (static_cast<int>(get_cached_level().load(std::memory_order_relaxed)) <= static_cast<int>(::LogLevel::Debug))
+        {
             log_dispatch(std::cout, "[DBG] ", fmt, std::forward<Args>(args)...);
         }
     }

@@ -785,9 +785,8 @@ int main(int argc, char** argv)
                     if (appConfig.autoRun) {
                         startRunTestModules();
                     }
-                    permissionTester.has_internet_access();
-                    permissionTester.has_thunder_access();
-
+                    INFO("Permission: Internet - {}", permissionTester.has_internet_access() ? "granted" : "denied");
+                    INFO("Permission: Thunder - {}", permissionTester.has_thunder_access() ? "granted" : "denied");
                     currentAppState = newAppState;
                 }
                 break;

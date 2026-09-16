@@ -210,7 +210,10 @@ add_library(${GL_MODULE_TARGET} ${GL_MODULE_TYPE}
 
 target_compile_options(${GL_MODULE_TARGET} PRIVATE ${SECURE_COMPILER_FLAGS})
 # _FORTIFY_SOURCE=2 requires optimizations (e.g. -O2). Strip on Debug builds to avoid warnings.
-target_compile_definitions(${GL_MODULE_TARGET} PRIVATE $<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+target_compile_definitions(${GL_MODULE_TARGET}
+    PRIVATE
+        $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:_FORTIFY_SOURCE=2>
+)
 if(GL_MODULE_SHARED)
     set(LINK_FLAGS_LIST ${SECURE_LINKER_FLAGS})
     separate_arguments(LINK_FLAGS_LIST)

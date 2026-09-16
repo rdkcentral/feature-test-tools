@@ -10,15 +10,16 @@ and events/notifications across all supported Firebolt modules.
 
 ```
 native/
-├── CMakeLists.txt          # Top-level CMake project
+├── CMakeLists.txt              # Top-level CMake project
 ├── assets/
 │   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
 │   └── LICENSE                 # License text installed from the Liberation font package (OFL 1.1)
 └── src/
-    ├── main.cpp            # Entry point, connection management, run-mode dispatch
-    ├── utils.h / utils.cpp # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
-    ├── gl.h                # GlApp class declaration (Wayland/EGL/GLES keycode display window)
-    ├── gl.cpp              # GlApp implementation
+    ├── main.cpp                # Entry point, connection management, run-mode dispatch
+    ├── utils.h / utils.cpp     # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
+    ├── gl.h                    # GlApp class declaration (Wayland/EGL/GLES keycode display window)
+    ├── gl.cpp                  # GlApp implementation
+    ├── native_logger.hpp       # Shared logging infrastructure (DBG/INFO/WARN/ERR/FATAL macros)
     └── tests/
         ├── accessibilityTest.h/.cpp
         ├── actionsTest.h/.cpp
@@ -43,24 +44,29 @@ native/
 
 | Requirement | Notes |
 |---|---|
-| **CMake ≥ 3.12** | |
+| **CMake ≥ 3.13** | |
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
-| **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
-| **FireboltTransport** installed | Bundled in the firebolt-cpp-client build |
+| **FireboltClient v0.7.0** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
+| **FireboltTransport v1.1.12** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
 | **nlohmann-json** installed | Used for JSON input/response validation in tests |
+| **OpenSSL ≥ 3.0** | Required for secure WebSocket transport (libssl, libcrypto) |
+| **websocketpp** | Required for WebSocket communication |
 | **wayland-client / wayland-egl** | Required for the GL display window (`gl.cpp`) |
 | **EGL / GLESv2** | Required for the GL display window (`gl.cpp`) |
 | **Cairo / cairo-ft / FreeType** | Required for the GL display window (`gl.cpp`) |
+| **xkbcommon** (optional) | Enables XKB keymap translation in the GL window; falls back to raw evdev codes without it |
 
-The `FireboltClient`, `FireboltTransport`, and `nlohmann_json` CMake packages must be findable via
-`CMAKE_PREFIX_PATH` (or `SYSROOT_PATH` for cross-compilation).
+The `FireboltClient`, `FireboltTransport`, `nlohmann_json`, `OpenSSL`, and `websocketpp` CMake packages must be findable via
+`CMAKE_PREFIX_PATH` (or `CMAKE_SYSROOT` for cross-compilation).
+
+Logging level is controlled via the `GLLOGLEVEL` (GL module) and `APPLOGLEVEL` (app module) environment variables.
 
 ---
 
 ## Building
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build -DBUILD_FIREBOLT_APP=ON -DGL_MODULE_SHARED=ON
 cmake --build build --parallel
 ```
 
@@ -79,21 +85,20 @@ inherit cmake pkgconfig
 
 SRC_URI = "${CMF_GITHUB_ROOT}/feature-test-tools;${CMF_GITHUB_SRC_URI_SUFFIX}"
 SRCREV = "${AUTOREV}"  <=== Replace with SHA
-PV = "2.0.0"
+PV = "3.0.0"
 PR = "r0"
 
 S = "${WORKDIR}/git/firebolt-test-app/native"
 
-DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell libxkbcommon"
-RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell libxkbcommon xkeyboard-config"
+DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell libxkbcommon websocketpp asio openssl"
+RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell libxkbcommon xkeyboard-config openssl"
 
 EXTRA_OECMAKE:append = " \
     -DBUILD_FIREBOLT_APP=ON \
-    -DBUILD_GL_TEST=ON \
-    -DGL_MODULE_SHARED=OFF \
+    -DGL_MODULE_SHARED=ON \
     "
 
-FILES:${PN} += " /usr/share/fonts"
+FILES:${PN} += " /usr/share/*"
 ```
 
 ### Bolt package configuration
@@ -101,7 +106,7 @@ FILES:${PN} += " /usr/share/fonts"
 ```json
 {
   "id": "com.rdkcentral.fbttest",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "name": "fbttest",
   "packageType": "application",
   "entryPoint": "/usr/bin/firebolt-test-app",
@@ -109,8 +114,7 @@ FILES:${PN} += " /usr/share/fonts"
     "com.rdkcentral.base": "0.3.1"
   },
   "permissions": [
-      "urn:rdk:permission:firebolt",
-      "urn:rdk:permission:game-controller"
+      "urn:rdk:permission:firebolt"
   ],
   "configuration": {
       "urn:rdk:config:env": {
@@ -198,7 +202,7 @@ Some modules expose additional methods depending on the selected Firebolt versio
 | Module | Firebolt 8 methods | Additional Firebolt 9 methods |
 |---|---|---|
 | **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timezone`, `onTimezoneChanged` (subscribe / unsubscribe) |
+| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timeZone`, `onTimeZoneChanged` (subscribe / unsubscribe) |
 
 ---
 
@@ -231,7 +235,7 @@ firebolt-test-app --auto --firebolt-all
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Advertising** | `advertisingId` |
 | **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll`, `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe; v9+) |
-| **Discovery** | `watched`, `watchedV2` |
+| **Discovery** | `watched`, `watchedV2` *(returns void; reports success/failure)* |
 | **Display** | `size`, `maxResolution`, `edid` |
 | **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event` *(validates schema + JSON data input)*, `appInfo` |
