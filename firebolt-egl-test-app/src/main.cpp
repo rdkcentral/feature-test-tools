@@ -26,7 +26,6 @@
 // ---------------------------------------------------------------------------
 
 #include "gl.h"
-#include "utils.h"
 #include "native_logger.hpp"
 
 #include <firebolt/firebolt.h>
@@ -193,10 +192,18 @@ static std::unique_ptr<GlApp> initGlApp(int width,
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
-int main(int argc, char** argv)
+int main(void)
 {
-    Firebolt::LogLevel         logLevel = Firebolt::LogLevel::Notice;
+    const char* envUrl = std::getenv("FIREBOLT_ENDPOINT");
+    if (nullptr == envUrl) {
+        FATAL("FIREBOLT_ENDPOINT environment variable is not set.");
+        return 1;
+    }
+
     Firebolt::Config config;
+    config.wsUrl       = envUrl;
+    config.waitTime_ms = 1000;
+    config.log.level   = Firebolt::LogLevel::Info;
 
     struct ConnectionState
     {
@@ -243,7 +250,6 @@ int main(int argc, char** argv)
     INFO("Connected to Firebolt.");
 
     // --------------------------- GL App Lifecycle -------------------------------
-    ProgressController PC;
     BackgroundPatternMode glAppPattern = PATTERN_NONE;
     int glAppWidth = 1920, glAppHeight = 1080;
 
@@ -257,7 +263,6 @@ int main(int argc, char** argv)
     std::unique_ptr<GlApp> glApp = nullptr;
     std::mutex glAppMutex;
     std::thread glAppRunThread;
-    std::thread glAppProgressUpdateThread;
     bool glRunThreadStarted = false;
     Firebolt::SubscriptionId lifecycleSubId = 0;
     std::atomic<bool> sawLifecycleTerminating{ false };
@@ -330,25 +335,6 @@ int main(int argc, char** argv)
             INFO("GL render thread exited.");
         });
 
-        // Keep a single progress thread for the process lifetime; it safely no-ops while glApp is null.
-        if (!glAppProgressUpdateThread.joinable()) {
-            glAppProgressUpdateThread = std::thread([&glApp, &glAppMutex, &exitRequested, &PC]() {
-                float progressPercentage = 0.0f;
-                INFO("Starting GL progress update thread.");
-                while (!exitRequested.load(std::memory_order_acquire)) {
-                    progressPercentage = PC.wait_for_percentage_change(exitRequested);
-                    if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
-                        break;
-                    }
-
-                    std::lock_guard<std::mutex> lock(glAppMutex);
-                    if (GlApp* app = glApp.get(); app != nullptr) {
-                        app->updateProgress(progressPercentage);
-                    }
-                }
-                INFO("GL progress update thread exited; Last progress percentage={}", progressPercentage);
-            });
-        }
         glRunThreadStarted = true;
         return true;
     };
