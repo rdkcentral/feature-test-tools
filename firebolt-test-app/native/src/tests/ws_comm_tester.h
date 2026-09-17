@@ -45,12 +45,6 @@
 #include <websocketpp/client.hpp>
 #include <nlohmann/json.hpp>
 
-struct ThunderLoggerConfig {
-    static constexpr const char* kEnvVar = "COMMLOGLEVEL";
-    static constexpr const char* kTag = "[COMMLOG] ";
-};
-using LocalLogger = RuntimeLogger<ThunderLoggerConfig>;
-
 typedef websocketpp::client<websocketpp::config::asio_tls_client> TlsClient;
 typedef websocketpp::client<websocketpp::config::asio_client>     NoTlsClient;
 
@@ -101,6 +95,14 @@ private:
 
 // Async JSONRPC client for Thunder communication
 class ThunderWSJRPC {
+namespace {
+    struct ThunderLoggerConfig {
+        static constexpr const char* kEnvVar = "COMMLOGLEVEL";
+        static constexpr const char* kTag = "[COMMLOG] ";
+    };
+    using LocalLogger = RuntimeLogger<ThunderLoggerConfig>;
+} // namespace
+
     friend class PermissionTester;
 
 public:
@@ -108,11 +110,11 @@ public:
     static constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
 
     explicit ThunderWSJRPC(int max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
-        : m_request_queue(max_concurrent),
-          m_next_request_id(1),
-          m_connection_active(false),
+        : m_connection_active(false),
           m_connecting(false),
-          m_shutdown(false) {
+          m_shutdown(false),
+          m_request_queue(max_concurrent),
+          m_next_request_id(1) {
         const char* thunder_access_env = std::getenv("THUNDER_ACCESS");
         m_uri = thunder_access_env ? ("ws://" + std::string(thunder_access_env) + "/jsonrpc") : "";
 
@@ -156,7 +158,7 @@ public:
 
         for (const auto& [method, params] : testCalls) {
             json response;
-            bool success = send_request(method, params, response);
+            bool success = send_request(std::string(method), params, response);
             if (success && response.contains("result")) {
                 DBG("Thunder test call '{}' succeeded. Result: {}", method, response["result"].dump());
             } else {

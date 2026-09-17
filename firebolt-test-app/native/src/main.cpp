@@ -384,10 +384,11 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, P
             progressController.increment_progress();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        auto wsCommTester = std::make_unique<WsCommTester>();
-        wsCommTester->runThunderTests();
     }
+    // Simulate TestModules through thunder calls.
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    ThunderWSJRPC client;
+    client.start_thunder_tests();
 }
 
 static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<TestModuleBase>>& modules,
@@ -857,9 +858,7 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // Informm thunder to shutdown.
-    auto client = std::make_unique<ThunderWSJRPC>();
-    client->shutdown();
+    // Thunder cleanup already handled during lifecycle shutdown.
 
     autoDeferredCleanupAllowed.store(true, std::memory_order_release);
 
