@@ -194,6 +194,9 @@ static std::unique_ptr<GlApp> initGlApp(int width,
 // ---------------------------------------------------------------------------
 int main(void)
 {
+#ifdef PROJECT_VERSION
+    INFO("Firebolt EGL Test App Version: {}", PROJECT_VERSION);
+#endif
     const char* envUrl = std::getenv("FIREBOLT_ENDPOINT");
     if (nullptr == envUrl) {
         FATAL("FIREBOLT_ENDPOINT environment variable is not set.");
