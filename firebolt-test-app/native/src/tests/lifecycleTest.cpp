@@ -129,8 +129,7 @@ void LifecycleTest::runMethod(const std::string& method)
     {
         if (lastSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Lifecycle.onStateChanged (ID: "
-                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
