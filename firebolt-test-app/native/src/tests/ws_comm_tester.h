@@ -95,15 +95,15 @@ private:
 
 // Async JSONRPC client for Thunder communication
 class ThunderWSJRPC {
-namespace {
+    friend class PermissionTester;
+
+private:
     struct ThunderLoggerConfig {
         static constexpr const char* kEnvVar = "COMMLOGLEVEL";
         static constexpr const char* kTag = "[COMMLOG] ";
     };
-    using LocalLogger = RuntimeLogger<ThunderLoggerConfig>;
-} // namespace
 
-    friend class PermissionTester;
+    using LocalLogger = RuntimeLogger<ThunderLoggerConfig>;
 
 public:
     static constexpr int DEFAULT_MAX_CONCURRENT_REQUESTS = 5;
@@ -169,7 +169,7 @@ public:
     }
 
     bool send_request(const std::string& method, const json& params, json& response) {
-        if (m_shutdown) {
+        if (m_shutdown.load()) {
             return false;  // Reject requests during shutdown
         }
         if (!ensure_connection()) {
@@ -231,7 +231,7 @@ public:
 
     // Graceful shutdown: stops accepting new requests and waits for in-flight ones
     void shutdown() {
-        m_shutdown = true;
+        m_shutdown.store(true);
 
         // Stop the event loop to unblock run_client()
         m_notls_client.stop();
@@ -258,7 +258,7 @@ private:
             if (m_connection_active && m_connection) {
                 return true;
             }
-            m_connection_active = false;
+            m_connection_active.store(false);
         }
 
         // Atomic guard: only allow one thread to attempt connection
@@ -269,16 +269,16 @@ private:
             m_connection_cv.wait_for(
                 lock,
                 std::chrono::milliseconds(REQUEST_TIMEOUT_MS),
-                [this] { return m_connection_active; }
+                [this] { return m_connection_active.load(); }
             );
-            m_connecting = false;
-            return m_connection_active;
+            m_connecting.store(false);
+            return m_connection_active.load();
         }
 
         websocketpp::lib::error_code ec;
         NoTlsClient::connection_ptr con = m_notls_client.get_connection(m_uri, ec);
         if (ec) {
-            m_connecting = false;
+            m_connecting.store(false);
             return false;
         }
 
@@ -288,14 +288,14 @@ private:
         bool connected = m_connection_cv.wait_for(
             lock,
             std::chrono::milliseconds(REQUEST_TIMEOUT_MS),
-            [this] { return m_connection_active; }
+            [this] { return m_connection_active.load(); }
         );
 
         if (connected) {
             std::thread(&ThunderWSJRPC::run_client, this).detach();
         }
 
-        m_connecting = false;
+        m_connecting.store(false);
         return connected;
     }
 
@@ -304,7 +304,7 @@ private:
         if (m_connection) {
             m_connection->close(websocketpp::close::status::normal, "Shutting down");
             m_connection = nullptr;
-            m_connection_active = false;
+            m_connection_active.store(false);
         }
     }
 
@@ -312,21 +312,21 @@ private:
         {
             std::unique_lock<std::mutex> lock(m_connection_mutex);
             m_connection = m_notls_client.get_con_from_hdl(hdl);
-            m_connection_active = true;
+            m_connection_active.store(true);
         }
         m_connection_cv.notify_all();
     }
 
     void on_fail(websocketpp::connection_hdl) {
         std::unique_lock<std::mutex> lock(m_connection_mutex);
-        m_connection_active = false;
+        m_connection_active.store(false);
     }
 
     void on_http(websocketpp::connection_hdl hdl) {
         NoTlsClient::connection_ptr con = m_notls_client.get_con_from_hdl(hdl);
         con->close(websocketpp::close::status::normal, "HTTP Error");
         std::unique_lock<std::mutex> lock(m_connection_mutex);
-        m_connection_active = false;
+        m_connection_active.store(false);
     }
 
     void on_message(websocketpp::connection_hdl, NoTlsClient::message_ptr msg) {
@@ -348,7 +348,7 @@ private:
     }
 
     void run_client() {
-        if (!m_shutdown) {
+        if (!m_shutdown.load()) {
             m_notls_client.run();
         }
     }
