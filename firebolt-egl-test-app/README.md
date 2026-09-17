@@ -1,6 +1,6 @@
-# Firebolt C++ Test Application
+# Firebolt C++ EGL Test Application
 
-A native C++ egl test application aliging to firebolt lifecycle
+Native C++ EGL test application conforming to Firebolt Lifecycle
 
 ## Prerequisites
 
@@ -10,7 +10,6 @@ A native C++ egl test application aliging to firebolt lifecycle
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
 | **FireboltClient v0.7.0** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport v1.1.12** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
-| **nlohmann-json** installed | Used for JSON input/response validation in tests |
 | **wayland-client / wayland-egl** | Required for the GL display window (`gl.cpp`) |
 | **EGL / GLESv2** | Required for the GL display window (`gl.cpp`) |
 | **Cairo / cairo-ft / FreeType** | Required for the GL display window (`gl.cpp`) |
@@ -84,7 +83,7 @@ FILES:${PN} += " /usr/share/*"
 
 ### Font License Note
 
-`assets/LICENSE` is the license text installed from the Liberation font package for
+[`LICENSE`](../firebolt-test-app/native/assets/LICENSE) is the license text installed from the Liberation font package for
 `LiberationSans-Bold.ttf`.
 
 ---

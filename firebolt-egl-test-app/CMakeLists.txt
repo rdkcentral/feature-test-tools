@@ -188,7 +188,6 @@ endif()
 
 find_package(FireboltTransport CONFIG REQUIRED)
 find_package(FireboltClient    CONFIG REQUIRED)
-find_package(nlohmann_json     CONFIG REQUIRED)
 
 file(GLOB SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
@@ -204,7 +203,6 @@ target_link_libraries(${APP_TARGET}
     PRIVATE
         FireboltTransport::FireboltTransport
         FireboltClient::FireboltClient
-        nlohmann_json::nlohmann_json
         Threads::Threads
     PUBLIC
         ${WAYLAND_LINK_LIBS}
