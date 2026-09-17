@@ -45,7 +45,7 @@ SRCREV = "${AUTOREV}"  <=== Replace with SHA
 PV = "1.0.0"
 PR = "r0"
 
-S = "${WORKDIR}/git/firebolt-egl-test-app/"
+S = "${WORKDIR}/git/firebolt-egl-test-app"
 
 DEPENDS = "firebolt-cpp-client nlohmann-json cairo virtual/egl virtual/libgles2 freetype westeros-simpleshell libxkbcommon"
 RDEPENDS:${PN} += "firebolt-cpp-client firebolt-cpp-transport cairo westeros-simpleshell libxkbcommon xkeyboard-config"
