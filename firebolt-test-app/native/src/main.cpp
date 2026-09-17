@@ -53,7 +53,7 @@
 #include "tests/metricsTest.h"
 #include "tests/networkTest.h"
 #include "tests/presentationTest.h"
-#include "tests/ralfPermissionsTest.h"
+#include "tests/ws_comm_tester.h"
 #include "tests/SpeechSynthesisTest.h"
 #include "tests/statsTest.h"
 #include "tests/texttospeechTest.h"
@@ -384,6 +384,9 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, P
             progressController.increment_progress();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        auto wsCommTester = std::make_unique<WsCommTester>();
+        wsCommTester->runThunderTests();
     }
 }
 
@@ -613,9 +616,6 @@ int main(int argc, char** argv)
     Firebolt::SubscriptionId lifecycleSubId = 0;
     std::atomic<bool> sawLifecycleTerminating{ false };
 
-    // Internet and Thunder access tester
-    PermissionTester permissionTester;
-
     if (const char* w = std::getenv("WIDTH"))  try { glAppWidth = std::stoi(w); } catch (...) {}
     if (const char* h = std::getenv("HEIGHT")) try { glAppHeight = std::stoi(h); } catch (...) {}
 
@@ -780,6 +780,10 @@ int main(int argc, char** argv)
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {
+                    PermissionTester permissionTester;
+                    INFO("Permission: Internet - {}", permissionTester.has_internet_access() ? "granted" : "denied");
+                    INFO("Permission: Thunder - {}", permissionTester.has_thunder_access() ? "granted" : "denied");
+
                     if (!ensureGlAppInitialized()) {
                         FATAL("Failed to initialize GL context.");
                         exitRequested.store(true, std::memory_order_release);
@@ -804,8 +808,6 @@ int main(int argc, char** argv)
                     if (appConfig.autoRun) {
                         startRunTestModules();
                     }
-                    INFO("Permission: Internet - {}", permissionTester.has_internet_access() ? "granted" : "denied");
-                    INFO("Permission: Thunder - {}", permissionTester.has_thunder_access() ? "granted" : "denied");
                     currentAppState = newAppState;
                 }
                 break;
@@ -854,6 +856,10 @@ int main(int argc, char** argv)
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    // Informm thunder to shutdown.
+    auto client = std::make_unique<ThunderWSJRPC>();
+    client->shutdown();
 
     autoDeferredCleanupAllowed.store(true, std::memory_order_release);
 
