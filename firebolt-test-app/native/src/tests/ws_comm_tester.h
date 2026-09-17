@@ -50,14 +50,7 @@ typedef websocketpp::client<websocketpp::config::asio_client>     NoTlsClient;
 
 using json = nlohmann::json;
 
-// Structure to track in-flight JSONRPC requests
-struct PendingRequest {
-    int request_id;
-    std::promise<json> response_promise;
-    std::chrono::system_clock::time_point timeout_time;
-};
-
-// Thread-safe queue for managing concurrent requests
+// Thread-safe semaphore for managing concurrent requests
 class ThreadSafeRequestQueue {
 public:
     explicit ThreadSafeRequestQueue(int max_concurrent = 5)
@@ -94,53 +87,35 @@ private:
 };
 
 // Async JSONRPC client for Thunder communication
+// Blocking JSONRPC client for Thunder communication
+// Uses concurrency limiter (max 5 concurrent requests)
+// Each request: fresh client instance → connect → send → block on run() until response
 class ThunderWSJRPC {
     friend class PermissionTester;
 
 private:
-    struct ThunderLoggerConfig {
+    struct LoggerConfig {
         static constexpr const char* kEnvVar = "COMMLOGLEVEL";
-        static constexpr const char* kTag = "[COMMLOG] ";
+        static constexpr const char* kTag = "[COMM] ";
     };
-
-    using LocalLogger = RuntimeLogger<ThunderLoggerConfig>;
+    using LocalLogger = RuntimeLogger<LoggerConfig>;
 
 public:
     static constexpr int DEFAULT_MAX_CONCURRENT_REQUESTS = 5;
     static constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
 
     explicit ThunderWSJRPC(int max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
-        : m_connection_active(false),
-          m_connecting(false),
-          m_shutdown(false),
-          m_request_queue(max_concurrent),
-          m_next_request_id(1) {
+        : m_request_queue(max_concurrent), m_shutdown(false) {
         const char* thunder_access_env = std::getenv("THUNDER_ACCESS");
         m_uri = thunder_access_env ? ("ws://" + std::string(thunder_access_env) + "/jsonrpc") : "";
-
-        m_notls_client.clear_access_channels(websocketpp::log::alevel::all);
-        m_notls_client.clear_error_channels(websocketpp::log::elevel::all);
-        m_notls_client.init_asio();
-
-        m_notls_client.set_open_handler([this](websocketpp::connection_hdl hdl) { on_open(hdl); });
-        m_notls_client.set_fail_handler([this](websocketpp::connection_hdl hdl) { on_fail(hdl); });
-        m_notls_client.set_http_handler([this](websocketpp::connection_hdl hdl) { on_http(hdl); });
-        m_notls_client.set_message_handler([this](websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
-            on_message(hdl, msg);
-        });
     }
 
     ~ThunderWSJRPC() {
-        // Perform shutdown if not already done
-        if (!m_shutdown) {
-            shutdown();
-        }
+        shutdown();
     }
 
-    // Public APIs
     void start_thunder_tests() {
-        // To simulate system changes so that various Test module events can be tested.
-        // array of tuple of (method, params) to send to Thunder
+        // Simulate system changes for testing
         const std::array<std::tuple<std::string_view, json>, 12> testCalls{{
             { "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
             { "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
@@ -160,7 +135,7 @@ public:
             json response;
             bool success = send_request(std::string(method), params, response);
             if (success && response.contains("result")) {
-                DBG("Thunder test call '{}' succeeded. Result: {}", method, response["result"].dump());
+                DBG("Thunder test call '{}' succeeded.", method);
             } else {
                 WARN("Thunder test call '{}' failed.", method);
             }
@@ -169,203 +144,99 @@ public:
     }
 
     bool send_request(const std::string& method, const json& params, json& response) {
-        if (m_shutdown.load()) {
-            return false;  // Reject requests during shutdown
-        }
-        if (!ensure_connection()) {
+        if (m_shutdown.load() || m_uri.empty()) {
             return false;
         }
-        m_request_queue.wait_for_slot();
-        json request = {
-            {"jsonrpc", "2.0"},
-            {"method", method}
-        };
-        if (!params.empty()) {
-            request["params"] = params;
-        }
-        if (!request.contains("id")) {
-            request["id"] = m_next_request_id.fetch_add(1);
-        }
-        int req_id = request["id"].get<int>();
 
-        std::promise<json> promise;
-        auto future = promise.get_future();
-        {
-            std::unique_lock<std::mutex> lock(m_pending_requests_mutex);
-            m_pending_requests[req_id] = std::make_shared<PendingRequest>(
-                PendingRequest{req_id, std::move(promise), {}});
+        if (!m_request_queue.try_acquire()) {
+            return false;
         }
 
-        bool send_success = false;
-        {
-            std::unique_lock<std::mutex> lock(m_connection_mutex);
-            if (m_connection_active && m_connection) {
-                websocketpp::lib::error_code ec = m_connection->send(
-                    request.dump(), websocketpp::frame::opcode::text);
-                send_success = !ec;
-            }
-        }
-
+        bool result = send_request_internal(method, params, response);
         m_request_queue.release();
-
-        if (!send_success) {
-            std::unique_lock<std::mutex> lock(m_pending_requests_mutex);
-            m_pending_requests.erase(req_id);
-            return false;
-        }
-
-        auto status = future.wait_for(std::chrono::milliseconds(REQUEST_TIMEOUT_MS));
-        if (status == std::future_status::timeout) {
-            std::unique_lock<std::mutex> lock(m_pending_requests_mutex);
-            m_pending_requests.erase(req_id);
-            return false;
-        }
-
-        try {
-            response = future.get();
-            return true;
-        } catch (...) {
-            return false;
-        }
+        return result;
     }
 
-    // Graceful shutdown: stops accepting new requests and waits for in-flight ones
     void shutdown() {
         m_shutdown.store(true);
-
-        // Stop the event loop to unblock run_client()
-        m_notls_client.stop();
-
-        // Wait for pending requests to complete or timeout
-        {
-            std::unique_lock<std::mutex> lock(m_pending_requests_mutex);
-            auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(REQUEST_TIMEOUT_MS);
-            while (!m_pending_requests.empty() && std::chrono::steady_clock::now() < deadline) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                // Reacquire lock and check again
-                lock.unlock();
-                lock.lock();
-            }
-        }
-
-        disconnect_internal();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
 private:
-    bool ensure_connection() {
-        {
-            std::unique_lock<std::mutex> lock(m_connection_mutex);
-            if (m_connection_active && m_connection) {
-                return true;
-            }
-            m_connection_active.store(false);
-        }
+    bool send_request_internal(const std::string& method, const json& params, json& response) {
+        // Fresh client per-request to avoid state pollution
+        static int request_id_counter = 1;
+        NoTlsClient client;
+        client.clear_access_channels(websocketpp::log::alevel::all);
+        client.clear_error_channels(websocketpp::log::elevel::all);
+        client.init_asio();
 
-        // Atomic guard: only allow one thread to attempt connection
-        bool expected = false;
-        if (!m_connecting.compare_exchange_strong(expected, true)) {
-            // Another thread is already connecting; wait for it
-            std::unique_lock<std::mutex> lock(m_connection_mutex);
-            m_connection_cv.wait_for(
-                lock,
-                std::chrono::milliseconds(REQUEST_TIMEOUT_MS),
-                [this] { return m_connection_active.load(); }
-            );
-            m_connecting.store(false);
-            return m_connection_active.load();
-        }
+        bool send_success = false;
+        bool response_received = false;
+
+        // on_open: send JSONRPC request
+        client.set_open_handler([&](websocketpp::connection_hdl hdl) {
+            NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
+            json request = {
+                {"jsonrpc", "2.0"},
+                {"id", request_id_counter++},
+                {"method", method},
+                {"params", params}
+            };
+            websocketpp::lib::error_code ec = con->send(request.dump(), websocketpp::frame::opcode::text);
+            send_success = !ec;
+            if (ec) {
+                con->close(websocketpp::close::status::normal, "Send failed");
+                client.stop();
+            }
+        });
+
+        // on_message: capture and validate response
+        client.set_message_handler([&](websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
+            NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
+            try {
+                response = json::parse(msg->get_payload());
+                if (response.contains("jsonrpc") && response.contains("id") && response.contains("result")) {
+                    response_received = true;
+                }
+            } catch (...) {
+                response_received = false;
+            }
+            con->close(websocketpp::close::status::normal, "Response received");
+            client.stop();
+        });
+
+        // on_fail: connection or handshake failed
+        client.set_fail_handler([&](websocketpp::connection_hdl) {
+            send_success = false;
+            client.stop();
+        });
+
+        // on_http: got HTTP response instead of WebSocket upgrade
+        client.set_http_handler([&](websocketpp::connection_hdl hdl) {
+            NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
+            con->close(websocketpp::close::status::normal, "HTTP Error");
+            send_success = false;
+            client.stop();
+        });
+
+        // Connect and run (blocks until handler calls client.stop())
+        client.reset();
+        client.set_open_handshake_timeout(REQUEST_TIMEOUT_MS);
 
         websocketpp::lib::error_code ec;
-        NoTlsClient::connection_ptr con = m_notls_client.get_connection(m_uri, ec);
-        if (ec) {
-            m_connecting.store(false);
-            return false;
+        NoTlsClient::connection_ptr con = client.get_connection(m_uri, ec);
+        if (!ec) {
+            client.connect(con);
+            client.run();  // Blocks until handler calls stop()
         }
 
-        m_notls_client.connect(con);
-
-        std::unique_lock<std::mutex> lock(m_connection_mutex);
-        bool connected = m_connection_cv.wait_for(
-            lock,
-            std::chrono::milliseconds(REQUEST_TIMEOUT_MS),
-            [this] { return m_connection_active.load(); }
-        );
-
-        if (connected) {
-            std::thread(&ThunderWSJRPC::run_client, this).detach();
-        }
-
-        m_connecting.store(false);
-        return connected;
+        return send_success && response_received;
     }
 
-    void disconnect_internal() {
-        std::unique_lock<std::mutex> lock(m_connection_mutex);
-        if (m_connection) {
-            m_connection->close(websocketpp::close::status::normal, "Shutting down");
-            m_connection = nullptr;
-            m_connection_active.store(false);
-        }
-    }
-
-    void on_open(websocketpp::connection_hdl hdl) {
-        {
-            std::unique_lock<std::mutex> lock(m_connection_mutex);
-            m_connection = m_notls_client.get_con_from_hdl(hdl);
-            m_connection_active.store(true);
-        }
-        m_connection_cv.notify_all();
-    }
-
-    void on_fail(websocketpp::connection_hdl) {
-        std::unique_lock<std::mutex> lock(m_connection_mutex);
-        m_connection_active.store(false);
-    }
-
-    void on_http(websocketpp::connection_hdl hdl) {
-        NoTlsClient::connection_ptr con = m_notls_client.get_con_from_hdl(hdl);
-        con->close(websocketpp::close::status::normal, "HTTP Error");
-        std::unique_lock<std::mutex> lock(m_connection_mutex);
-        m_connection_active.store(false);
-    }
-
-    void on_message(websocketpp::connection_hdl, NoTlsClient::message_ptr msg) {
-        try {
-            json response = json::parse(msg->get_payload());
-            if (response.contains("id")) {
-                int req_id = response["id"].get<int>();
-                std::unique_lock<std::mutex> lock(m_pending_requests_mutex);
-                auto it = m_pending_requests.find(req_id);
-                if (it != m_pending_requests.end()) {
-                    auto pending = it->second;
-                    m_pending_requests.erase(it);
-                    pending->response_promise.set_value(response);
-                }
-            }
-        } catch (...) {
-            // Ignore parse errors or unexpected messages
-        }
-    }
-
-    void run_client() {
-        if (!m_shutdown.load()) {
-            m_notls_client.run();
-        }
-    }
-
-    NoTlsClient m_notls_client;
-    NoTlsClient::connection_ptr m_connection;
-    std::mutex m_connection_mutex;
-    std::condition_variable m_connection_cv;
-    std::atomic<bool> m_connection_active;
-    std::atomic<bool> m_connecting;  // Guards concurrent connection attempts
-    std::atomic<bool> m_shutdown;
     std::string m_uri;
-
     ThreadSafeRequestQueue m_request_queue;
-    std::atomic<int> m_next_request_id;
-    std::map<int, std::shared_ptr<PendingRequest>> m_pending_requests;
-    std::mutex m_pending_requests_mutex;
+    std::atomic<bool> m_shutdown;
 };
 
 class PermissionTester {
