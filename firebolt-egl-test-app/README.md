@@ -9,9 +9,9 @@ Native C++ EGL test application conforming to Firebolt Lifecycle
 | **CMake ≥ 3.13** | |
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
 | **FireboltClient v0.7.0** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
-| **FireboltTransport v1.1.12** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
+| **FireboltTransport v1.1.12** installed | Bundled from [firebolt-cpp-transport](https://github.com/rdkcentral/firebolt-cpp-transport) |
 | **wayland-client / wayland-egl** | Required for the GL display window (`gl.cpp`) |
-| **EGL / GLESv2** | Required for the GL display window (`gl.cpp`) |
+| **EGL / OpenGL ES 3 (GLES3 headers)** | Required for the GL display window (`gl.cpp`) |
 | **Cairo / cairo-ft / FreeType** | Required for the GL display window (`gl.cpp`) |
 | **xkbcommon** (optional) | Enables XKB keymap translation in the GL window; falls back to raw evdev codes without it |
 
@@ -126,4 +126,4 @@ Apache-2.0 – see [LICENSE](./../../LICENSE)
 | **Reserved Font Names** | Arimo, Tinos, Cousine, Liberation |
 | **License** | [SIL Open Font License, Version 1.1](../firebolt-test-app/native/assets/LICENSE) |
 | **Source** | https://github.com/liberationfonts/liberation-fonts |
-| **Bundled at** | `assets/LiberationSans-Bold.ttf` |
+| **Bundled at** | `../firebolt-test-app/native/assets/LiberationSans-Bold.ttf` |
