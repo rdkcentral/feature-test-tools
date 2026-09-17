@@ -134,12 +134,16 @@ public:
         for (const auto& [method, params] : testCalls) {
             json response;
             bool success = send_request(std::string(method), params, response);
-            if (success && response.contains("result")) {
-                DBG("Thunder test call '{}' succeeded.", method);
+            if (success) {
+                if (response["result"].is_object()) {
+                    DBG("Thunder test call '{}' succeeded with result: {}", method, response["result"].dump());
+                } else {
+                    DBG("Thunder test call '{}' succeeded with non-object result: {}", method, response.dump());
+                }
+                std::this_thread::sleep_for(std::chrono::seconds(2));
             } else {
                 WARN("Thunder test call '{}' failed.", method);
             }
-            std::this_thread::sleep_for(std::chrono::seconds(2));
         }
     }
 
@@ -165,7 +169,7 @@ public:
 private:
     bool send_request_internal(const std::string& method, const json& params, json& response) {
         // Fresh client per-request to avoid state pollution
-        static int request_id_counter = 1;
+        static std::atomic<int> request_id_counter{1};
         NoTlsClient client;
         client.clear_access_channels(websocketpp::log::alevel::all);
         client.clear_error_channels(websocketpp::log::elevel::all);

@@ -4,6 +4,9 @@ A native C++ firebolt test application that exercises the
 [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) APIs
 and events/notifications across all supported Firebolt modules.
 
+This test app will modify system configurations to verify the notifications but it will not reset it back to original.
+Hence a manual factory reset using System UI is mandated after this app terminates.
+
 ---
 
 ## Project Layout

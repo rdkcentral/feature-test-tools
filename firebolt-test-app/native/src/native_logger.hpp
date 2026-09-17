@@ -75,10 +75,13 @@ struct RuntimeLogger {
 
     // Fast path: Used when just a single string literal or string_view is passed
     inline static void write_log(std::ostream& stream, std::string_view prefix, std::string_view message) {
-        stream.write(get_tag().data(), get_tag().size());
-        stream.write(prefix.data(), prefix.size());
-        stream.write(message.data(), message.size());
-        stream.put('\n');
+        std::string full_line;
+        full_line.reserve(get_tag().size() + prefix.size() + message.size() + 1);
+        full_line.append(get_tag());
+        full_line.append(prefix);
+        full_line.append(message);
+        full_line.push_back('\n');
+        stream.write(full_line.data(), static_cast<std::streamsize>(full_line.size()));
     }
 
     template<typename... Args>
