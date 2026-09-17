@@ -257,7 +257,6 @@ int main(void)
     int glAppWidth = 1920, glAppHeight = 1080;
 
     std::atomic<bool> exitRequested{ false };
-    std::atomic<bool> autoDeferredCleanupAllowed{ false };
     std::mutex appStateQueueMutex;
     std::deque<AppState> pendingAppStates;
     AppState currentAppState{AppState::UNKNOWN_STATE};
@@ -443,8 +442,6 @@ int main(void)
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-
-    autoDeferredCleanupAllowed.store(true, std::memory_order_release);
 
     // Wait for the GL render thread to exit if it was started.
     if (glAppRunThread.joinable()) {
