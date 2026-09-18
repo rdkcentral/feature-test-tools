@@ -4,6 +4,9 @@ A native C++ firebolt test application that exercises the
 [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) APIs
 and events/notifications across all supported Firebolt modules.
 
+It uses thunder APIs to alter the system configurations to test the Firebolt events and it never restores to original.
+Explicitely do a device factory reset when the app exits.
+
 ---
 
 ## Project Layout
@@ -27,7 +30,6 @@ native/
         ├── deviceTest.h/.cpp
         ├── discoveryTest.h/.cpp
         ├── displayTest.h/.cpp
-        ├── lifecycleTest.h/.cpp
         ├── localizationTest.h/.cpp
         ├── metricsTest.h/.cpp
         ├── networkTest.h/.cpp
@@ -35,7 +37,8 @@ native/
         ├── SpeechSynthesisTest.h/.cpp
         ├── statsTest.h/.cpp
         ├── texttospeechTest.h/.cpp
-        └── VideoOutputTest.h/.cpp
+        ├── VideoOutputTest.h/.cpp
+        └── ws_comm_tester.h    # Internal WebSocket/Thunder communication test helper
 ```
 
 ---

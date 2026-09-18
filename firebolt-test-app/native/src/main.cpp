@@ -864,8 +864,6 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // Thunder cleanup already handled during lifecycle shutdown.
-
     autoDeferredCleanupAllowed.store(true, std::memory_order_release);
 
     // Wait for the test modules thread to exit if it was started.
