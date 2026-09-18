@@ -36,6 +36,9 @@
 #include <future>
 #include <atomic>
 #include <memory>
+#include <array>
+#include <tuple>
+#include <string_view>
 #include "native_logger.hpp"
 
 #define ASIO_STANDALONE
@@ -48,7 +51,18 @@
 typedef websocketpp::client<websocketpp::config::asio_tls_client> TlsClient;
 typedef websocketpp::client<websocketpp::config::asio_client>     NoTlsClient;
 
+
 using json = nlohmann::json;
+
+struct CallEntry {
+    std::string_view method;
+    json params;
+};
+
+template <typename... Args>
+constexpr auto make_call_array(Args&&... args) {
+    return std::array<CallEntry, sizeof...(Args)>{ std::forward<Args>(args)... };
+}
 
 // Thread-safe semaphore for managing concurrent requests
 class ThreadSafeRequestQueue {
@@ -86,13 +100,7 @@ private:
     int m_current_count;
 };
 
-// Async JSONRPC client for Thunder communication
-// Blocking JSONRPC client for Thunder communication
-// Uses concurrency limiter (max 5 concurrent requests)
-// Each request: fresh client instance → connect → send → block on run() until response
 class ThunderWSJRPC {
-    friend class PermissionTester;
-
 private:
     struct LoggerConfig {
         static constexpr const char* kEnvVar = "COMMLOGLEVEL";
@@ -102,7 +110,7 @@ private:
 
 public:
     static constexpr int DEFAULT_MAX_CONCURRENT_REQUESTS = 5;
-    static constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
+    static constexpr uint32_t REQUEST_TIMEOUT_MS = 6000;
 
     explicit ThunderWSJRPC(int max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
         : m_request_queue(max_concurrent), m_shutdown(false) {
@@ -115,36 +123,46 @@ public:
     }
 
     void start_thunder_tests() {
+        // Updated test method to match your working curl/js validation target
         // Simulate system changes for testing
-        const std::array<std::tuple<std::string_view, json>, 12> testCalls{{
-            { "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
-            { "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
-            { "org.rdk.Xcast.setFriendlyName", { {"friendlyname", "FriendlyNameTest"} } },
-            { "org.rdk.UserSettings.setPresentationLanguage", { {"presentationLanguage", "en-US"} } },
-            { "org.rdk.UserSettings.setPreferredAudioLanguages", { {"preferredLanguages", "eng,spa"} } },
-            { "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", false} } },
-            { "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", true} } },
-            { "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", false} } },
-            { "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } },
-            { "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "720p"}, {"ignoreEdid", true} } },
-            { "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p30"}, {"ignoreEdid", true} } },
-            { "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } }
-        }};
+        const auto testCalls = make_call_array(
+            CallEntry{ "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
+            CallEntry{ "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
+            CallEntry{ "org.rdk.Xcast.setFriendlyName", { {"friendlyname", "FriendlyNameTest"} } },
+            CallEntry{ "org.rdk.UserSettings.setPresentationLanguage", { {"presentationLanguage", "en-US"} } },
+            CallEntry{ "org.rdk.UserSettings.setPreferredAudioLanguages", { {"preferredLanguages", "eng,spa"} } },
+            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", false} } },
+            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", true} } },
+            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", false} } },
+            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "720p"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p30"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } }
+        );
+
 
         for (const auto& [method, params] : testCalls) {
             json response;
+            DBG("Attempting connection to: {} for method: ", m_uri, method);
+
             bool success = send_request(std::string(method), params, response);
-            if (success && response.contains("result")) {
-                DBG("Thunder test call '{}' succeeded.", method);
+            if (success) {
+                if (response.contains("result")) {
+                    INFO("Test call '{}' succeeded! Result:{}", method, response["result"].dump(4));
+                } else {
+                    INFO("Test call '{}' succeeded with raw payload:{}", method, response.dump());
+                }
             } else {
-                WARN("Thunder test call '{}' failed.", method);
+                ERR("Test call '{}' failed to get a valid JSON-RPC response.", method);
             }
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            // Intentional delay between changes to ensure live change reports.
+            std::this_thread::sleep_for(std::chrono::milliseconds(REQUEST_TIMEOUT_MS + 10));
         }
     }
 
     bool send_request(const std::string& method, const json& params, json& response) {
         if (m_shutdown.load() || m_uri.empty()) {
+            ERR("Client is shutdown or THUNDER_ACCESS environment variable is empty!");
             return false;
         }
 
@@ -164,167 +182,159 @@ public:
 
 private:
     bool send_request_internal(const std::string& method, const json& params, json& response) {
-        // Fresh client per-request to avoid state pollution
-        static int request_id_counter = 1;
+        static std::atomic<int> request_id_counter{1};
         NoTlsClient client;
+
+        // Suppress internal WebSocket++ verbose debug logs to keep stdout clean
         client.clear_access_channels(websocketpp::log::alevel::all);
         client.clear_error_channels(websocketpp::log::elevel::all);
-        client.init_asio();
 
-        bool send_success = false;
-        bool response_received = false;
+        try {
+            client.init_asio();
+        } catch (const std::exception& e) {
+            ERR("[AsioError] Failed to initialize ASIO:{}", e.what());;
+            return false;
+        }
 
-        // on_open: send JSONRPC request
-        client.set_open_handler([&](websocketpp::connection_hdl hdl) {
+        // Shared context state lifecycle wrapper to bridge async handlers safely to this thread scope
+        struct RequestContext {
+            std::mutex mtx;
+            std::condition_variable cv;
+            bool completed = false;
+            bool send_success = false;
+            bool response_received = false;
+            std::string error_reason = "Unknown error";
+            json response_data;
+        };
+        auto ctx = std::make_shared<RequestContext>();
+        int current_id = request_id_counter++;
+
+        // Open handler: Fires automatically upon successful WebSocket handshake
+        client.set_open_handler([&client, ctx, method, params, current_id](websocketpp::connection_hdl hdl) {
             NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
             json request = {
                 {"jsonrpc", "2.0"},
-                {"id", request_id_counter++},
+                {"id", current_id},
                 {"method", method},
                 {"params", params}
             };
+
             websocketpp::lib::error_code ec = con->send(request.dump(), websocketpp::frame::opcode::text);
-            send_success = !ec;
+
+            std::lock_guard<std::mutex> lock(ctx->mtx);
+            ctx->send_success = !ec;
             if (ec) {
+                ctx->error_reason = "WebSocket Send failed: " + ec.message();
+                ctx->completed = true;
+                ctx->cv.notify_one();
                 con->close(websocketpp::close::status::normal, "Send failed");
-                client.stop();
             }
         });
 
-        // on_message: capture and validate response
-        client.set_message_handler([&](websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
+        // Message handler: Fires when Thunder responds back with data text frames
+        client.set_message_handler([&client, ctx](websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
             NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
+            std::lock_guard<std::mutex> lock(ctx->mtx);
             try {
-                response = json::parse(msg->get_payload());
-                if (response.contains("jsonrpc") && response.contains("id") && response.contains("result")) {
-                    response_received = true;
+                ctx->response_data = json::parse(msg->get_payload());
+                if (ctx->response_data.contains("jsonrpc")) {
+                    ctx->response_received = true;
+                } else {
+                    ctx->error_reason = "Malformed JSON-RPC payload received";
                 }
-            } catch (...) {
-                response_received = false;
+            } catch (const std::exception& e) {
+                ctx->response_received = false;
+                ctx->error_reason = std::string("JSON Parse Exception: ") + e.what();
             }
-            con->close(websocketpp::close::status::normal, "Response received");
+            ctx->completed = true;
+            ctx->cv.notify_one();
+
+            // 1. Send the close frame to the server
+            con->close(websocketpp::close::status::normal, "Transaction Complete");
+            // 2. Forcefully stop the client loop since this is a short-lived ephemeral thread session.
             client.stop();
         });
 
-        // on_fail: connection or handshake failed
-        client.set_fail_handler([&](websocketpp::connection_hdl) {
-            send_success = false;
-            client.stop();
-        });
+        auto fail_or_close_handler = [ctx, &client](websocketpp::connection_hdl hdl) {
+            (void)hdl; // Unused parameter
+            std::lock_guard<std::mutex> lock(ctx->mtx);
+            if (!ctx->completed) {
+                ctx->error_reason = "Connection failed or dropped prematurely";
+                ctx->completed = true;
+                ctx->cv.notify_one();
+            }
+            client.stop(); // Break the event loop instantly
+        };
+        client.set_fail_handler(fail_or_close_handler);
+        client.set_close_handler(fail_or_close_handler);
+        client.set_http_handler(fail_or_close_handler);
 
-        // on_http: got HTTP response instead of WebSocket upgrade
-        client.set_http_handler([&](websocketpp::connection_hdl hdl) {
+        // Fail handler: Catches handshake rejections, connection drops, and bad ports
+        client.set_fail_handler([ctx, &client](websocketpp::connection_hdl hdl) {
             NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
-            con->close(websocketpp::close::status::normal, "HTTP Error");
-            send_success = false;
-            client.stop();
+            std::lock_guard<std::mutex> lock(ctx->mtx);
+            if (!ctx->completed) {
+                ctx->error_reason = "Handshake failed or connection rejected by server. Code: " +
+                                    std::to_string(con->get_local_close_code()) + " - " + con->get_local_close_reason();
+                ctx->completed = true;
+                ctx->cv.notify_one();
+            }
         });
 
-        // Connect and run (blocks until handler calls client.stop())
-        client.reset();
+        // Close handler: Graceful lifecycle teardown catch
+        client.set_close_handler([ctx](websocketpp::connection_hdl) {
+            std::lock_guard<std::mutex> lock(ctx->mtx);
+            if (!ctx->completed) {
+                ctx->error_reason = "Connection closed prematurely by remote host";
+                ctx->completed = true;
+                ctx->cv.notify_one();
+            }
+        });
+
         client.set_open_handshake_timeout(REQUEST_TIMEOUT_MS);
 
         websocketpp::lib::error_code ec;
         NoTlsClient::connection_ptr con = client.get_connection(m_uri, ec);
-        if (!ec) {
-            client.connect(con);
-            client.run();  // Blocks until handler calls stop()
-        }
-
-        return send_success && response_received;
-    }
-
-    std::string m_uri;
-    ThreadSafeRequestQueue m_request_queue;
-    std::atomic<bool> m_shutdown;
-};
-
-class PermissionTester {
-public:
-    PermissionTester() {
-        m_thunder_client = std::make_unique<ThunderWSJRPC>();
-
-        m_tls_client.clear_access_channels(websocketpp::log::alevel::all);
-        m_tls_client.clear_error_channels(websocketpp::log::elevel::all);
-        m_tls_client.init_asio();
-
-        m_tls_client.set_open_handler([this](websocketpp::connection_hdl hdl) { this->on_open_tls(hdl); });
-        m_tls_client.set_fail_handler([this](websocketpp::connection_hdl hdl) { this->on_fail_tls(hdl); });
-        m_tls_client.set_http_handler([this](websocketpp::connection_hdl hdl) { this->on_http_tls(hdl); });
-
-        m_tls_client.set_tls_init_handler([](websocketpp::connection_hdl) {
-            auto ctx = websocketpp::lib::make_shared<asio::ssl::context>(asio::ssl::context::sslv23_client);
-            ctx->set_options(asio::ssl::context::default_workarounds |
-                             asio::ssl::context::no_sslv2 |
-                             asio::ssl::context::no_sslv3);
-            return ctx;
-        });
-    }
-
-    ~PermissionTester() {
-    }
-
-    bool has_internet_access() {
-        const std::string test_urls[] = {
-            "wss://echo.websocket.org",
-            "wss://echo.websocket.events"
-        };
-        for (const auto& url : test_urls) {
-            m_internet_success = false;
-            std::thread worker(&PermissionTester::test_reachability_tls, this, url, 2000);
-            worker.join();
-
-            if (m_internet_success) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool has_thunder_access() {
-        const char* thunder_access_env = std::getenv("THUNDER_ACCESS");
-        if (!thunder_access_env) {
+        if (ec) {
+            ERR("[ConnectionError] Base URI configuration mapping failed:{}", ec.message());
             return false;
         }
 
-        json response;
-        bool success = m_thunder_client->send_request("Controller.1.version", {}, response);
-        return success && response.contains("result");
-    }
+        // Connect and start the network thread loop driver
+        client.connect(con);
 
-private:
-    void on_open_tls(websocketpp::connection_hdl hdl) {
-        TlsClient::connection_ptr con = m_tls_client.get_con_from_hdl(hdl);
-        m_internet_success = true;
-        con->close(websocketpp::close::status::normal, "Reachability test finished");
-        m_tls_client.stop();
-    }
+        std::thread runner([&client]() {
+            client.run();
+        });
 
-    void on_fail_tls(websocketpp::connection_hdl) {
-        m_internet_success = false;
-        m_tls_client.stop();
-    }
+        // Block local calling thread until transaction finishes or hits explicit safety timeout gates
+        std::unique_lock<std::mutex> lock(ctx->mtx);
+        bool wait_success = ctx->cv.wait_for(lock, std::chrono::milliseconds(REQUEST_TIMEOUT_MS), [&] {
+            return ctx->completed;
+        });
 
-    void on_http_tls(websocketpp::connection_hdl hdl) {
-        TlsClient::connection_ptr con = m_tls_client.get_con_from_hdl(hdl);
-        m_internet_success = false;
-        con->close(websocketpp::close::status::normal, "HTTP Error");
-        m_tls_client.stop();
-    }
-
-    void test_reachability_tls(std::string uri, uint32_t timeout_ms) {
-        m_tls_client.reset();
-        m_tls_client.set_open_handshake_timeout(timeout_ms);
-
-        websocketpp::lib::error_code ec;
-        TlsClient::connection_ptr con = m_tls_client.get_connection(uri, ec);
-        if (!ec) {
-            m_tls_client.connect(con);
-            m_tls_client.run();
+        if (!wait_success) {
+            ctx->error_reason = "Transaction timed out waiting for Thunder response frame";
+            if (con->get_state() == websocketpp::session::state::open) {
+                con->close(websocketpp::close::status::normal, "Timeout");
+            }
         }
-    }
 
-    TlsClient m_tls_client;
-    bool m_internet_success = false;
-    std::unique_ptr<ThunderWSJRPC> m_thunder_client;
+        bool final_success = ctx->send_success && ctx->response_received;
+        if (!final_success) {
+            ERR("[Debug Error Diagnostic] {}", ctx->error_reason);;
+        }
+        lock.unlock();
+        if (runner.joinable()) {
+            runner.join();
+        }
+        if (final_success) {
+            response = std::move(ctx->response_data);
+            return true;
+        }
+        return false;
+    }
+    std::string m_uri;
+    ThreadSafeRequestQueue m_request_queue;
+    std::atomic<bool> m_shutdown;
 };

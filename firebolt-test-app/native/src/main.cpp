@@ -781,10 +781,6 @@ int main(int argc, char** argv)
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {
-                    PermissionTester permissionTester;
-                    INFO("Permission: Internet - {}", permissionTester.has_internet_access() ? "granted" : "denied");
-                    INFO("Permission: Thunder - {}", permissionTester.has_thunder_access() ? "granted" : "denied");
-
                     if (!ensureGlAppInitialized()) {
                         FATAL("Failed to initialize GL context.");
                         exitRequested.store(true, std::memory_order_release);
