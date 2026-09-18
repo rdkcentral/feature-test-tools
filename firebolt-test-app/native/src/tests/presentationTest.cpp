@@ -55,17 +55,28 @@ void PresentationTest::runMethod(const std::string& method)
     {
         if (lastSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Presentation.onFocusedChanged (ID: "
-                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .PresentationInterface()
-                     .subscribeOnFocusedChanged([](bool focused) {
-                         std::cout << "  [EVENT] onFocusedChanged: focused="
-                                   << std::boolalpha << focused << std::endl;
-                     });
+                    .PresentationInterface()
+                    .subscribeOnFocusedChanged([this](bool focused) {
+                        std::cout << "  [EVENT] onFocusedChanged: focused="
+                                  << std::boolalpha << focused << std::endl;
+                        // Invoke related method to confirm what is the current state of focused.
+                        auto r2 = IFireboltAccessor::Instance()
+                                     .PresentationInterface()
+                                     .focused();
+                        if (checkResult(r2, "Query Presentation.focused"))
+                        {
+                            std::cout << "  Query Response focused: " << std::boolalpha << *r2 << std::endl;
+                            if (focused != *r2)
+                            {
+                                std::cout << "  [ERROR] onFocusedChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             lastSubId_ = *r;

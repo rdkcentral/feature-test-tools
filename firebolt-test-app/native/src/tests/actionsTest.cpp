@@ -103,7 +103,7 @@ void printIntentSummary(const Intent& intent, const std::string& prefix)
     std::string schemaError;
     if (!validateIntentResponseSchema(responseJson, schemaError))
     {
-        std::cout << prefix << " [INVALID_RESPONSE_SCHEMA] " << schemaError << std::endl;
+        std::cout << prefix << " [ERROR] Invalid response schema: " << schemaError << std::endl;
         return;
     }
 
@@ -177,16 +177,31 @@ void ActionsTest::runMethod(const std::string& method)
     {
         if (onIntentSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Actions.onIntent (ID: "
-                      << onIntentSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .ActionsInterface()
-                     .subscribeOnIntent([](const Intent& intent) {
-                         printIntentSummary(intent, "  [EVENT] onIntent");
-                     });
+                    .ActionsInterface()
+                    .subscribeOnIntent([this](const Intent& intent) {
+                        printIntentSummary(intent, "  [EVENT] onIntent");
+                        // Invoke related method to confirm what is the current state of the intent.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .ActionsInterface()
+                                        .intent();
+                        if (checkResult(r2, "Actions.intent"))
+                        {
+                            printIntentSummary(*r2, "  Querying Actions.intent");
+                            if (intent.intentId != r2->intentId || intent.intent.action != r2->intent.action ||
+                                (intent.intent.context && r2->intent.context &&
+                                 intent.intent.context->source != r2->intent.context->source) ||
+                                (intent.intent.context && !r2->intent.context) ||
+                                (!intent.intent.context && r2->intent.context))
+                            {
+                                std::cout << "  [ERROR] onIntent event intentId does not match Actions.intent query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onIntentSubId_ = *r;

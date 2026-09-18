@@ -201,7 +201,7 @@ protected:
         const int errorCode = static_cast<int>(result.error());
         std::cerr << Color::red() << "[FAIL]" << Color::reset()
                   << " " << label
-                  << " – error code: " << errorCode
+                  << " - error code: " << errorCode
                   << " (" << fireboltErrorCodeToString(errorCode) << ")"
                   << std::endl;
         return false;

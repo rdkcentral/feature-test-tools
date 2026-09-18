@@ -53,17 +53,28 @@ void NetworkTest::runMethod(const std::string& method)
     {
         if (lastSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Network.onConnectedChanged (ID: "
-                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .NetworkInterface()
-                     .subscribeOnConnectedChanged([](bool connected) {
-                         std::cout << "  [EVENT] onConnectedChanged: connected="
-                                   << std::boolalpha << connected << std::endl;
-                     });
+                    .NetworkInterface()
+                    .subscribeOnConnectedChanged([this](bool connected) {
+                        std::cout << "  [EVENT] onConnectedChanged: connected="
+                                  << std::boolalpha << connected << std::endl;
+                        // Invoke related method to confirm what is the current state of network connectivity.
+                        auto r2 = IFireboltAccessor::Instance()
+                                     .NetworkInterface()
+                                     .connected();
+                        if (checkResult(r2, "Network.connected"))
+                        {
+                            std::cout << "  Query Response connected: " << std::boolalpha << *r2 << std::endl;
+                            if (connected != *r2)
+                            {
+                                std::cout << "  [ERROR] onConnectedChanged event value does not match query response." << std::endl;
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             lastSubId_ = *r;

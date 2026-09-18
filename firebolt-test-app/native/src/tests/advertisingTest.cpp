@@ -45,9 +45,7 @@ void AdvertisingTest::runMethod(const std::string& method)
                      .advertisingId();
         if (checkResult(r, method))
         {
-            std::cout << "  IFA:      " << r->ifa      << std::endl;
-            std::cout << "  IFA type: " << r->ifa_type << std::endl;
-            std::cout << "  LMT:      " << r->lmt      << std::endl;
+            std::cout << "  IFA: " << r->ifa << ", IFA type: " << r->ifa_type << ", LMT: " << r->lmt << std::endl;
         }
     }
     else

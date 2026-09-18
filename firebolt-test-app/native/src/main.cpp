@@ -53,7 +53,7 @@
 #include "tests/metricsTest.h"
 #include "tests/networkTest.h"
 #include "tests/presentationTest.h"
-#include "tests/ralfPermissionsTest.h"
+#include "tests/ws_comm_tester.h"
 #include "tests/SpeechSynthesisTest.h"
 #include "tests/statsTest.h"
 #include "tests/texttospeechTest.h"
@@ -185,6 +185,21 @@ void handleGlKeycode(const GlKeyEvent& keyEvent)
     }
 }
 } // namespace
+
+static const char* lifecycleStateStr(Firebolt::Lifecycle::LifecycleState& state)
+{
+    using namespace Firebolt::Lifecycle;
+    switch (state)
+    {
+        case LifecycleState::INITIALIZING: return "INITIALIZING";
+        case LifecycleState::ACTIVE:       return "ACTIVE";
+        case LifecycleState::PAUSED:       return "PAUSED";
+        case LifecycleState::SUSPENDED:    return "SUSPENDED";
+        case LifecycleState::HIBERNATED:   return "HIBERNATED";
+        case LifecycleState::TERMINATING:  return "TERMINATING";
+        default:                           return "UNKNOWN";
+    }
+}
 
 // ---------------------------------------------------------------------------
 // LifeCycleState to AppState mapping
@@ -340,7 +355,10 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
 // ---------------------------------------------------------------------------
 // runAutoMode – runs every method of every module sequentially
 // ---------------------------------------------------------------------------
-static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, ProgressController& progressController)
+static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
+                        ProgressController& progressController,
+                        ThunderWSJRPC& thunderClient,
+                        std::atomic<bool>& exitRequested)
 {
     const auto isDeferredCleanupMethod = [](const std::string& methodName) {
         static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
@@ -359,6 +377,10 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, P
         std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
         for (const auto& m : mod->methods())
         {
+            if (exitRequested.load(std::memory_order_acquire)) {
+                INFO("TMT: exit requested, stopping auto mode execution.");
+                return;
+            }
             if (isDeferredCleanupMethod(m))
             {
                 // In auto mode, defer unsubscribe/unsubscribeAll until app shutdown phase.
@@ -367,7 +389,13 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules, P
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
             progressController.increment_progress();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
+    }
+    // Simulate TestModules through thunder calls.
+    if (!thunderClient.get_uri().empty()) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        thunderClient.start_thunder_tests(exitRequested);
     }
 }
 
@@ -579,6 +607,7 @@ int main(int argc, char** argv)
 
     // --------------------------- GL App Lifecycle -------------------------------
     ProgressController PC;
+    ThunderWSJRPC thunderClient;
     BackgroundPatternMode glAppPattern = PATTERN_NONE;
     int glAppWidth = 1920, glAppHeight = 1080;
 
@@ -596,9 +625,6 @@ int main(int argc, char** argv)
     bool glRunThreadStarted = false;
     Firebolt::SubscriptionId lifecycleSubId = 0;
     std::atomic<bool> sawLifecycleTerminating{ false };
-
-    // Internet and Thunder access tester
-    PermissionTester permissionTester;
 
     if (const char* w = std::getenv("WIDTH"))  try { glAppWidth = std::stoi(w); } catch (...) {}
     if (const char* h = std::getenv("HEIGHT")) try { glAppHeight = std::stoi(h); } catch (...) {}
@@ -702,6 +728,7 @@ int main(int argc, char** argv)
 
         runTestModulesThread = std::thread([&PC,
                                           &appConfig,
+                                          &thunderClient,
                                           &exitRequested,
                                           &autoDeferredCleanupAllowed]() {
             INFO("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
@@ -712,7 +739,7 @@ int main(int argc, char** argv)
             }
             PC.set_total(totalSteps);
             INFO("TMT: running auto mode, total steps = {}", totalSteps);
-            runAutoMode(testModules, PC);
+            runAutoMode(testModules, PC, thunderClient, exitRequested);
             INFO("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
             while (!exitRequested.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -757,10 +784,20 @@ int main(int argc, char** argv)
         }
 
         if (hasPendingState && newAppState != currentAppState) {
-            DBG("Lifecycle state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
+            DBG("Lifecycle derived state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
+            auto lifecycleState = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().state();
+            INFO("Query Response Lifecycle.state = {}, {}",
+                    (lifecycleState ? static_cast<int>(*lifecycleState) : -1), lifecycleStateStr(*lifecycleState));
             switch (newAppState) {
                 case AppState::INITIALIZING_TO_PAUSED:
                 {
+                    bool hasInternetAccess = PermissionTester::has_internet_access();
+                    bool hasThunderAccess = false;
+                    if (!thunderClient.get_uri().empty()) {
+                        hasThunderAccess = PermissionTester::has_thunder_access(thunderClient);
+                    }
+                    INFO("Permissions: Internet = {}, Thunder = {}", hasInternetAccess, hasThunderAccess);
+
                     if (!ensureGlAppInitialized()) {
                         FATAL("Failed to initialize GL context.");
                         exitRequested.store(true, std::memory_order_release);
@@ -785,8 +822,6 @@ int main(int argc, char** argv)
                     if (appConfig.autoRun) {
                         startRunTestModules();
                     }
-                    INFO("Permission: Internet - {}", permissionTester.has_internet_access() ? "granted" : "denied");
-                    INFO("Permission: Thunder - {}", permissionTester.has_thunder_access() ? "granted" : "denied");
                     currentAppState = newAppState;
                 }
                 break;

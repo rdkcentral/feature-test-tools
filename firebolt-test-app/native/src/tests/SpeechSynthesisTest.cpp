@@ -27,6 +27,7 @@
 #include <iostream>
 
 using namespace Firebolt;
+using namespace Firebolt::SpeechSynthesis;
 
 SpeechSynthesisTest::SpeechSynthesisTest(fireboltVersion /* version */)
 	: TestModuleBase("SpeechSynthesis")
@@ -47,19 +48,183 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
 {
 	std::cout << "[SpeechSynthesis] Running: " << method << std::endl;
 
-	// TODO: Implement SpeechSynthesis test methods when ClientWrapper supports this
-	if (method == "SpeechSynthesis.voices" ||
-		method == "SpeechSynthesis.speak" ||
-		method == "SpeechSynthesis.cancel" ||
-		method == "SpeechSynthesis.pause" ||
-		method == "SpeechSynthesis.resume" ||
-		method == "SpeechSynthesis.onVoicesChanged.subscribe" ||
-		method == "SpeechSynthesis.onVoicesChanged.unsubscribe" ||
-		method == "SpeechSynthesis.onUtteranceEvent.subscribe" ||
-		method == "SpeechSynthesis.onUtteranceEvent.unsubscribe" ||
-		method == "SpeechSynthesis.unsubscribeAll")
+	if ("SpeechSynthesis.voices" == method)
 	{
-		std::cout << "  [WARN] Method not implemented yet: " << method << std::endl;
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().voices();
+		if (checkResult(r, method))
+		{
+			std::cout << "  Available voices:" << std::endl;
+			for (const auto& voice : *r)
+			{
+				std::cout << "    - " << voice.name << " (" << voice.lang << ")"
+						  << (voice._default ? " [DEFAULT]" : "") << std::endl;
+			}
+		}
+	}
+	else if ("SpeechSynthesis.speak" == method)
+	{
+		std::string text = "Hello World";
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface()
+					 .speak(text, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt);
+		if (checkResult(r, method))
+		{
+			lastUtteranceId_ = *r;
+			std::cout << "  Speak utterance ID: " << lastUtteranceId_ << std::endl;
+		}
+	}
+	else if ("SpeechSynthesis.cancel" == method)
+	{
+		if (lastUtteranceId_ == 0)
+		{
+			std::cout << "  [WARN] No utterance ID available. Run SpeechSynthesis.speak first." << std::endl;
+			return;
+		}
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().cancel(lastUtteranceId_);
+		if (checkResult(r, method))
+		{
+			std::cout << "  Cancel succeeded." << std::endl;
+		}
+	}
+	else if ("SpeechSynthesis.pause" == method)
+	{
+		if (lastUtteranceId_ == 0)
+		{
+			std::cout << "  [WARN] No utterance ID available. Run SpeechSynthesis.speak first." << std::endl;
+			return;
+		}
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().pause(lastUtteranceId_);
+		if (checkResult(r, method))
+		{
+			std::cout << "  Pause succeeded." << std::endl;
+		}
+	}
+	else if ("SpeechSynthesis.resume" == method)
+	{
+		if (lastUtteranceId_ == 0)
+		{
+			std::cout << "  [WARN] No utterance ID available. Run SpeechSynthesis.speak first." << std::endl;
+			return;
+		}
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().resume(lastUtteranceId_);
+		if (checkResult(r, method))
+		{
+			std::cout << "  Resume succeeded." << std::endl;
+		}
+	}
+	else if ("SpeechSynthesis.onVoicesChanged.subscribe" == method)
+	{
+		if (0 != onVoicesChangedSubId_)
+		{
+			// Already subscribed, drop to avoid multiple subscriptions.
+			return;
+		}
+
+		auto r = IFireboltAccessor::Instance()
+					.SpeechSynthesisInterface()
+					.subscribeOnVoicesChanged([this](const std::pmr::vector<Voice>& voices) {
+						std::cout << "  [EVENT] onVoicesChanged: " << voices.size() << " voices available" << std::endl;
+						// Invoke related method to confirm what is the current state of voices.
+						auto r2 = IFireboltAccessor::Instance().SpeechSynthesisInterface().voices();
+						if (checkResult(r2, "Query SpeechSynthesis.voices"))
+						{
+							std::cout << "  Query voices: " << r2->size() << " voices available" << std::endl;
+							bool voicesMatch = (voices.size() == r2->size());
+							if (voicesMatch)
+							{
+								for (size_t i = 0; i < voices.size(); ++i)
+								{
+									if (voices[i].name != (*r2)[i].name ||
+										voices[i].lang != (*r2)[i].lang ||
+										voices[i]._default != (*r2)[i]._default)
+									{
+										voicesMatch = false;
+										break;
+									}
+								}
+							}
+							if (!voicesMatch)
+							{
+								std::cout << "  [ERROR] onVoicesChanged event value does not match query response." << std::endl;
+							}
+						}
+					});
+		if (checkResult(r, method))
+		{
+			onVoicesChangedSubId_ = *r;
+			std::cout << "  Subscribed. Subscription ID: " << onVoicesChangedSubId_ << std::endl;
+		}
+	}
+	else if ("SpeechSynthesis.onVoicesChanged.unsubscribe" == method)
+	{
+		if (0 == onVoicesChangedSubId_)
+		{
+			std::cout << "  [WARN] No active SpeechSynthesis.onVoicesChanged subscription. Subscribe first." << std::endl;
+			return;
+		}
+
+		std::cout << "  Unsubscribing ID: " << onVoicesChangedSubId_ << std::endl;
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().unsubscribe(onVoicesChangedSubId_);
+		if (checkResult(r, method))
+		{
+			onVoicesChangedSubId_ = 0;
+		}
+	}
+	else if ("SpeechSynthesis.onUtteranceEvent.subscribe" == method)
+	{
+		if (0 != onUtteranceEventSubId_)
+		{
+			// Already subscribed, drop to avoid multiple subscriptions.
+			return;
+		}
+
+		auto r = IFireboltAccessor::Instance()
+					.SpeechSynthesisInterface()
+					.subscribeOnUtteranceEvent([this](const UtteranceEvent& event) {
+						const char* eventStr = "UNKNOWN";
+						switch (event.event)
+						{
+							case UtteranceEventEnum::synthesisStarting: eventStr = "synthesisStarting"; break;
+							case UtteranceEventEnum::playbackStarting: eventStr = "playbackStarting"; break;
+							case UtteranceEventEnum::paused: eventStr = "paused"; break;
+							case UtteranceEventEnum::resumed: eventStr = "resumed"; break;
+							case UtteranceEventEnum::completed: eventStr = "completed"; break;
+							case UtteranceEventEnum::interrupted: eventStr = "interrupted"; break;
+							case UtteranceEventEnum::networkFailed: eventStr = "networkFailed"; break;
+							case UtteranceEventEnum::synthesisFailed: eventStr = "synthesisFailed"; break;
+							case UtteranceEventEnum::playbackFailed: eventStr = "playbackFailed"; break;
+							default: break;
+						}
+						std::cout << "  [EVENT] onUtteranceEvent: utteranceId=" << event.utteranceId << " event=" << eventStr
+								  << std::endl;
+					 });
+		if (checkResult(r, method))
+		{
+			onUtteranceEventSubId_ = *r;
+			std::cout << "  Subscribed. Subscription ID: " << onUtteranceEventSubId_ << std::endl;
+		}
+	}
+	else if ("SpeechSynthesis.onUtteranceEvent.unsubscribe" == method)
+	{
+		if (0 == onUtteranceEventSubId_)
+		{
+			std::cout << "  [WARN] No active SpeechSynthesis.onUtteranceEvent subscription. Subscribe first." << std::endl;
+			return;
+		}
+
+		std::cout << "  Unsubscribing ID: " << onUtteranceEventSubId_ << std::endl;
+		auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface().unsubscribe(onUtteranceEventSubId_);
+		if (checkResult(r, method))
+		{
+			onUtteranceEventSubId_ = 0;
+		}
+	}
+	else if ("SpeechSynthesis.unsubscribeAll" == method)
+	{
+		IFireboltAccessor::Instance().SpeechSynthesisInterface().unsubscribeAll();
+		lastUtteranceId_ = 0;
+		onVoicesChangedSubId_ = 0;
+		onUtteranceEventSubId_ = 0;
+		std::cout << "  Unsubscribed from all SpeechSynthesis events." << std::endl;
 	}
 	else
 	{

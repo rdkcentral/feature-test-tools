@@ -25,6 +25,7 @@
 #pragma once
 
 #include "../utils.h"
+#include <firebolt/speechsynthesis.h>
 
 class SpeechSynthesisTest : public TestModuleBase
 {
@@ -34,6 +35,7 @@ public:
     void runMethod(const std::string& method) override;
 
 private:
+    Firebolt::SpeechSynthesis::UtteranceId lastUtteranceId_{ 0 };
     Firebolt::SubscriptionId onVoicesChangedSubId_{ 0 };
     Firebolt::SubscriptionId onUtteranceEventSubId_{ 0 };
 };
