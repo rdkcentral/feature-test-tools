@@ -161,7 +161,7 @@ public:
         shutdown();
     }
 
-    void start_thunder_tests(&std::atomic<bool>& exitRequested) {
+    void start_thunder_tests(std::atomic<bool>& exitRequested) {
         const auto testCalls = make_call_array(
             CallEntry{ "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
             CallEntry{ "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
