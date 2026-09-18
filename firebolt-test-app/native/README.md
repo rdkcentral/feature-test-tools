@@ -117,7 +117,8 @@ FILES:${PN} += " /usr/share/*"
     "com.rdkcentral.base": "0.3.1"
   },
   "permissions": [
-      "urn:rdk:permission:firebolt"
+      "urn:rdk:permission:firebolt",
+      "urn:rdk:permission:thunder"
   ],
   "configuration": {
       "urn:rdk:config:env": {
