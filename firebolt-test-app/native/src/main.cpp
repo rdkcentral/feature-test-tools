@@ -388,8 +388,10 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
         }
     }
     // Simulate TestModules through thunder calls.
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    thunderClient.start_thunder_tests();
+    if (!thunderClient.get_uri().empty()) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        thunderClient.start_thunder_tests();
+    }
 }
 
 static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<TestModuleBase>>& modules,

@@ -46,7 +46,7 @@
 #endif
 
 struct GLTestLoggerConfig {
-    static constexpr const char* kEnvVar = "GLTESTLOGLEVEL";
+    static constexpr const char* kEnvVar = "GLLOGLEVEL";
     static constexpr const char* kTag = "[GL-TEST]";
 };
 using LocalLogger = RuntimeLogger<GLTestLoggerConfig>;
@@ -68,11 +68,13 @@ static const char* argValue(int argc, char** argv, const char* flag, const char*
 // ---------------------------------------------------------------------------
 static void keycodeCallback(const GlKeyEvent& keyEvent)
 {
-    std::ostringstream utf32Hex;
-    utf32Hex << "U+" << std::uppercase << std::hex << keyEvent.utf32;
-
-    INFO("keycode={} utf32={}", keyEvent.evdevKeycode, utf32Hex.str());
-    std::cout << "\n";
+    if (keyEvent.hasUtf32) {
+        std::ostringstream utf32Hex;
+        utf32Hex << "U+" << std::uppercase << std::hex << keyEvent.utf32;
+        INFO("keycode={} utf32={}", keyEvent.evdevKeycode, utf32Hex.str());
+    } else {
+        INFO("keycode={}", keyEvent.evdevKeycode);
+    }
 }
 
 // ---------------------------------------------------------------------------

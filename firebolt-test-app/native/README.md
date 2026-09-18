@@ -5,7 +5,7 @@ A native C++ firebolt test application that exercises the
 and events/notifications across all supported Firebolt modules.
 
 It uses thunder APIs to alter the system configurations to test the Firebolt events and it never restores to original.
-Explicitely do a device factory reset when the app exits.
+Explicitly do a device factory reset when the app exits.
 
 ---
 

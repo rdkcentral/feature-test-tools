@@ -269,16 +269,21 @@ private:
             }
         });
 
-        client.set_message_handler([&client, ctx](websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
+        client.set_message_handler([&client, ctx, current_id](websocketpp::connection_hdl hdl, NoTlsClient::message_ptr msg) {
             NoTlsClient::connection_ptr con = client.get_con_from_hdl(hdl);
             {
                 std::lock_guard<std::mutex> lock(ctx->mtx);
                 try {
                     ctx->response_data = json::parse(msg->get_payload());
-                    if (ctx->response_data.contains("jsonrpc") || ctx->response_data.contains("result") || ctx->response_data.contains("error")) {
+                    if (ctx->response_data.is_object() &&
+                        ("2.0" == ctx->response_data.value("jsonrpc", "")) &&
+                        ctx->response_data.contains("id") &&
+                        (ctx->response_data["id"] == current_id) &&
+                        ctx->response_data.contains("result") &&
+                        !ctx->response_data.contains("error")) {
                         ctx->response_received = true;
                     } else {
-                        ctx->error_reason = "Malformed JSON-RPC payload received";
+                        ctx->error_reason = "invalid JSON-RPC payload received";
                     }
                 } catch (const std::exception& e) {
                     ctx->response_received = false;
@@ -375,35 +380,44 @@ public:
     static bool has_internet_access(const std::string& domain = "www.example.com",
                                     const std::string& port = "443",
                                     int timeout_ms = 4000) {
-        auto check_task = [domain, port, timeout_ms]() -> bool {
-            struct addrinfo hints{}, *res = nullptr;
-            hints.ai_family = AF_UNSPEC;
-            hints.ai_socktype = SOCK_STREAM;
+        auto start_time = std::chrono::steady_clock::now();
 
-            int dns_status = getaddrinfo(domain.c_str(), port.c_str(), &hints, &res);
-            if (dns_status != 0 || !res) {
-                return false;
-            }
+        struct addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
 
-            int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        int dns_status = getaddrinfo(domain.c_str(), port.c_str(), &hints, &res);
+        if (dns_status != 0 || !res) {
+            return false;
+        }
+
+        // Try each address returned by getaddrinfo; succeed if any completes
+        for (struct addrinfo* addr = res; addr != nullptr; addr = addr->ai_next) {
+            int sock = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
             if (sock < 0) {
-                freeaddrinfo(res);
-                return false;
+                continue;
             }
 
             int flags = fcntl(sock, F_GETFL, 0);
             fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
-            connect(sock, res->ai_addr, res->ai_addrlen);
-            freeaddrinfo(res);
+            connect(sock, addr->ai_addr, addr->ai_addrlen);
 
             struct pollfd pfd{};
             pfd.fd = sock;
             pfd.events = POLLOUT;
 
-            if (poll(&pfd, 1, timeout_ms) <= 0 || !(pfd.revents & POLLOUT)) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start_time).count();
+            int remaining = timeout_ms - static_cast<int>(elapsed);
+            if (remaining <= 0) {
                 close(sock);
-                return false;
+                break;
+            }
+
+            if (poll(&pfd, 1, remaining) <= 0 || !(pfd.revents & POLLOUT)) {
+                close(sock);
+                continue;
             }
 
             int sock_err = 0;
@@ -411,23 +425,27 @@ public:
             getsockopt(sock, SOL_SOCKET, SO_ERROR, &sock_err, &len);
             if (sock_err != 0) {
                 close(sock);
-                return false;
+                continue;
             }
 
             SSL_library_init();
             SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
             if (!ctx) {
                 close(sock);
-                return false;
+                continue;
             }
 
             SSL* ssl = SSL_new(ctx);
+            if (!ssl) {
+                SSL_CTX_free(ctx);
+                close(sock);
+                continue;
+            }
             SSL_set_fd(ssl, sock);
             SSL_set_tlsext_host_name(ssl, domain.c_str());
 
             pfd.events = POLLIN | POLLOUT;
             int ret = 0;
-            auto start_time = std::chrono::steady_clock::now();
 
             while ((ret = SSL_connect(ssl)) <= 0) {
                 int err = SSL_get_error(ssl, ret);
@@ -439,8 +457,9 @@ public:
                     break;
                 }
 
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
-                int remaining = timeout_ms - static_cast<int>(elapsed);
+                elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - start_time).count();
+                remaining = timeout_ms - static_cast<int>(elapsed);
                 if (remaining <= 0 || poll(&pfd, 1, remaining) <= 0) {
                     break;
                 }
@@ -453,14 +472,13 @@ public:
             SSL_CTX_free(ctx);
             close(sock);
 
-            return handshake_ok;
-        };
-
-        auto future = std::async(std::launch::async, check_task);
-        if (future.wait_for(std::chrono::milliseconds(timeout_ms)) == std::future_status::ready) {
-            return future.get();
+            if (handshake_ok) {
+                freeaddrinfo(res);
+                return true;
+            }
         }
 
+        freeaddrinfo(res);
         return false;
     }
 };
