@@ -357,7 +357,8 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
 // ---------------------------------------------------------------------------
 static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
                         ProgressController& progressController,
-                        ThunderWSJRPC& thunderClient)
+                        ThunderWSJRPC& thunderClient,
+                        std::atomic<bool>& exitRequested)
 {
     const auto isDeferredCleanupMethod = [](const std::string& methodName) {
         static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
@@ -376,6 +377,10 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
         std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
         for (const auto& m : mod->methods())
         {
+            if (exitRequested.load(std::memory_order_acquire)) {
+                INFO("TMT: exit requested, stopping auto mode execution.");
+                return;
+            }
             if (isDeferredCleanupMethod(m))
             {
                 // In auto mode, defer unsubscribe/unsubscribeAll until app shutdown phase.
@@ -390,7 +395,7 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
     // Simulate TestModules through thunder calls.
     if (!thunderClient.get_uri().empty()) {
         std::this_thread::sleep_for(std::chrono::seconds(5));
-        thunderClient.start_thunder_tests();
+        thunderClient.start_thunder_tests(exitRequested);
     }
 }
 
@@ -734,7 +739,7 @@ int main(int argc, char** argv)
             }
             PC.set_total(totalSteps);
             INFO("TMT: running auto mode, total steps = {}", totalSteps);
-            runAutoMode(testModules, PC, thunderClient);
+            runAutoMode(testModules, PC, thunderClient, exitRequested);
             INFO("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
             while (!exitRequested.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));

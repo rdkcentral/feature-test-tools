@@ -161,7 +161,7 @@ public:
         shutdown();
     }
 
-    void start_thunder_tests() {
+    void start_thunder_tests(&std::atomic<bool>& exitRequested) {
         const auto testCalls = make_call_array(
             CallEntry{ "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
             CallEntry{ "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
@@ -178,6 +178,10 @@ public:
         );
 
         for (const auto& [method, params] : testCalls) {
+            if (exitRequested.load(std::memory_order_acquire)) {
+                INFO("Thunder test execution interrupted by exit request.");
+                return;
+            }
             json response;
             DBG("Attempting connection to: {} for method: {}", m_uri, method);
 
