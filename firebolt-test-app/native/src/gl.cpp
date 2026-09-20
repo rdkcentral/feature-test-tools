@@ -1712,7 +1712,8 @@ void GlApp::updateProgress(float percentage, bool changeColor = false)
     float clamped = std::max(0.0f, std::min(100.0f, percentage));
     m_ctx->progress_percentage.store(clamped, std::memory_order_release);
     if (changeColor) {
-        m_ctx->progress_color.store(ProgressBarPalette::DarkCharcoal, std::memory_order_release);
+        m_ctx->progress_color.store(static_cast<int>(ProgressBarPalette::DarkCharcoal),
+                                    std::memory_order_release);
     }
     signal_run_loop(m_ctx);
 }
