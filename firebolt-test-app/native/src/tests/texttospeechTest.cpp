@@ -208,7 +208,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnSpeechStart([](const SpeechIdEvent& e) {
+                    .subscribeOnSpeechStart([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechStart: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -236,7 +236,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnSpeechPause([](const SpeechIdEvent& e) {
+                    .subscribeOnSpeechPause([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechPause: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -264,7 +264,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnSpeechResume([](const SpeechIdEvent& e) {
+                    .subscribeOnSpeechResume([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechResume: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -292,7 +292,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnWillSpeak([](const SpeechIdEvent& e) {
+                    .subscribeOnWillSpeak([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onWillSpeak: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -320,7 +320,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnSpeechComplete([](const SpeechIdEvent& e) {
+                    .subscribeOnSpeechComplete([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechComplete: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -348,7 +348,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnSpeechInterrupted([](const SpeechIdEvent& e) {
+                    .subscribeOnSpeechInterrupted([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechInterrupted: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -377,7 +377,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnNetworkError([](const SpeechIdEvent& e) {
+                    .subscribeOnNetworkError([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onNetworkError: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });
@@ -405,7 +405,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
-                    .subscribeOnPlaybackError([](const SpeechIdEvent& e) {
+                    .subscribeOnPlaybackError([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onPlaybackError: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
                     });

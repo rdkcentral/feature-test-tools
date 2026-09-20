@@ -144,7 +144,7 @@ void LifecycleTest::runMethod(const std::string& method)
         }
 
         // Subscribe to lifecycle state changes and print each transition.
-        auto callback = [](const std::vector<StateChange>& changes)
+        auto callback = [this](const std::vector<StateChange>& changes)
         {
             std::cout << "  [EVENT] Lifecycle state changes:" << std::endl;
             for (const auto& change : changes)
@@ -154,6 +154,7 @@ void LifecycleTest::runMethod(const std::string& method)
                           << " -> "
                           << lifecycleStateStr(change.newState)
                           << std::endl;
+                reportStepCompletion();
             }
         };
 
