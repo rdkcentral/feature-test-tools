@@ -144,6 +144,10 @@ void ActionsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             printIntentSummary(*r, "  intent");
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Actions.start")
@@ -171,6 +175,10 @@ void ActionsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  Actions.start completed." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Actions.onIntent.subscribe")
@@ -199,6 +207,7 @@ void ActionsTest::runMethod(const std::string& method)
                                 (!intent.intent.context && r2->intent.context))
                             {
                                 std::cout << "  [ERROR] onIntent event intentId does not match Actions.intent query response." << std::endl;
+                                reportEventValidationFailure("onIntent", "Mismatch event payload != query response.");
                             }
                         }
                     });
@@ -206,6 +215,10 @@ void ActionsTest::runMethod(const std::string& method)
         {
             onIntentSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onIntentSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Actions.onIntent.unsubscribe")
@@ -224,6 +237,10 @@ void ActionsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onIntentSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Actions.unsubscribeAll")
@@ -231,6 +248,7 @@ void ActionsTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().ActionsInterface().unsubscribeAll();
         onIntentSubId_ = 0;
         std::cout << "  Unsubscribed from all Actions events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

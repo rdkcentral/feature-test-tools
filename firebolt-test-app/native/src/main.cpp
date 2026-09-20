@@ -147,6 +147,8 @@ public:
             if (failDetected) {
                 this->failDetected = true;
             }
+            DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}",
+                count, total, currentPercentage, this->failDetected);
         }
         cv.notify_one();
     }

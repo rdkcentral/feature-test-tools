@@ -47,6 +47,10 @@ void NetworkTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  connected: " << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Network.onConnectedChanged.subscribe")
@@ -72,6 +76,7 @@ void NetworkTest::runMethod(const std::string& method)
                             if (connected != *r2)
                             {
                                 std::cout << "  [ERROR] onConnectedChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onConnectedChanged", "Mismatch event payload != query response.");
                             }
                         }
                     });
@@ -79,6 +84,10 @@ void NetworkTest::runMethod(const std::string& method)
         {
             lastSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << lastSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Network.onConnectedChanged.unsubscribe")
@@ -96,6 +105,10 @@ void NetworkTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             lastSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Network.unsubscribeAll")
@@ -103,6 +116,7 @@ void NetworkTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().NetworkInterface().unsubscribeAll();
         lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Network events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

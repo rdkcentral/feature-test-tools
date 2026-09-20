@@ -85,6 +85,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             subId = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     };
 
@@ -99,6 +103,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
             lastSpeechId_ = r->speechId;
             std::cout << "  speechId: " << r->speechId
                       << "  ttsStatus: " << r->ttsStatus << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.getSpeechState" == method)
@@ -114,6 +122,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             std::cout << "  speechState for id " << lastSpeechId_
                       << ": " << static_cast<int>(r->speechState) << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.listVoices" == method)
@@ -129,6 +141,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
             {
                 std::cout << "    " << v << std::endl;
             }
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.pause" == method)
@@ -140,7 +156,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .pause(lastSpeechId_);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
     else if ("TextToSpeech.resume" == method)
     {
@@ -151,7 +173,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .resume(lastSpeechId_);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
     else if ("TextToSpeech.cancel" == method)
     {
@@ -162,7 +190,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .cancel(lastSpeechId_);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
     else if ("TextToSpeech.onSpeechStart.subscribe" == method)
     {
@@ -182,6 +216,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onSpeechStartSubId_ = *r;
             std::cout << "  Subscribed onSpeechStart, sub ID: " << onSpeechStartSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onSpeechStart.unsubscribe" == method)
@@ -206,6 +244,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onSpeechPauseSubId_ = *r;
             std::cout << "  Subscribed onSpeechPause, sub ID: " << onSpeechPauseSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onSpeechPause.unsubscribe" == method)
@@ -230,6 +272,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onSpeechResumeSubId_ = *r;
             std::cout << "  Subscribed onSpeechResume, sub ID: " << onSpeechResumeSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onSpeechResume.unsubscribe" == method)
@@ -254,6 +300,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onWillSpeakSubId_ = *r;
             std::cout << "  Subscribed onWillSpeak, sub ID: " << onWillSpeakSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onWillSpeak.unsubscribe" == method)
@@ -278,6 +328,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onSpeechCompleteSubId_ = *r;
             std::cout << "  Subscribed onSpeechComplete, sub ID: " << onSpeechCompleteSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onSpeechComplete.unsubscribe" == method)
@@ -302,6 +356,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onSpeechInterruptedSubId_ = *r;
             std::cout << "  Subscribed onSpeechInterrupted, sub ID: " << onSpeechInterruptedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onSpeechInterrupted.unsubscribe" == method)
@@ -327,6 +385,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onNetworkErrorSubId_ = *r;
             std::cout << "  Subscribed onNetworkError, sub ID: " << onNetworkErrorSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onNetworkError.unsubscribe" == method)
@@ -351,6 +413,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             onPlaybackErrorSubId_ = *r;
             std::cout << "  Subscribed onPlaybackError, sub ID: " << onPlaybackErrorSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("TextToSpeech.onPlaybackError.unsubscribe" == method)
@@ -369,6 +435,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
         onNetworkErrorSubId_ = 0;
         onPlaybackErrorSubId_ = 0;
         std::cout << "  Unsubscribed from all TextToSpeech events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

@@ -45,8 +45,11 @@ void DisplayTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().DisplayInterface().size();
         if (checkResult(r, method))
         {
-            std::cout << "  size (mm): "
-                      << r->width << "x" << r->height << std::endl;
+            std::cout << "  size (mm): " << r->width << "x" << r->height << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Display.edid" == method)
@@ -55,6 +58,10 @@ void DisplayTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  EDID: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Display.maxResolution" == method)
@@ -64,6 +71,10 @@ void DisplayTest::runMethod(const std::string& method)
         {
             std::cout << "  maxResolution: "
                       << r->width << "x" << r->height << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else

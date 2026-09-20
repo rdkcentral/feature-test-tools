@@ -111,6 +111,10 @@ void LifecycleTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  state: " << lifecycleStateStr(*r) << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Lifecycle.close")
@@ -123,7 +127,13 @@ void LifecycleTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .LifecycleInterface()
                      .close(closeType);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
     else if (method == "Lifecycle.onStateChanged.subscribe")
     {
@@ -154,6 +164,10 @@ void LifecycleTest::runMethod(const std::string& method)
         {
             lastSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << lastSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Lifecycle.onStateChanged.unsubscribe")
@@ -171,6 +185,10 @@ void LifecycleTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             lastSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Lifecycle.unsubscribeAll")
@@ -178,6 +196,7 @@ void LifecycleTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().LifecycleInterface().unsubscribeAll();
         lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Lifecycle events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

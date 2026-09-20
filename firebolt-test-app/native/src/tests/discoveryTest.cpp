@@ -62,6 +62,10 @@ void DiscoveryTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  watched reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Discovery.watchedV2")
@@ -86,6 +90,10 @@ void DiscoveryTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  watchedV2 reported successfully" << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else
