@@ -175,8 +175,8 @@ void LifecycleTest::runMethod(const std::string& method)
     {
         if (lastSubId_ == 0)
         {
-            std::cout << "  [WARN] No active Lifecycle subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active Lifecycle subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;

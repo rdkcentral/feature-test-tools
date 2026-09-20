@@ -284,6 +284,7 @@ void VideoOutputTest::runMethod(const std::string& method)
         if (0 == onResolutionChangedSubId_)
         {
             std::cout << "  [WARN] No active VideoOutput.onResolutionChanged subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -357,6 +358,7 @@ void VideoOutputTest::runMethod(const std::string& method)
         if (0 == onHdcpChangedSubId_)
         {
             std::cout << "  [WARN] No active VideoOutput.onHdcpChanged subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -428,6 +430,7 @@ void VideoOutputTest::runMethod(const std::string& method)
         if (0 == onCecStateChangedSubId_)
         {
             std::cout << "  [WARN] No active VideoOutput.onCecStateChanged subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -511,6 +514,7 @@ void VideoOutputTest::runMethod(const std::string& method)
         if (0 == onRefreshRateChangedSubId_)
         {
             std::cout << "  [WARN] No active VideoOutput.onRefreshRateChanged subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
 

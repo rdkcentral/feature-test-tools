@@ -229,6 +229,7 @@ void ActionsTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Actions.onIntent subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 

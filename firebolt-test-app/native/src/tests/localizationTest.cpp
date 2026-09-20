@@ -159,6 +159,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onCountryChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -231,6 +232,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onPreferredAudioLanguagesChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -291,6 +293,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onPresentationLanguageChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -351,6 +354,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onTimeZoneChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 

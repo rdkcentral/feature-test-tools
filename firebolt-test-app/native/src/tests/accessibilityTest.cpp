@@ -185,6 +185,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onAudioDescriptionChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -248,6 +249,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onClosedCaptionsSettingsChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -309,6 +311,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onHighContrastUIChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -373,6 +376,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onVoiceGuidanceSettingsChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 

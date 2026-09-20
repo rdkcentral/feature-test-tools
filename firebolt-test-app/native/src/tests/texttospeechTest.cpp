@@ -74,8 +74,8 @@ void TextToSpeechTest::runMethod(const std::string& method)
     auto unsubscribeById = [&](Firebolt::SubscriptionId& subId, const std::string& label) {
         if (0 == subId)
         {
-            std::cout << "  [WARN] No active " << label << " subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active " << label << " subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << subId << std::endl;

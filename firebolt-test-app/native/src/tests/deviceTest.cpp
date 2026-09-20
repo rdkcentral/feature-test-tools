@@ -272,6 +272,7 @@ void DeviceTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Device.onHdrChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -333,6 +334,7 @@ void DeviceTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Device.onDolbyAtmosExperienceAvailableChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 

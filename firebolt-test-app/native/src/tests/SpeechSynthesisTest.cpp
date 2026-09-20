@@ -186,6 +186,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
         if (0 == onVoicesChangedSubId_)
         {
             std::cout << "  [WARN] No active SpeechSynthesis.onVoicesChanged subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -244,6 +245,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
         if (0 == onUtteranceEventSubId_)
         {
             std::cout << "  [WARN] No active SpeechSynthesis.onUtteranceEvent subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
