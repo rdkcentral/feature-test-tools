@@ -77,6 +77,8 @@ void NetworkTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onConnectedChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onConnectedChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });

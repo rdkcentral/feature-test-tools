@@ -138,6 +138,8 @@ void LocalizationTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onCountryChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onCountryChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -208,6 +210,8 @@ void LocalizationTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onPreferredAudioLanguagesChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onPreferredAudioLanguagesChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -266,6 +270,8 @@ void LocalizationTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onPresentationLanguageChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onPresentationLanguageChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -324,6 +330,8 @@ void LocalizationTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onTimeZoneChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onTimeZoneChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });

@@ -164,6 +164,8 @@ void AccessibilityTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] audioDescription event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onAudioDescriptionChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                      });
@@ -225,6 +227,8 @@ void AccessibilityTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] closedCaptionsSettings event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onClosedCaptionsSettingsChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -284,6 +288,8 @@ void AccessibilityTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] highContrastUI event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onHighContrastUIChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -346,6 +352,8 @@ void AccessibilityTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] voiceGuidanceSettings event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onVoiceGuidanceSettingsChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });

@@ -209,6 +209,27 @@ public:
     const std::string&              name()    const { return name_; }
     const std::vector<std::string>& methods() const { return methods_; }
     std::size_t methodCount() const { return methods_.size(); }
+    std::size_t methodCountContaining(const std::string& token) const
+    {
+        std::size_t count = 0;
+        for (const auto& method : methods_) {
+            if (method.find(token) != std::string::npos) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+    std::vector<std::string> methodNamesContaining(const std::string& token) const
+    {
+        std::vector<std::string> matches;
+        for (const auto& method : methods_) {
+            if (method.find(token) != std::string::npos) {
+                matches.push_back(method);
+            }
+        }
+        return matches;
+    }
 
     virtual void runMethod(const std::string& method) = 0;
 
@@ -233,11 +254,6 @@ protected:
                       << " - error code: " << errorCode
                       << " (" << fireboltErrorCodeToString(errorCode) << ")"
                       << std::endl;
-        }
-
-        // Report progress to global tracker
-        if (ITestProgressTracker* tracker = GetTestProgressTracker(); tracker != nullptr) {
-            tracker->reportStepCompleted(!success);
         }
 
         return success;

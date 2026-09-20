@@ -208,6 +208,8 @@ void ActionsTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onIntent event intentId does not match Actions.intent query response." << std::endl;
                                 reportEventValidationFailure("onIntent", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });

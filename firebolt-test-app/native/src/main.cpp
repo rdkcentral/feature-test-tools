@@ -169,9 +169,7 @@ public:
             return -1.0f; // Clear sentinel value indicating exit
         }
 
-        if (failDetected) {
-            failDetected = this->failDetected;
-        }
+        failDetected = this->failDetected;
 
         hasChanged = false;
         return currentPercentage;
@@ -222,6 +220,8 @@ public:
             validationFailures_.push_back(details);
             this->failDetected = true;
         }
+        // Update the progress percentage to reflect the failure.
+        increment_progress(true);
     }
 
     /**
@@ -435,7 +435,6 @@ static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<Te
             }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
-            progressController.increment_progress();
         }
     }
     //Print the failures if any
@@ -490,7 +489,6 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
             }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
-            progressController.increment_progress();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
@@ -748,10 +746,14 @@ int main(void)
             INFO("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
             auto testModules = buildModuleList(appConfig.fireboltVersion);
             int totalSteps = 0;
+            int eventCount = 0;
             for (const auto& mod : testModules) {
                 totalSteps += static_cast<int>(mod->methodCount());
+                eventCount += static_cast<int>(mod->methodCountContaining(".subscribe"));
             }
-            PC.set_total(totalSteps);
+            DBG("TMT: total steps = {}, total event subscriptions = {}", totalSteps, eventCount);
+            PC.set_total(totalSteps + eventCount);
+
             INFO("TMT: running auto mode, total steps = {}", totalSteps);
             runAutoMode(testModules, PC, thunderClient, exitRequested);
             INFO("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");

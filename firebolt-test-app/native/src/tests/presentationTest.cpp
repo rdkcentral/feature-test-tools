@@ -79,6 +79,8 @@ void PresentationTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onFocusedChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onFocusedChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });

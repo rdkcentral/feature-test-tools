@@ -166,7 +166,7 @@ struct AppContext {
     std::atomic<uint32_t> current_keycode{ 0 };
     std::atomic<uint32_t> current_utf32{ 0 };
     std::atomic<float> progress_percentage{0.0f};
-    std::atomic<int> progress_color{ static_cast<int>(ProgressBarPalette::Monochrome) };
+    std::atomic<int> progress_color{ static_cast<int>(ProgressBarPalette::VibrantLime) };
 
     int wakeEventFd = -1;
     int waylandFd = -1;
@@ -548,6 +548,7 @@ bool init_gles_pipeline(AppContext* app)
         "                   case 16: activeBarColor = vec3(0.055, 0.965, 0.906); break;\n"
         "                   case 17: activeBarColor = vec3(0.541, 0.055, 0.965); break;\n"
         "                   case 18: activeBarColor = vec3(0.965, 0.055, 0.859); break;\n"
+        "                   case 19: activeBarColor = vec3(0.122, 0.141, 0.188); break;\n"
         "               }\n"
         "               finalColor = activeBarColor;\n"
         "           }\n"
@@ -969,7 +970,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     // Load the atomic progress state float natively into fragment pipeline uniform array
     float active_progress = app->progress_percentage.load(std::memory_order_acquire);
     glUniform1f(glGetUniformLocation(app->program_id, "u_progress"), active_progress);
-    glUniform1i(glGetUniformLocation(app->program_id, "u_palette"), static_cast<int>(app->progress_color));
+    glUniform1i(glGetUniformLocation(app->program_id, "u_palette"), app->progress_color.load(std::memory_order_acquire));
 
     glBindVertexArray(app->main_quad_vao_id);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -1712,7 +1713,7 @@ void GlApp::updateProgress(float percentage, bool changeColor = false)
     float clamped = std::max(0.0f, std::min(100.0f, percentage));
     m_ctx->progress_percentage.store(clamped, std::memory_order_release);
     if (changeColor) {
-        m_ctx->progress_color.store(static_cast<int>(ProgressBarPalette::DarkCharcoal),
+        m_ctx->progress_color.store(static_cast<int>(ProgressBarPalette::ElectricRed),
                                     std::memory_order_release);
     }
     signal_run_loop(m_ctx);

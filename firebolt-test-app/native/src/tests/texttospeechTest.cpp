@@ -207,11 +207,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechStart([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechStart: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechStart([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechStart: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechStartSubId_ = *r;
@@ -235,11 +235,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechPause([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechPause: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechPause([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechPause: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechPauseSubId_ = *r;
@@ -263,11 +263,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechResume([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechResume: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechResume([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechResume: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechResumeSubId_ = *r;
@@ -291,11 +291,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnWillSpeak([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onWillSpeak: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnWillSpeak([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onWillSpeak: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onWillSpeakSubId_ = *r;
@@ -319,11 +319,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechComplete([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechComplete: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechComplete([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechComplete: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechCompleteSubId_ = *r;
@@ -347,11 +347,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechInterrupted([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechInterrupted: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechInterrupted([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechInterrupted: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechInterruptedSubId_ = *r;
@@ -376,11 +376,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnNetworkError([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onNetworkError: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnNetworkError([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onNetworkError: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onNetworkErrorSubId_ = *r;
@@ -404,11 +404,11 @@ void TextToSpeechTest::runMethod(const std::string& method)
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnPlaybackError([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onPlaybackError: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnPlaybackError([](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onPlaybackError: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onPlaybackErrorSubId_ = *r;

@@ -166,6 +166,8 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onVoicesChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onVoicesChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -224,6 +226,8 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
                             default: break;
                         }
                         std::cout << "  [EVENT] onUtteranceEvent: utteranceId=" << event.utteranceId << " event=" << eventStr << std::endl;
+                        // TODO: add validation when possible. Till then report step completion to avoid blocking the test progress.
+                        reportStepCompletion();
                      });
         if (checkResult(r, method))
         {

@@ -251,6 +251,8 @@ void DeviceTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onHdrChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onHdrChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -310,6 +312,8 @@ void DeviceTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onDolbyAtmosExperienceAvailableChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onDolbyAtmosExperienceAvailableChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });

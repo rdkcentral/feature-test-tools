@@ -264,6 +264,8 @@ void VideoOutputTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onResolutionChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onResolutionChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -335,6 +337,8 @@ void VideoOutputTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onHdcpChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onHdcpChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -404,6 +408,8 @@ void VideoOutputTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onCecStateChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onCecStateChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -485,6 +491,8 @@ void VideoOutputTest::runMethod(const std::string& method)
                             {
                                 std::cout << "  [ERROR] onRefreshRateChanged event value does not match query response." << std::endl;
                                 reportEventValidationFailure("onRefreshRateChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
