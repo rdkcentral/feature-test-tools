@@ -173,6 +173,31 @@ bool parseBool(const std::string& s);
 double parseDoubleOrDefault(const std::string& input, double fallback, const char* fieldName);
 
 // ---------------------------------------------------------------------------
+// Global Progress/Failure Tracker Interface
+// ---------------------------------------------------------------------------
+/// Forward declaration and global accessor for progress tracking.
+/// This allows test modules to report progress and failures without direct
+/// dependency on the main application's ProgressController.
+class ITestProgressTracker {
+public:
+    virtual ~ITestProgressTracker() = default;
+
+    /// Report one step completed. Set failDetected=true if the step failed.
+    virtual void reportStepCompleted(bool failDetected = false) = 0;
+
+    /// Report a validation failure detected in event handlers or callbacks.
+    /// This flags a failure without incrementing progress (for validation mismatches).
+    virtual void reportValidationFailure(const std::string& details) = 0;
+};
+
+/// Get the global test progress tracker instance (set by main application).
+/// Returns nullptr if no tracker is registered.
+ITestProgressTracker* GetTestProgressTracker();
+
+/// Register the global test progress tracker (called by main app before test execution).
+void SetTestProgressTracker(ITestProgressTracker* tracker);
+
+// ---------------------------------------------------------------------------
 // Base class for every module test-wrapper
 // ---------------------------------------------------------------------------
 class TestModuleBase
@@ -189,22 +214,52 @@ public:
 
 protected:
     /// Print the result error code and return false when the call failed.
+    /// Also reports progress to the global tracker if available.
     template <typename T>
     bool checkResult(const Firebolt::Result<T>& result, const std::string& label) const
     {
-        if (result)
+        const bool success = static_cast<bool>(result);
+
+        if (success)
         {
             std::cout << Color::green() << "[OK]" << Color::reset()
                       << " " << label << std::endl;
-            return true;
         }
-        const int errorCode = static_cast<int>(result.error());
-        std::cerr << Color::red() << "[FAIL]" << Color::reset()
-                  << " " << label
-                  << " - error code: " << errorCode
-                  << " (" << fireboltErrorCodeToString(errorCode) << ")"
-                  << std::endl;
-        return false;
+        else
+        {
+            const int errorCode = static_cast<int>(result.error());
+            std::cerr << Color::red() << "[FAIL]" << Color::reset()
+                      << " " << label
+                      << " - error code: " << errorCode
+                      << " (" << fireboltErrorCodeToString(errorCode) << ")"
+                      << std::endl;
+        }
+
+        // Report progress to global tracker
+        if (ITestProgressTracker* tracker = GetTestProgressTracker(); tracker != nullptr) {
+            tracker->reportStepCompleted(!success);
+        }
+
+        return success;
+    }
+
+    /// Helper to report step completion without logging a result.
+    /// Use this for methods that don't return a Firebolt::Result (e.g., unsubscribeAll).
+    void reportStepCompletion(bool failed = false) const
+    {
+        if (ITestProgressTracker* tracker = GetTestProgressTracker(); tracker != nullptr) {
+            tracker->reportStepCompleted(failed);
+        }
+    }
+
+    /// Helper to report validation failures detected in event handlers or callbacks.
+    /// Use this when an event handler detects a mismatch without incrementing progress.
+    /// Example: event value doesn't match query response.
+    void reportEventValidationFailure(const std::string& eventName, const std::string& details) const
+    {
+        if (ITestProgressTracker* tracker = GetTestProgressTracker(); tracker != nullptr) {
+            tracker->reportValidationFailure(name_ + "." + eventName + ": " + details);
+        }
     }
 
     std::string              name_;
