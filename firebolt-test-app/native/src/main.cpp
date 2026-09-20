@@ -103,7 +103,7 @@ using LocalLogger = RuntimeLogger<AppLoggerConfig>;
 
 class ProgressController : public ITestProgressTracker {
 private:
-    std::mutex mtx;
+    mutable std::mutex mtx;
     std::condition_variable cv;
 
     int total = 0;
@@ -348,30 +348,6 @@ inline std::ostream& operator<<(std::ostream& os, AppState state)
 }
 
 // ---------------------------------------------------------------------------
-// printUsage
-// ---------------------------------------------------------------------------
-static void printUsage(const char* argv0)
-{
-    std::cout
-        << argv0 << " version " << PROJECT_VERSION << "\n\n"
-        << "SYNOPSIS\n"
-        << "  " << argv0 << " [<options>]\n\n"
-        << "OPTIONS\n"
-        << "  --auto         Run all methods for all modules without user input\n"
-        << "  --url <URL>    Specify a custom WebSocket endpoint URL\n"
-        << "  --legacy       Force legacy (v1) RPC protocol\n"
-        << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
-        << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Firebolt 8 modules only (excludes all Firebolt 9 modules and v9-specific methods)\n"
-        << "  --firebolt9    Firebolt 8 base modules + Firebolt 9 modules (default)\n"
-        << "  --firebolt-all All modules across all Firebolt versions\n"
-        << "  --help         Show this help and exit\n\n"
-        << "ENVIRONMENT\n"
-        << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
-        << "                     is not supplied.\n";
-}
-
-// ---------------------------------------------------------------------------
 // buildModuleList – registers all test modules
 //
 // version: Firebolt version to filter modules by.
@@ -551,7 +527,7 @@ static std::unique_ptr<GlApp> initGlApp(int width,
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
-int main(int argc, char** argv)
+int main(void)
 {
     std::cout << "Firebolt Test App v" << PROJECT_VERSION << std::endl;
 
@@ -636,7 +612,6 @@ int main(int argc, char** argv)
     // --------------------------- GL App Lifecycle -------------------------------
     ProgressController PC;
     ThunderWSJRPC thunderClient;
-    bool fireboltTestModuleDetectedFailure = false;
     BackgroundPatternMode glAppPattern = PATTERN_NONE;
     int glAppWidth = 1920, glAppHeight = 1080;
 

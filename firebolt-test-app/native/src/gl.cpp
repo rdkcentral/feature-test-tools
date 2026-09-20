@@ -166,7 +166,7 @@ struct AppContext {
     std::atomic<uint32_t> current_keycode{ 0 };
     std::atomic<uint32_t> current_utf32{ 0 };
     std::atomic<float> progress_percentage{0.0f};
-    std::atomic<Firebolt::ColorPalette> progress_color{ ProgressBarPalette::Monochrome };
+    std::atomic<int> progress_color{ static_cast<int>(ProgressBarPalette::Monochrome) };
 
     int wakeEventFd = -1;
     int waylandFd = -1;
