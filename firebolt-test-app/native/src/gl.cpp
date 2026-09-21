@@ -1705,9 +1705,9 @@ void GlApp::shutdown()
 /**
  * @brief Updates the progress percentage for rendering.
  * @param percentage The new progress percentage (0.0 to 100.0).
- * @param changeColor Whether to change the progress bar color.
+ * @param changeColor Whether to change the progress bar color, default false.
  */
-void GlApp::updateProgress(float percentage, bool changeColor = false)
+void GlApp::updateProgress(float percentage, bool changeColor)
 {
     if (!m_ctx) return;
     float clamped = std::max(0.0f, std::min(100.0f, percentage));
