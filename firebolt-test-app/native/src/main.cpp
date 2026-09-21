@@ -210,7 +210,7 @@ public:
 
     /**
      * ITestProgressTracker override: Report validation failures from event handlers.
-     * These are logged separately and set the failDetected flag but don't increment progress.
+     * These are recorded, set the failDetected flag, and advance progress so auto-run doesn't stall on mismatches.
      * @param details Description of the validation failure.
      */
     void reportValidationFailure(const std::string& details) override

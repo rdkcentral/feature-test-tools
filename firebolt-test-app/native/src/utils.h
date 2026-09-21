@@ -186,7 +186,7 @@ public:
     virtual void reportStepCompleted(bool failDetected = false) = 0;
 
     /// Report a validation failure detected in event handlers or callbacks.
-    /// This flags a failure without incrementing progress (for validation mismatches).
+    /// This flags a failure and should advance progress to avoid stalling auto-run on mismatches.
     virtual void reportValidationFailure(const std::string& details) = 0;
 };
 
@@ -235,7 +235,7 @@ public:
 
 protected:
     /// Print the result error code and return false when the call failed.
-    /// Also reports progress to the global tracker if available.
+    /// Progress reporting is handled separately via reportStepCompletion()/reportEventValidationFailure().
     template <typename T>
     bool checkResult(const Firebolt::Result<T>& result, const std::string& label) const
     {

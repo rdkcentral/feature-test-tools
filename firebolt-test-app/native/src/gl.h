@@ -107,7 +107,7 @@ class GlApp {
         void deinit();
 
         // Updates the progress percentage for rendering.
-        void updateProgress(float percentage, bool changeColor);
+        void updateProgress(float percentage, bool changeColor = false);
 
         // callback function pointer for get/clear keycode to external app.
         bool registerKeycodeCallback(void (*callback)(const GlKeyEvent& keyEvent));
