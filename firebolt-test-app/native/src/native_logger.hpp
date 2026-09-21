@@ -127,6 +127,15 @@ struct RuntimeLogger {
                 char trailing = (!custom_spec.empty()) ? custom_spec.back() : '\0';
                 printf_fmt[fmt_idx++] = (trailing == 'e' || trailing == 'E' || trailing == 'g' || trailing == 'G') ? trailing : 'f';
             } else if constexpr (std::is_integral_v<T>) {
+                // Add length modifiers for types wider than int
+                if constexpr (sizeof(T) > sizeof(int)) {
+                    if constexpr (sizeof(T) == sizeof(long)) {
+                        printf_fmt[fmt_idx++] = 'l';
+                    } else if constexpr (sizeof(T) == sizeof(long long)) {
+                        printf_fmt[fmt_idx++] = 'l';
+                        printf_fmt[fmt_idx++] = 'l';
+                    }
+                }
                 char trailing = (!custom_spec.empty()) ? custom_spec.back() : '\0';
                 if constexpr (std::is_signed_v<T>) {
                     printf_fmt[fmt_idx++] = (trailing == 'o') ? 'o' : ((trailing == 'x' || trailing == 'X') ? trailing : 'd');
@@ -144,6 +153,9 @@ struct RuntimeLogger {
             int len = 0;
             if constexpr (std::is_enum_v<T>) {
                 len = std::snprintf(buf, sizeof(buf), printf_fmt, static_cast<std::underlying_type_t<T>>(arg));
+            } else if constexpr (std::is_pointer_v<T>) {
+                // Cast all pointers to const void* for %p
+                len = std::snprintf(buf, sizeof(buf), printf_fmt, static_cast<const void*>(arg));
             } else {
                 len = std::snprintf(buf, sizeof(buf), printf_fmt, arg);
             }
