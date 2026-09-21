@@ -20,7 +20,6 @@
  *
  * @author Arun Madhavan
  */
-
 #pragma once
 
 #include <cstdint>
@@ -36,6 +35,7 @@
 #include <chrono>
 #include <cstring>
 #include <algorithm>
+#include <cctype>
 
 enum class LogLevel : int {
     Debug = 0,
@@ -73,7 +73,6 @@ struct RuntimeLogger {
 
     inline static constexpr std::string_view get_tag() { return Config::kTag; }
 
-    // Fast path: Used when just a single string literal or string_view is passed
     inline static void write_log(std::ostream& stream, std::string_view prefix, std::string_view message) {
         stream.write(get_tag().data(), get_tag().size());
         stream.write(prefix.data(), prefix.size());
@@ -87,46 +86,96 @@ struct RuntimeLogger {
         result_str.reserve(format_str.size() + 128);
 
         size_t last_pos = 0;
-        size_t current_pos = 0;
         bool has_extra_args = false;
         bool first_extra_arg = true;
 
-        auto append_arg = [&](const auto& arg) {
+        auto append_arg = [&](const auto& arg, [[maybe_unused]] std::string_view custom_spec) {
             using T = std::decay_t<decltype(arg)>;
 
             if constexpr (std::is_same_v<T, std::string>) {
                 result_str.append(arg);
+                return;
             } else if constexpr (std::is_same_v<T, std::string_view>) {
                 result_str.append(arg.data(), arg.size());
-            } else if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
-                const uintptr_t raw = reinterpret_cast<uintptr_t>(arg);
-                if (raw == 0U) {
-                    result_str.append("<null>");
-                } else {
-                    result_str.append(arg);
+                return;
+            }
+
+            char printf_fmt[32];
+            size_t fmt_idx = 0;
+            printf_fmt[fmt_idx++] = '%';
+
+            if (!custom_spec.empty()) {
+                if (custom_spec.front() == ':') {
+                    custom_spec.remove_prefix(1);
                 }
+                size_t len_to_copy = std::min(custom_spec.size(), sizeof(printf_fmt) - 4);
+                if (len_to_copy > 0 && std::isalpha(static_cast<unsigned char>(custom_spec[len_to_copy - 1]))) {
+                    len_to_copy--;
+                }
+                std::memcpy(printf_fmt + fmt_idx, custom_spec.data(), len_to_copy);
+                fmt_idx += len_to_copy;
+            }
+
+            if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
+                if (reinterpret_cast<uintptr_t>(arg) == 0U) { result_str.append("<null>"); return; }
+                printf_fmt[fmt_idx++] = 's';
             } else if constexpr (std::is_same_v<T, std::nullptr_t>) {
-                result_str.append("<null>");
+                result_str.append("<null>"); return;
             } else if constexpr (std::is_pointer_v<T>) {
-                char ptr_buf[32];
-                const int len = std::snprintf(ptr_buf, sizeof(ptr_buf), "%p", static_cast<const void*>(arg));
-                if (len > 0) result_str.append(ptr_buf, static_cast<size_t>(len));
+                printf_fmt[fmt_idx++] = 'p';
+            } else if constexpr (std::is_floating_point_v<T>) {
+                char trailing = (!custom_spec.empty()) ? custom_spec.back() : '\0';
+                printf_fmt[fmt_idx++] = (trailing == 'e' || trailing == 'E' || trailing == 'g' || trailing == 'G') ? trailing : 'f';
+            } else if constexpr (std::is_integral_v<T>) {
+                // Add length modifiers for types wider than int
+                if constexpr (sizeof(T) > sizeof(int)) {
+                    if constexpr (sizeof(T) == sizeof(long)) {
+                        printf_fmt[fmt_idx++] = 'l';
+                    } else if constexpr (sizeof(T) == sizeof(long long)) {
+                        printf_fmt[fmt_idx++] = 'l';
+                        printf_fmt[fmt_idx++] = 'l';
+                    }
+                }
+                char trailing = (!custom_spec.empty()) ? custom_spec.back() : '\0';
+                if constexpr (std::is_signed_v<T>) {
+                    printf_fmt[fmt_idx++] = (trailing == 'o') ? 'o' : ((trailing == 'x' || trailing == 'X') ? trailing : 'd');
+                } else {
+                    printf_fmt[fmt_idx++] = (trailing == 'o') ? 'o' : ((trailing == 'x' || trailing == 'X') ? trailing : 'u');
+                }
             } else if constexpr (std::is_enum_v<T>) {
-                using U = std::underlying_type_t<T>;
-                result_str.append(std::to_string(static_cast<U>(arg)));
-            } else if constexpr (std::is_integral_v<T> || std::is_floating_point_v<T>) {
-                result_str.append(std::to_string(arg));
+                printf_fmt[fmt_idx++] = 'd';
             } else {
-                result_str.append("<unsupported type>");
+                result_str.append("<unsupported type>"); return;
+            }
+            printf_fmt[fmt_idx] = '\0';
+
+            char buf[512];
+            int len = 0;
+            if constexpr (std::is_enum_v<T>) {
+                len = std::snprintf(buf, sizeof(buf), printf_fmt, static_cast<std::underlying_type_t<T>>(arg));
+            } else if constexpr (std::is_pointer_v<T>) {
+                // Cast all pointers to const void* for %p
+                len = std::snprintf(buf, sizeof(buf), printf_fmt, static_cast<const void*>(arg));
+            } else {
+                len = std::snprintf(buf, sizeof(buf), printf_fmt, arg);
+            }
+
+            if (len > 0) {
+                result_str.append(buf, static_cast<size_t>(len));
             }
         };
 
         auto format_placeholder = [&](const auto& arg) {
-            current_pos = format_str.find("{}", last_pos);
-            if (current_pos != std::string_view::npos) {
-                result_str.append(format_str.data() + last_pos, current_pos - last_pos);
-                append_arg(arg);
-                last_pos = current_pos + 2;
+            size_t open_brace = format_str.find('{', last_pos);
+            size_t close_brace = (open_brace != std::string_view::npos) ? format_str.find('}', open_brace) : std::string_view::npos;
+
+            if (open_brace != std::string_view::npos && close_brace != std::string_view::npos) {
+                result_str.append(format_str.data() + last_pos, open_brace - last_pos);
+
+                std::string_view spec = format_str.substr(open_brace + 1, close_brace - open_brace - 1);
+                append_arg(arg, spec);
+
+                last_pos = close_brace + 1;
             } else {
                 if (!has_extra_args) {
                     has_extra_args = true;
@@ -135,7 +184,7 @@ struct RuntimeLogger {
                 } else if (!first_extra_arg) {
                     result_str.append(", ");
                 }
-                append_arg(arg);
+                append_arg(arg, "");
                 first_extra_arg = false;
             }
         };
@@ -167,15 +216,12 @@ struct RuntimeLogger {
         timestamped_prefix_str += std::to_string(secs);
         timestamped_prefix_str += '.';
 
-        // Pad microseconds to exactly 6 digits natively
         std::string micro_str = std::to_string(micros);
         if (micro_str.size() < 6) {
             timestamped_prefix_str.append(6 - micro_str.size(), '0');
         }
         timestamped_prefix_str += micro_str;
         timestamped_prefix_str += "] ";
-
-        // Append your logging level prefix
         timestamped_prefix_str.append(prefix);
 
         if constexpr (sizeof...(Args) == 0) {
@@ -186,49 +232,43 @@ struct RuntimeLogger {
     }
 
     template<typename... Args>
-    static void debug(std::string_view fmt, Args&&... args)
-    {
-        if (static_cast<int>(get_cached_level().load(std::memory_order_relaxed)) <= static_cast<int>(::LogLevel::Debug))
-        {
+    static void debug(std::string_view fmt, Args&&... args) {
+        if (static_cast<int>(get_cached_level().load(std::memory_order_relaxed)) <= static_cast<int>(::LogLevel::Debug)) {
             log_dispatch(std::cout, "[DBG] ", fmt, std::forward<Args>(args)...);
         }
     }
 
     template<typename... Args>
-    static void info(std::string_view fmt, Args&&... args)
-    {
+    static void info(std::string_view fmt, Args&&... args) {
         if (get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Info) {
             log_dispatch(std::cout, "[INF] ", fmt, std::forward<Args>(args)...);
         }
     }
 
     template<typename... Args>
-    static void warn(std::string_view fmt, Args&&... args)
-    {
+    static void warn(std::string_view fmt, Args&&... args) {
         if (get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Warn) {
             log_dispatch(std::cout, "[WRN] ", fmt, std::forward<Args>(args)...);
         }
     }
 
     template<typename... Args>
-    static void err(std::string_view fmt, Args&&... args)
-    {
+    static void err(std::string_view fmt, Args&&... args) {
         if (get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Error) {
             log_dispatch(std::cerr, "[ERR] ", fmt, std::forward<Args>(args)...);
         }
     }
 
     template<typename... Args>
-    static void fatal(std::string_view fmt, Args&&... args)
-    {
+    static void fatal(std::string_view fmt, Args&&... args) {
         if (get_cached_level().load(std::memory_order_relaxed) <= ::LogLevel::Fatal) {
             log_dispatch(std::cerr, "[FTL] ", fmt, std::forward<Args>(args)...);
         }
     }
 };
 
-#define DBG(...) do { LocalLogger::debug(__VA_ARGS__); } while(0)
-#define INFO(...) do { LocalLogger::info(__VA_ARGS__); } while(0)
-#define WARN(...) do { LocalLogger::warn(__VA_ARGS__); } while(0)
-#define ERR(...) do { LocalLogger::err(__VA_ARGS__); } while(0)
+#define DBG(...)   do { LocalLogger::debug(__VA_ARGS__); } while(0)
+#define INFO(...)  do { LocalLogger::info(__VA_ARGS__);  } while(0)
+#define WARN(...)  do { LocalLogger::warn(__VA_ARGS__);  } while(0)
+#define ERR(...)   do { LocalLogger::err(__VA_ARGS__);   } while(0)
 #define FATAL(...) do { LocalLogger::fatal(__VA_ARGS__); } while(0)

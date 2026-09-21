@@ -111,6 +111,10 @@ void LifecycleTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  state: " << lifecycleStateStr(*r) << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Lifecycle.close")
@@ -123,7 +127,13 @@ void LifecycleTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance()
                      .LifecycleInterface()
                      .close(closeType);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
     else if (method == "Lifecycle.onStateChanged.subscribe")
     {
@@ -134,7 +144,7 @@ void LifecycleTest::runMethod(const std::string& method)
         }
 
         // Subscribe to lifecycle state changes and print each transition.
-        auto callback = [](const std::vector<StateChange>& changes)
+        auto callback = [this](const std::vector<StateChange>& changes)
         {
             std::cout << "  [EVENT] Lifecycle state changes:" << std::endl;
             for (const auto& change : changes)
@@ -144,6 +154,7 @@ void LifecycleTest::runMethod(const std::string& method)
                           << " -> "
                           << lifecycleStateStr(change.newState)
                           << std::endl;
+                reportStepCompletion();
             }
         };
 
@@ -154,14 +165,18 @@ void LifecycleTest::runMethod(const std::string& method)
         {
             lastSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << lastSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Lifecycle.onStateChanged.unsubscribe")
     {
         if (lastSubId_ == 0)
         {
-            std::cout << "  [WARN] No active Lifecycle subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active Lifecycle subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;
@@ -171,6 +186,10 @@ void LifecycleTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             lastSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Lifecycle.unsubscribeAll")
@@ -178,6 +197,7 @@ void LifecycleTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().LifecycleInterface().unsubscribeAll();
         lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Lifecycle events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

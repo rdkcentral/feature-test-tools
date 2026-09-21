@@ -64,10 +64,24 @@ static bool gMenuInputBridgeEnabled = false;
 static std::mutex gMenuInputMutex;
 static std::deque<MenuInputEvent> gMenuInputQueue;
 static bool gEscExitRequested = false;
+static ITestProgressTracker* gTestProgressTracker = nullptr;
+static std::mutex gTestProgressTrackerMutex;
 
 AppConfig& GetAppConfig()
 {
     return gAppConfig;
+}
+
+ITestProgressTracker* GetTestProgressTracker()
+{
+    std::lock_guard<std::mutex> lock(gTestProgressTrackerMutex);
+    return gTestProgressTracker;
+}
+
+void SetTestProgressTracker(ITestProgressTracker* tracker)
+{
+    std::lock_guard<std::mutex> lock(gTestProgressTrackerMutex);
+    gTestProgressTracker = tracker;
 }
 
 void SetMenuInputBridgeEnabled(bool enabled)

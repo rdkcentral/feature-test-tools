@@ -31,6 +31,32 @@ enum BackgroundPatternMode {
     PATTERN_DOT
 };
 
+enum class ProgressBarPalette : int {
+    // Legacy Basic Palette Definitions (0 - 10)
+    Default        = 0,  // Solid Cyan (#00B2F2)
+    Red            = 1,  // Crimson Red (#F23333)
+    Green          = 2,  // Emerald Green (#33D94D)
+    Orange         = 3,  // Amber Orange (#FF1A00)
+    Purple         = 4,  // Deep Violet Purple (#994DE6)
+    Pink           = 5,  // Hot Cyberpunk Pink (#FF3399)
+    Yellow         = 6,  // Bright Neon Yellow (#F2F200)
+    Blue           = 7,  // Royal Sapphire Blue (#1A66F2)
+    Mint           = 8,  // Pastel Mint Green (#66F2B2)
+    Gold           = 9,  // Luxury Metallic Gold (#D9A633)
+    Monochrome     = 10, // Sleek Matte White (#F2F2F2)
+
+    // Curated Unique Additions (11 - 19)
+    VibrantLime    = 11, // Bright Neon Lime (#28ED21)
+    ElectricRed    = 12, // Pure Vibrant Red (#F02719)
+    IntenseBlue    = 13, // Rich Royal Blue (#263AED)
+    BurntOrange    = 14, // High-Contrast Orange (#EC5818)
+    WarmYellow     = 15, // Warm Amber Yellow (#F7C41D)
+    CyberCyan      = 16, // Ultra Bright Electric Cyan (#0EF6E7)
+    ElectricPurple = 17, // Deep Vivid Purple (#8A0EF6)
+    HotPink        = 18, // Vibrant Cyberpunk Pink (#F60EDB)
+    DarkCharcoal   = 19  // Sleek Dark Charcoal (#1F2430) Monochrome counterpart
+};
+
 // Opaque context — fully defined in gl.cpp
 struct AppContext;
 
@@ -81,7 +107,7 @@ class GlApp {
         void deinit();
 
         // Updates the progress percentage for rendering.
-        void updateProgress(float percentage);
+        void updateProgress(float percentage, bool changeColor = false);
 
         // callback function pointer for get/clear keycode to external app.
         bool registerKeycodeCallback(void (*callback)(const GlKeyEvent& keyEvent));

@@ -166,6 +166,7 @@ struct AppContext {
     std::atomic<uint32_t> current_keycode{ 0 };
     std::atomic<uint32_t> current_utf32{ 0 };
     std::atomic<float> progress_percentage{0.0f};
+    std::atomic<int> progress_color{ static_cast<int>(ProgressBarPalette::VibrantLime) };
 
     int wakeEventFd = -1;
     int waylandFd = -1;
@@ -480,6 +481,7 @@ bool init_gles_pipeline(AppContext* app)
         "uniform int u_keycode;\n"     // Active system input evdev code
         "uniform int u_utf32;\n"       // Translated character metrics passed natively
         "uniform float u_progress;\n"  // Progress percentage (0.0 - 100.0)
+        "uniform int u_palette;\n"     // Active external palette enum mode
         "out vec4 fragColor;\n"
         "#define M_PI 3.14159265359\n"
         "void main() {\n"
@@ -524,8 +526,31 @@ bool init_gles_pipeline(AppContext* app)
         "           float progress_fraction = u_progress / 100.0;\n"
         "           float fill_limit_x = bar_left + (bar_total_width * progress_fraction);\n"
         "           if (uv.x <= fill_limit_x) {\n"
-        "               // Fill with active theme color (Solid Cyan)\n"
-        "               finalColor = vec3(0.0, 0.70, 0.95);\n"
+        "               // Dynamic palette enum resolution mapping\n"
+        "               vec3 activeBarColor = vec3(0.0, 0.70, 0.95); // Default Cyan\n"
+        "               switch(u_palette) {\n"
+        "                   // See ProgressBarPalette for details.\n"
+        "                   case 1:  activeBarColor = vec3(0.95, 0.20, 0.20); break;\n"
+        "                   case 2:  activeBarColor = vec3(0.20, 0.85, 0.30); break;\n"
+        "                   case 3:  activeBarColor = vec3(1.00, 0.65, 0.00); break;\n"
+        "                   case 4:  activeBarColor = vec3(0.60, 0.30, 0.90); break;\n"
+        "                   case 5:  activeBarColor = vec3(1.00, 0.20, 0.60); break;\n"
+        "                   case 6:  activeBarColor = vec3(0.95, 0.95, 0.00); break;\n"
+        "                   case 7:  activeBarColor = vec3(0.10, 0.40, 0.95); break;\n"
+        "                   case 8:  activeBarColor = vec3(0.40, 0.95, 0.70); break;\n"
+        "                   case 9:  activeBarColor = vec3(0.85, 0.65, 0.20); break;\n"
+        "                   case 10: activeBarColor = vec3(0.95, 0.95, 0.95); break;\n"
+        "                   case 11: activeBarColor = vec3(0.157, 0.929, 0.129); break;\n"
+        "                   case 12: activeBarColor = vec3(0.941, 0.153, 0.098); break;\n"
+        "                   case 13: activeBarColor = vec3(0.149, 0.227, 0.929); break;\n"
+        "                   case 14: activeBarColor = vec3(0.925, 0.345, 0.094); break;\n"
+        "                   case 15: activeBarColor = vec3(0.969, 0.769, 0.114); break;\n"
+        "                   case 16: activeBarColor = vec3(0.055, 0.965, 0.906); break;\n"
+        "                   case 17: activeBarColor = vec3(0.541, 0.055, 0.965); break;\n"
+        "                   case 18: activeBarColor = vec3(0.965, 0.055, 0.859); break;\n"
+        "                   case 19: activeBarColor = vec3(0.122, 0.141, 0.188); break;\n"
+        "               }\n"
+        "               finalColor = activeBarColor;\n"
         "           }\n"
         "           // Draw 2px subtle outer container outline borders\n"
         "           if (uv.x < bar_left + 2.0 || uv.x > bar_right - 2.0 ||\n"
@@ -945,6 +970,7 @@ static bool present_prepared_frame(AppContext* app, const PreparedFrame& frame, 
     // Load the atomic progress state float natively into fragment pipeline uniform array
     float active_progress = app->progress_percentage.load(std::memory_order_acquire);
     glUniform1f(glGetUniformLocation(app->program_id, "u_progress"), active_progress);
+    glUniform1i(glGetUniformLocation(app->program_id, "u_palette"), app->progress_color.load(std::memory_order_acquire));
 
     glBindVertexArray(app->main_quad_vao_id);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -1679,12 +1705,17 @@ void GlApp::shutdown()
 /**
  * @brief Updates the progress percentage for rendering.
  * @param percentage The new progress percentage (0.0 to 100.0).
+ * @param changeColor Whether to change the progress bar color, default false.
  */
-void GlApp::updateProgress(float percentage)
+void GlApp::updateProgress(float percentage, bool changeColor)
 {
     if (!m_ctx) return;
     float clamped = std::max(0.0f, std::min(100.0f, percentage));
     m_ctx->progress_percentage.store(clamped, std::memory_order_release);
+    if (changeColor) {
+        m_ctx->progress_color.store(static_cast<int>(ProgressBarPalette::ElectricRed),
+                                    std::memory_order_release);
+    }
     signal_run_loop(m_ctx);
 }
 

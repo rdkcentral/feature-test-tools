@@ -89,6 +89,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  audioDescription enabled: "
                       << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.closedCaptionsSettings")
@@ -100,6 +104,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  closedCaptions settings: ";
             printClosedCaptionsSettings(*r);
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.highContrastUI")
@@ -111,6 +119,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  highContrastUI enabled: "
                       << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.voiceGuidanceSettings")
@@ -122,6 +134,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  voiceGuidance settings: ";
             printVoiceGuidanceSettings(*r);
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onAudioDescriptionChanged.subscribe")
@@ -147,6 +163,9 @@ void AccessibilityTest::runMethod(const std::string& method)
                             if (enabled != *r2)
                             {
                                 std::cout << "  [ERROR] audioDescription event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onAudioDescriptionChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                      });
@@ -154,6 +173,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             onAudioDescriptionChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onAudioDescriptionChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onAudioDescriptionChanged.unsubscribe")
@@ -162,6 +185,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onAudioDescriptionChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -172,6 +196,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onAudioDescriptionChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onClosedCaptionsSettingsChanged.subscribe")
@@ -199,6 +227,9 @@ void AccessibilityTest::runMethod(const std::string& method)
                                 settings.preferredLanguages != r2->preferredLanguages)
                             {
                                 std::cout << "  [ERROR] closedCaptionsSettings event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onClosedCaptionsSettingsChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -206,6 +237,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             onClosedCaptionsSettingsChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onClosedCaptionsSettingsChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onClosedCaptionsSettingsChanged.unsubscribe")
@@ -214,6 +249,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onClosedCaptionsSettingsChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -224,6 +260,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onClosedCaptionsSettingsChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onHighContrastUIChanged.subscribe")
@@ -249,6 +289,9 @@ void AccessibilityTest::runMethod(const std::string& method)
                             if (enabled != *r2)
                             {
                                 std::cout << "  [ERROR] highContrastUI event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onHighContrastUIChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -256,6 +299,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             onHighContrastUIChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onHighContrastUIChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onHighContrastUIChanged.unsubscribe")
@@ -264,6 +311,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onHighContrastUIChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -274,6 +322,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onHighContrastUIChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onVoiceGuidanceSettingsChanged.subscribe")
@@ -302,6 +354,9 @@ void AccessibilityTest::runMethod(const std::string& method)
                                 settings.navigationHints != r2->navigationHints)
                             {
                                 std::cout << "  [ERROR] voiceGuidanceSettings event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onVoiceGuidanceSettingsChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -309,6 +364,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             onVoiceGuidanceSettingsChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onVoiceGuidanceSettingsChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.onVoiceGuidanceSettingsChanged.unsubscribe")
@@ -317,6 +376,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Accessibility.onVoiceGuidanceSettingsChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -327,6 +387,10 @@ void AccessibilityTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onVoiceGuidanceSettingsChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Accessibility.unsubscribeAll")
@@ -337,6 +401,7 @@ void AccessibilityTest::runMethod(const std::string& method)
         onHighContrastUIChangedSubId_ = 0;
         onVoiceGuidanceSettingsChangedSubId_ = 0;
         std::cout << "  Unsubscribed from all Accessibility events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

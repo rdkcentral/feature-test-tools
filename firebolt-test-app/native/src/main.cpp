@@ -101,55 +101,76 @@ struct AppLoggerConfig {
 };
 using LocalLogger = RuntimeLogger<AppLoggerConfig>;
 
-class ProgressController {
+class ProgressController : public ITestProgressTracker {
 private:
-    std::mutex mtx;
+    mutable std::mutex mtx;
     std::condition_variable cv;
 
     int total = 0;
     int count = 0;
     float currentPercentage = 0.0f;
     bool hasChanged = false;
+    bool shutdownSignaled = false;
+    bool failDetected = false;
+    std::vector<std::string> validationFailures_;  // Track event validation failures
 
 public:
     /**
-     * Sets the total number of progress steps.
+     * Sets the total number of steps for progress tracking.
+     * Resets the current count and percentage to zero.
      * @param total The total number of steps.
      */
     void set_total(int total)
     {
-        std::lock_guard<std::mutex> lock(mtx);
-        this->total = total;
-        count = 0;
-        currentPercentage = 0.0f;
-        hasChanged = false;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            this->total = total;
+            count = 0;
+            currentPercentage = 0.0f;
+            hasChanged = true;
+        }
+        cv.notify_all();
     }
 
     /**
-     * Increments the progress count by one.
+     * Increments the current progress count by one.
+     * Updates the current percentage and notifies waiting threads.
      */
-    void increment_progress()
+    void increment_progress(bool failDetected = false)
     {
-        std::unique_lock<std::mutex> lock(mtx);
-        if (total <= 0) return;
-        count++;
-        currentPercentage = (static_cast<float>(count) / total) * 100.0f;
-        hasChanged = true;
-        // Notify the progress change detectors
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (total <= 0) return;
+            count++;
+            currentPercentage = (static_cast<float>(count) / total) * 100.0f;
+            hasChanged = true;
+            if (failDetected) {
+                this->failDetected = true;
+            }
+            DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}",
+                count, total, currentPercentage, this->failDetected);
+        }
         cv.notify_one();
     }
 
     /**
-     * Waits for the progress percentage to change or for an exit request.
-     * @param exitRequested Atomic boolean indicating if an exit has been requested.
-     * @return The current progress percentage.
+     * Waits for the progress percentage to change.
+     * @param failDetected Reference to a boolean that will be set to true if a failure was detected.
+     * @return The current progress percentage, or -1.0f if shutting down.
      */
-    float wait_for_percentage_change(const std::atomic<bool>& exitRequested)
+    float wait_for_percentage_change(bool &failDetected)
     {
         std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [this, &exitRequested]() {
-            return hasChanged || exitRequested.load(std::memory_order_acquire);
+        cv.wait(lock, [this]() {
+            return hasChanged || shutdownSignaled;
         });
+
+        if (shutdownSignaled) {
+            return -1.0f; // Clear sentinel value indicating exit
+        }
+
+        failDetected = this->failDetected;
+
         hasChanged = false;
         return currentPercentage;
     }
@@ -159,9 +180,58 @@ public:
      */
     void wake_for_shutdown()
     {
-        std::unique_lock<std::mutex> lock(mtx);
-        hasChanged = true;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            shutdownSignaled = true;
+        }
         cv.notify_all();
+    }
+
+    /**
+     * Gets the current progress percentage.
+     * @param failDetected Reference to a boolean that will be set to true if a failure was detected.
+     * @return The current progress percentage.
+     */
+    float get_percentage(bool &failDetected)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        failDetected = this->failDetected;
+        return currentPercentage;
+    }
+
+    /**
+     * ITestProgressTracker override: Report step completion from test modules.
+     * @param failDetected Whether this step failed.
+     */
+    void reportStepCompleted(bool failDetected = false) override
+    {
+        increment_progress(failDetected);
+    }
+
+    /**
+     * ITestProgressTracker override: Report validation failures from event handlers.
+     * These are recorded, set the failDetected flag, and advance progress so auto-run doesn't stall on mismatches.
+     * @param details Description of the validation failure.
+     */
+    void reportValidationFailure(const std::string& details) override
+    {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            validationFailures_.push_back(details);
+            this->failDetected = true;
+        }
+        // Update the progress percentage to reflect the failure.
+        increment_progress(true);
+    }
+
+    /**
+     * Get all recorded validation failures.
+     * @return Vector of validation failure descriptions.
+     */
+    std::vector<std::string> getValidationFailures() const
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        return validationFailures_;
     }
 };
 
@@ -280,30 +350,6 @@ inline std::ostream& operator<<(std::ostream& os, AppState state)
 }
 
 // ---------------------------------------------------------------------------
-// printUsage
-// ---------------------------------------------------------------------------
-static void printUsage(const char* argv0)
-{
-    std::cout
-        << argv0 << " version " << PROJECT_VERSION << "\n\n"
-        << "SYNOPSIS\n"
-        << "  " << argv0 << " [<options>]\n\n"
-        << "OPTIONS\n"
-        << "  --auto         Run all methods for all modules without user input\n"
-        << "  --url <URL>    Specify a custom WebSocket endpoint URL\n"
-        << "  --legacy       Force legacy (v1) RPC protocol\n"
-        << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
-        << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Firebolt 8 modules only (excludes all Firebolt 9 modules and v9-specific methods)\n"
-        << "  --firebolt9    Firebolt 8 base modules + Firebolt 9 modules (default)\n"
-        << "  --firebolt-all All modules across all Firebolt versions\n"
-        << "  --help         Show this help and exit\n\n"
-        << "ENVIRONMENT\n"
-        << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
-        << "                     is not supplied.\n";
-}
-
-// ---------------------------------------------------------------------------
 // buildModuleList – registers all test modules
 //
 // version: Firebolt version to filter modules by.
@@ -352,9 +398,64 @@ static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVers
     return modules;
 }
 
-// ---------------------------------------------------------------------------
-// runAutoMode – runs every method of every module sequentially
-// ---------------------------------------------------------------------------
+/**
+ * @brief Runs every method of every module sequentially in auto mode.
+ *        Deferred unsubscribe/unsubscribeAll methods are skipped until the end.
+ * @param modules The list of test modules to run.
+ * @param progressController The progress controller to track progress.
+ */
+static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<TestModuleBase>>& modules,
+                                                  ProgressController& progressController)
+{
+    static bool autoDeferredCleanupDone = false;
+    if (autoDeferredCleanupDone) {
+        INFO("TMT: auto mode deferred cleanup already done, skipping.");
+        return;
+    }
+    const auto isDeferredCleanupMethod = [](const std::string& methodName) {
+        static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
+        static constexpr const char* kUnsubscribeAllSuffix = ".unsubscribeAll";
+        const size_t methodLen = methodName.size();
+        const size_t unsubscribeLen = std::strlen(kUnsubscribeSuffix);
+        const size_t unsubscribeAllLen = std::strlen(kUnsubscribeAllSuffix);
+        return (methodLen >= unsubscribeLen &&
+                methodName.compare(methodLen - unsubscribeLen, unsubscribeLen, kUnsubscribeSuffix) == 0) ||
+               (methodLen >= unsubscribeAllLen &&
+                methodName.compare(methodLen - unsubscribeAllLen, unsubscribeAllLen, kUnsubscribeAllSuffix) == 0);
+    };
+
+    std::cout << "\n=== Auto Mode Deferred Unsubscribe Cleanup ===" << std::endl;
+    for (auto& mod : modules)
+    {
+        for (const auto& m : mod->methods())
+        {
+            if (!isDeferredCleanupMethod(m))
+            {
+                continue;
+            }
+            std::cout << "--- " << m << " ---" << std::endl;
+            mod->runMethod(m);
+        }
+    }
+    //Print the failures if any
+    auto validationFailures = progressController.getValidationFailures();
+    if (!validationFailures.empty()) {
+        std::cout << "\n=== Detected Validation Failure Snapshots ===" << std::endl;
+        for (const auto& failure : validationFailures) {
+            std::cout << " - " << failure << std::endl;
+        }
+    }
+    autoDeferredCleanupDone = true;
+}
+
+/**
+ * @brief Runs every method of every module sequentially in auto mode.
+ *        Deferred unsubscribe/unsubscribeAll methods are skipped until the end.
+ * @param modules The list of test modules to run.
+ * @param progressController The progress controller to track progress.
+ * @param thunderClient The ThunderWSJRPC client for simulating test modules through Thunder calls.
+ * @param exitRequested Atomic flag to signal exit request.
+ */
 static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
                         ProgressController& progressController,
                         ThunderWSJRPC& thunderClient,
@@ -388,7 +489,6 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
             }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
-            progressController.increment_progress();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
@@ -397,37 +497,8 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
         std::this_thread::sleep_for(std::chrono::seconds(5));
         thunderClient.start_thunder_tests(exitRequested);
     }
-}
-
-static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<TestModuleBase>>& modules,
-                                                  ProgressController& progressController)
-{
-    const auto isDeferredCleanupMethod = [](const std::string& methodName) {
-        static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
-        static constexpr const char* kUnsubscribeAllSuffix = ".unsubscribeAll";
-        const size_t methodLen = methodName.size();
-        const size_t unsubscribeLen = std::strlen(kUnsubscribeSuffix);
-        const size_t unsubscribeAllLen = std::strlen(kUnsubscribeAllSuffix);
-        return (methodLen >= unsubscribeLen &&
-                methodName.compare(methodLen - unsubscribeLen, unsubscribeLen, kUnsubscribeSuffix) == 0) ||
-               (methodLen >= unsubscribeAllLen &&
-                methodName.compare(methodLen - unsubscribeAllLen, unsubscribeAllLen, kUnsubscribeAllSuffix) == 0);
-    };
-
-    std::cout << "\n=== Auto Mode Deferred Unsubscribe Cleanup ===" << std::endl;
-    for (auto& mod : modules)
-    {
-        for (const auto& m : mod->methods())
-        {
-            if (!isDeferredCleanupMethod(m))
-            {
-                continue;
-            }
-            std::cout << "--- " << m << " ---" << std::endl;
-            mod->runMethod(m);
-            progressController.increment_progress();
-        }
-    }
+    // Trigger auto mode deferred cleanup after all other methods have been executed.
+    runAutoModeDeferredUnsubscribeCleanup(modules, progressController);
 }
 
 /**
@@ -456,73 +527,13 @@ static std::unique_ptr<GlApp> initGlApp(int width,
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
-int main(int argc, char** argv)
+int main(void)
 {
-    std::cout << "Firebolt Test App v" << PROJECT_VERSION
-              << " (default: --firebolt9; see --help for options)" << std::endl;
+    std::cout << "Firebolt Test App v" << PROJECT_VERSION << std::endl;
 
     auto& appConfig = GetAppConfig();
 
-    std::string                url;
-    std::optional<bool>        legacyRPCv1;
     Firebolt::LogLevel         logLevel = Firebolt::LogLevel::Notice;
-
-    // -----------------------------------------------------------------------
-    // Parse command-line arguments
-    // -----------------------------------------------------------------------
-    for (int i = 1; i < argc; ++i)
-    {
-        const std::string arg(argv[i]);
-
-        if (arg == "--auto")
-        {
-            appConfig.autoRun = true;
-        }
-        else if (arg == "--url")
-        {
-            if (i + 1 >= argc)
-            {
-                FATAL("Missing argument for --url option");
-                return 1;
-            }
-            url = argv[++i];
-        }
-        else if (arg == "--legacy")
-        {
-            legacyRPCv1 = true;
-        }
-        else if (arg == "--rpc-v2")
-        {
-            legacyRPCv1 = false;
-        }
-        else if (arg == "--dbg")
-        {
-            logLevel          = Firebolt::LogLevel::Debug;
-            appConfig.verbose = true;
-        }
-        else if (arg == "--firebolt9")
-        {
-            appConfig.fireboltVersion = FIREBOLT_VERSION_9;
-        }
-        else if (arg == "--firebolt8")
-        {
-            appConfig.fireboltVersion = FIREBOLT_VERSION_8;
-        }
-        else if (arg == "--firebolt-all")
-        {
-            appConfig.fireboltVersion = FIREBOLT_VERSION_ALL;
-        }
-        else if (arg == "--help")
-        {
-            printUsage(argv[0]);
-            return 0;
-        }
-        else
-        {
-            FATAL("Unknown option: {} (use --help for usage)", arg);
-            return 1;
-        }
-    }
 
     // If the environment variable MODE_AUTO_RUN is set, enable auto-run mode.
     // Keep interactive mode available by default; this env var should only be an
@@ -535,13 +546,10 @@ int main(int argc, char** argv)
     }
 
     // -----------------------------------------------------------------------
-    // Resolve endpoint URL
+    // Resolve firebolt endpoint URL
     // -----------------------------------------------------------------------
-    if (url.empty())
-    {
-        const char* envUrl = std::getenv("FIREBOLT_ENDPOINT");
-        url = envUrl ? envUrl : "";
-    }
+    const char* envUrl = std::getenv("FIREBOLT_ENDPOINT");
+    std::string url = envUrl ? envUrl : "";
     if (url.empty())
     {
         FATAL("No Firebolt endpoint URL specified. Use --url, or set FIREBOLT_ENDPOINT environment variable.");
@@ -556,10 +564,6 @@ int main(int argc, char** argv)
     config.wsUrl       = url;
     config.waitTime_ms = 1000;
     config.log.level   = logLevel;
-    if (legacyRPCv1.has_value())
-    {
-        config.legacyRPCv1 = legacyRPCv1.value();
-    }
 
     struct ConnectionState
     {
@@ -699,16 +703,21 @@ int main(int argc, char** argv)
         if (!glAppProgressUpdateThread.joinable()) {
             glAppProgressUpdateThread = std::thread([&glApp, &glAppMutex, &exitRequested, &PC]() {
                 float progressPercentage = 0.0f;
+                bool failDetected = false;
                 INFO("Starting GL progress update thread.");
                 while (!exitRequested.load(std::memory_order_acquire)) {
-                    progressPercentage = PC.wait_for_percentage_change(exitRequested);
-                    if (gGlExitKeyRequested.load(std::memory_order_acquire) || exitRequested.load(std::memory_order_acquire)) {
+                    progressPercentage = PC.wait_for_percentage_change(failDetected);
+                    if (gGlExitKeyRequested.load(std::memory_order_acquire) ||
+                        exitRequested.load(std::memory_order_acquire)) {
                         break;
                     }
 
                     std::lock_guard<std::mutex> lock(glAppMutex);
                     if (GlApp* app = glApp.get(); app != nullptr) {
-                        app->updateProgress(progressPercentage);
+                        // do not call updateProgress() if progressPercentage is -1.0f, which indicates shutdown.
+                        if (0.0f <= progressPercentage) {
+                            app->updateProgress(progressPercentage, failDetected);
+                        }
                     }
                 }
                 INFO("GL progress update thread exited; Last progress percentage={}", progressPercentage);
@@ -731,25 +740,32 @@ int main(int argc, char** argv)
                                           &thunderClient,
                                           &exitRequested,
                                           &autoDeferredCleanupAllowed]() {
+            // Register the progress controller so test modules can report progress
+            SetTestProgressTracker(&PC);
+
             INFO("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
             auto testModules = buildModuleList(appConfig.fireboltVersion);
             int totalSteps = 0;
+            int eventCount = 0;
             for (const auto& mod : testModules) {
                 totalSteps += static_cast<int>(mod->methodCount());
+                eventCount += static_cast<int>(mod->methodCountContaining(".subscribe"));
             }
-            PC.set_total(totalSteps);
+            DBG("TMT: total steps = {}, total event subscriptions = {}", totalSteps, eventCount);
+            PC.set_total(totalSteps + eventCount);
+
             INFO("TMT: running auto mode, total steps = {}", totalSteps);
             runAutoMode(testModules, PC, thunderClient, exitRequested);
             INFO("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
-            while (!exitRequested.load(std::memory_order_acquire)) {
+            while (!exitRequested.load(std::memory_order_acquire) &&
+                   !autoDeferredCleanupAllowed.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-            INFO("TMT: waiting for auto mode deferred cleanup to be allowed.");
-            while (!autoDeferredCleanupAllowed.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
             }
             INFO("TMT: running auto mode deferred cleanup.");
             runAutoModeDeferredUnsubscribeCleanup(testModules, PC);
+
+            // Unregister the tracker on exit
+            SetTestProgressTracker(nullptr);
         });
     };
 

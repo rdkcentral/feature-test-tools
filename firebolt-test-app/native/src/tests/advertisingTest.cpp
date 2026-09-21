@@ -46,6 +46,10 @@ void AdvertisingTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  IFA: " << r->ifa << ", IFA type: " << r->ifa_type << ", LMT: " << r->lmt << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else

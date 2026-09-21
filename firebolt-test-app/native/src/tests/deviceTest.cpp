@@ -64,6 +64,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  uid: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.deviceClass" == method)
@@ -80,6 +84,10 @@ void DeviceTest::runMethod(const std::string& method)
                 default: break;
             }
             std::cout << "  deviceClass: " << classStr << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.uptime" == method)
@@ -88,6 +96,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  uptime (s): " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.timeInActiveState" == method)
@@ -96,6 +108,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  timeInActiveState (s): " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.chipsetId" == method)
@@ -104,6 +120,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  chipsetId: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.hdr" == method)
@@ -116,6 +136,10 @@ void DeviceTest::runMethod(const std::string& method)
                       << ", HDR10+: " << r->hdr10Plus
                       << ", DolbyVision: " << r->dolbyVision
                       << ", HLG: " << r->hlg << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.dolbyAtmosExperienceAvailable" == method)
@@ -124,6 +148,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.osName" == method)
@@ -132,6 +160,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  osName: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.setOsName" == method)
@@ -140,6 +172,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  setOsName succeeded." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.osVersion" == method)
@@ -148,6 +184,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  osVersion: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.setOsVersion" == method)
@@ -156,6 +196,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  setOsVersion succeeded." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.firmware" == method)
@@ -164,6 +208,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  firmware: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.onHdrChanged.subscribe" == method)
@@ -202,6 +250,9 @@ void DeviceTest::runMethod(const std::string& method)
                                 fmt.hlg != r2->hlg)
                             {
                                 std::cout << "  [ERROR] onHdrChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onHdrChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -209,6 +260,10 @@ void DeviceTest::runMethod(const std::string& method)
         {
             onHdrChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onHdrChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.onHdrChanged.unsubscribe" == method)
@@ -217,6 +272,7 @@ void DeviceTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Device.onHdrChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -227,6 +283,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onHdrChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.onDolbyAtmosExperienceAvailableChanged.subscribe" == method)
@@ -252,6 +312,9 @@ void DeviceTest::runMethod(const std::string& method)
                             if (available != *r2)
                             {
                                 std::cout << "  [ERROR] onDolbyAtmosExperienceAvailableChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onDolbyAtmosExperienceAvailableChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -259,6 +322,10 @@ void DeviceTest::runMethod(const std::string& method)
         {
             onDolbyAtmosExperienceAvailableChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onDolbyAtmosExperienceAvailableChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe" == method)
@@ -267,6 +334,7 @@ void DeviceTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Device.onDolbyAtmosExperienceAvailableChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -277,6 +345,10 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Device.unsubscribeAll" == method)
@@ -285,6 +357,7 @@ void DeviceTest::runMethod(const std::string& method)
         onHdrChangedSubId_ = 0;
         onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
         std::cout << "  Unsubscribed from all Device events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

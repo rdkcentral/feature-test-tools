@@ -47,6 +47,10 @@ void StatsTest::runMethod(const std::string& method)
                       << " / " << r->userMemoryLimit << " bytes" << std::endl;
             std::cout << "  GPU   memory (used/limit): " << r->gpuMemoryUsed
                       << " / " << r->gpuMemoryLimit << " bytes" << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else

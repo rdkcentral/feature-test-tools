@@ -62,6 +62,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  country: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.preferredAudioLanguages" == method)
@@ -77,6 +81,10 @@ void LocalizationTest::runMethod(const std::string& method)
                 std::cout << lang << " ";
             }
             std::cout << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.presentationLanguage" == method)
@@ -87,6 +95,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  presentationLanguage: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.timeZone" == method)
@@ -97,6 +109,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  timeZone: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onCountryChanged.subscribe" == method)
@@ -121,6 +137,9 @@ void LocalizationTest::runMethod(const std::string& method)
                             if (country != *r2)
                             {
                                 std::cout << "  [ERROR] onCountryChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onCountryChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -128,6 +147,10 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             onCountryChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onCountryChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onCountryChanged.unsubscribe" == method)
@@ -136,6 +159,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onCountryChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -146,6 +170,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onCountryChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onPreferredAudioLanguagesChanged.subscribe" == method)
@@ -182,6 +210,9 @@ void LocalizationTest::runMethod(const std::string& method)
                             if (langs != *r2)
                             {
                                 std::cout << "  [ERROR] onPreferredAudioLanguagesChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onPreferredAudioLanguagesChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -189,6 +220,10 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             onPreferredAudioLanguagesChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onPreferredAudioLanguagesChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onPreferredAudioLanguagesChanged.unsubscribe" == method)
@@ -197,6 +232,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onPreferredAudioLanguagesChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -207,6 +243,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onPreferredAudioLanguagesChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onPresentationLanguageChanged.subscribe" == method)
@@ -231,6 +271,9 @@ void LocalizationTest::runMethod(const std::string& method)
                             if (lang != *r2)
                             {
                                 std::cout << "  [ERROR] onPresentationLanguageChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onPresentationLanguageChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -238,6 +281,10 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             onPresentationLanguageChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onPresentationLanguageChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onPresentationLanguageChanged.unsubscribe" == method)
@@ -246,6 +293,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onPresentationLanguageChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -256,6 +304,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onPresentationLanguageChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onTimeZoneChanged.subscribe" == method)
@@ -280,6 +332,9 @@ void LocalizationTest::runMethod(const std::string& method)
                             if (timeZone != *r2)
                             {
                                 std::cout << "  [ERROR] onTimeZoneChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onTimeZoneChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -287,6 +342,10 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             onTimezoneChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onTimezoneChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.onTimeZoneChanged.unsubscribe" == method)
@@ -295,6 +354,7 @@ void LocalizationTest::runMethod(const std::string& method)
         {
             std::cout << "  [WARN] No active Localization.onTimeZoneChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -305,6 +365,10 @@ void LocalizationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onTimezoneChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if ("Localization.unsubscribeAll" == method)
@@ -315,6 +379,7 @@ void LocalizationTest::runMethod(const std::string& method)
         onPresentationLanguageChangedSubId_ = 0;
         onTimezoneChangedSubId_ = 0;
         std::cout << "  Unsubscribed from all Localization events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

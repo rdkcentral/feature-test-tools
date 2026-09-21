@@ -156,6 +156,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  ready reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.signIn")
@@ -164,6 +168,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  signIn reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.signOut")
@@ -172,6 +180,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  signOut reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.startContent")
@@ -184,6 +196,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  startContent reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.stopContent")
@@ -196,6 +212,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  stopContent reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.page")
@@ -208,6 +228,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  page reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.error")
@@ -236,6 +260,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  error reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaLoadStart")
@@ -248,6 +276,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaLoadStart reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaPlay")
@@ -260,6 +292,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaPlay reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaPlaying")
@@ -272,6 +308,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaPlaying reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaPause")
@@ -284,6 +324,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaPause reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaWaiting")
@@ -296,6 +340,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaWaiting reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaSeeking")
@@ -311,6 +359,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaSeeking reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaSeeked")
@@ -326,6 +378,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaSeeked reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaRateChanged")
@@ -341,6 +397,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaRateChanged reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaRenditionChanged")
@@ -367,6 +427,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaRenditionChanged reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.mediaEnded")
@@ -379,6 +443,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  mediaEnded reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.event")
@@ -403,6 +471,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  custom event reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Metrics.appInfo")
@@ -414,6 +486,10 @@ void MetricsTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  appInfo reported." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else

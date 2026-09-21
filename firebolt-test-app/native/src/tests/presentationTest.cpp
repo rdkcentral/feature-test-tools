@@ -49,6 +49,10 @@ void PresentationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  focused: " << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Presentation.onFocusedChanged.subscribe")
@@ -74,6 +78,9 @@ void PresentationTest::runMethod(const std::string& method)
                             if (focused != *r2)
                             {
                                 std::cout << "  [ERROR] onFocusedChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onFocusedChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
                             }
                         }
                     });
@@ -81,14 +88,18 @@ void PresentationTest::runMethod(const std::string& method)
         {
             lastSubId_ = *r;
             std::cout << "  Subscribed onFocusedChanged, sub ID: " << lastSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Presentation.onFocusedChanged.unsubscribe")
     {
         if (lastSubId_ == 0)
         {
-            std::cout << "  [WARN] No active Presentation subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active Presentation subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;
@@ -98,6 +109,10 @@ void PresentationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             lastSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Presentation.unsubscribeAll")
@@ -105,6 +120,7 @@ void PresentationTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().PresentationInterface().unsubscribeAll();
         lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Presentation events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

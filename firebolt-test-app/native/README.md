@@ -18,7 +18,7 @@ native/
 │   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
 │   └── LICENSE                 # License text installed from the Liberation font package (OFL 1.1)
 └── src/
-    ├── main.cpp                # Entry point, connection management, run-mode dispatch
+    ├── main.cpp                # Entry point, Firebolt connection, lifecycle monitoring, GL app management
     ├── utils.h / utils.cpp     # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
     ├── gl.h                    # GlApp class declaration (Wayland/EGL/GLES keycode display window)
     ├── gl.cpp                  # GlApp implementation
@@ -30,6 +30,7 @@ native/
         ├── deviceTest.h/.cpp
         ├── discoveryTest.h/.cpp
         ├── displayTest.h/.cpp
+        ├── lifecycleTest.h/.cpp           # *(Disabled — app itself is a lifecycle client)*
         ├── localizationTest.h/.cpp
         ├── metricsTest.h/.cpp
         ├── networkTest.h/.cpp
@@ -144,58 +145,48 @@ FILES:${PN} += " /usr/share/*"
 
 ## Running
 
-This is a lifecycle-driven Firebolt application; ensure `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, and `FIREBOLT_ENDPOINT` are configured. `MODE_AUTO_RUN` is optional and enables auto mode without `--auto`.
-
-Note: Command-line options are supported for development/testing; interactive and piped modes are deprecated in the lifecycle-driven app flow.
+This is a **lifecycle-driven Firebolt application** with automatic testing via environment variables. The app subscribes to lifecycle state changes and runs module tests only after an `INITIALIZING → PAUSED → ACTIVE` transition.
 
 ### Binary name
 ```
 firebolt-test-app
 ```
 
-### Command-line options
-```
-firebolt-test-app [--auto] [--url <URL>]
-                  [--legacy | --rpc-v2] [--dbg]
-                  [--firebolt8 | --firebolt9 | --firebolt-all] [--help]
-```
+### Required environment variables
 
-| Option | Description |
-|---|---|
-| `--auto` | Run all methods for all modules without user input |
-| `--url <URL>` | Use a custom WebSocket endpoint |
-| `--legacy` | Force legacy (v1) RPC protocol |
-| `--rpc-v2` | Force JSON-RPC v2 compliant protocol |
-| `--dbg` | Enable debug logging |
-| `--firebolt8` | Firebolt 8 modules only — excludes all Firebolt 9 modules and v9-specific methods within shared modules |
-| `--firebolt9` | Firebolt 8 base modules + Firebolt 9 modules (default) — includes all base APIs plus Actions, SpeechSynthesis, Stats, VideoOutput, and v9-specific methods within shared modules |
-| `--firebolt-all` | All modules across all Firebolt versions |
-| `--help` | Print usage and exit |
+| Variable | Required | Description |
+|---|---|---|
+| `FIREBOLT_ENDPOINT` | Yes | WebSocket endpoint URL |
+| `WAYLAND_DISPLAY` | Yes | Wayland socket name (e.g., `wayland-0`) |
+| `XDG_RUNTIME_DIR` | Yes | Runtime directory for Wayland socket |
 
-Endpoint priority: `--url` > `FIREBOLT_ENDPOINT` env var
-
-Additional runtime env vars:
-
-| Variable | Description |
-|---|---|
-| `MODE_AUTO_RUN` | If set to a non-empty value other than `0`/`false`, enables auto mode even without `--auto` |
-| `WAYLAND_DISPLAY` | Wayland socket name used by the GL app (default `wayland-0`) |
-| `WIDTH` | GL window width (default `1920`) |
-| `HEIGHT` | GL window height (default `1080`) |
-| `PATTERN_MODE` | GL background pattern (`GRID` or `DOT`) |
-
-### GL display window
-
-During lifecycle-driven startup, the app initializes a Wayland/EGL overlay window and renders the last
-received key code using the bundled Liberation Sans Bold font. `XDG_RUNTIME_DIR` must be set for GL init.
-The following environment variables control it:
+### Optional runtime environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `WAYLAND_DISPLAY` | `wayland-0` | Wayland socket name |
-| `WIDTH` | `1920` | Window width in pixels |
-| `HEIGHT` | `1080` | Window height in pixels |
-| `PATTERN_MODE` | *(none)* | Background pattern: `GRID` or `DOT` |
+| `MODE_AUTO_RUN` | *(disabled)* | If set to a non-empty value other than `0`/`false`, runs all module tests automatically after app activation |
+| `APPLOGLEVEL` | `Info` | App logging level: `Debug`, `Info`, `Notice`, `Warning`, `Error`, `Fatal` |
+| `GLLOGLEVEL` | `Info` | GL module logging level: `Debug`, `Info`, `Notice`, `Warning`, `Error`, `Fatal` |
+| `WIDTH` | `1920` | GL window width in pixels |
+| `HEIGHT` | `1080` | GL window height in pixels |
+| `PATTERN_MODE` | *(none)* | GL background pattern: `GRID` or `DOT` |
+
+### GL display window
+
+The app initializes a Wayland/EGL overlay window during lifecycle-driven startup and renders the last
+received key code using the bundled Liberation Sans Bold font. `XDG_RUNTIME_DIR` must be set for GL initialization.
+
+Example startup:
+```bash
+export FIREBOLT_ENDPOINT="<valid firebolt session token having end-point>"
+export WAYLAND_DISPLAY="<provided by window manager>"
+export XDG_RUNTIME_DIR="<provided by window management framework>"
+export MODE_AUTO_RUN="true"
+export WIDTH="1920"
+export HEIGHT="1080"
+export PATTERN_MODE="DOT"
+firebolt-test-app
+```
 
 ---
 
@@ -210,44 +201,41 @@ Some modules expose additional methods depending on the selected Firebolt versio
 
 ---
 
-## Run Modes
+## Automatic Test Execution
 
-### 1. Lifecycle-driven app flow
-The app subscribes to lifecycle state changes and runs module tests only after an `INITIALIZING -> PAUSED -> ACTIVE` transition.
+When `MODE_AUTO_RUN` is enabled (set to any non-empty value except `0` or `false`), the app automatically runs every registered method and event subscription/unsubscription for all modules sequentially after the app reaches the `ACTIVE` lifecycle state. In auto mode, `.unsubscribe` and `.unsubscribeAll` methods are deferred and executed during shutdown cleanup.
 
-### 2. Auto mode (`--auto` or `MODE_AUTO_RUN`)
-Runs every registered method sequentially once active. In auto mode, `.unsubscribe` and `.unsubscribeAll` methods are deferred and executed during shutdown cleanup.
+Example:
 ```bash
-# Run all Firebolt 8 + 9 modules (default)
-firebolt-test-app --auto
-
-# Run Firebolt 8 base modules only
-firebolt-test-app --auto --firebolt8
-
-# Same module set as --firebolt9 in current implementation
-firebolt-test-app --auto --firebolt-all
+export FIREBOLT_ENDPOINT="<valid firebolt session token having end-point>"
+export WAYLAND_DISPLAY="<provided by window manager>"
+export XDG_RUNTIME_DIR="<provided by window management framework>"
+export MODE_AUTO_RUN="true"
+firebolt-test-app
 ```
 
 ---
 
 ## Covered Modules & APIs
 
-### Base modules (always included in `--firebolt9`/`--firebolt-all`, and also available in `--firebolt8`)
+The app tests all Firebolt modules across all supported versions. The following modules are currently enabled:
+
+### Base modules (Firebolt 8+)
 
 | Module | Methods / Events |
 |---|---|
 | **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll`, `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe; v9+) |
+| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll`, `deviceClass` *(v9+)*, `dolbyAtmosExperienceAvailable` *(v9+)*, `onDolbyAtmosExperienceAvailableChanged` *(v9+)* (subscribe / unsubscribe) |
 | **Discovery** | `watched`, `watchedV2` *(returns void; reports success/failure)* |
 | **Display** | `size`, `maxResolution`, `edid` |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` *(+ v9 additions — see above)* |
+| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll`, `timeZone` *(v9+)*, `onTimeZoneChanged` *(v9+)* (subscribe / unsubscribe) |
 | **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event` *(validates schema + JSON data input)*, `appInfo` |
 | **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **Presentation** | `focused`, `onFocusedChanged` (subscribe / unsubscribe / unsubscribeAll) |
 | **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart` (subscribe / unsubscribe), `onSpeechPause` (subscribe / unsubscribe), `onSpeechResume` (subscribe / unsubscribe), `onWillSpeak` (subscribe / unsubscribe), `onSpeechComplete` (subscribe / unsubscribe), `onSpeechInterrupted` (subscribe / unsubscribe), `onNetworkError` (subscribe / unsubscribe), `onPlaybackError` (subscribe / unsubscribe), `unsubscribeAll` |
 
-### Firebolt 9 modules (`--firebolt9` or `--firebolt-all`)
+### Firebolt 9+ additional modules
 
 | Module | Methods / Events |
 |---|---|
@@ -255,6 +243,12 @@ firebolt-test-app --auto --firebolt-all
 | **SpeechSynthesis** | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged` (subscribe / unsubscribe), `onUtteranceEvent` (subscribe / unsubscribe), `unsubscribeAll` |
 | **Stats** | `memoryUsage` |
 | **VideoOutput** | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged` (subscribe / unsubscribe), `onHdcpChanged` (subscribe / unsubscribe), `onCecStateChanged` (subscribe / unsubscribe), `onRefreshRateChanged` (subscribe / unsubscribe), `unsubscribeAll` |
+
+### Disabled modules
+
+| Module | Status | Reason |
+|---|---|---|
+| **Lifecycle** | Disabled | Disabled in `buildModuleList()` — the app itself is a lifecycle client and should not directly test lifecycle APIs |
 
 ---
 
