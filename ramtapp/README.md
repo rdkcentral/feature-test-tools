@@ -23,6 +23,7 @@ PR = "r0"
 
 S = "${WORKDIR}/git/ramtapp"
 
-DEPENDS = "entservices-apis jsoncpp"
-RDEPENDS:${PN} +=  "entservices-apis jsoncpp"
+DEPENDS = "entservices-apis jsoncpp curl"
+RDEPENDS:${PN} +=  "entservices-apis jsoncpp curl"
 ```
+</details>
