@@ -9,7 +9,7 @@ This folder contains sample applications for testing RDK-E RDK App Managers.
 ### Bitbake recipe
 
 ```bash
-SUMMARY = "Appmanager test application
+SUMMARY = "Appmanager test application"
 DESCRIPTION = "Native C++ test application for appmanagers using COMRPC communication"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://../LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
