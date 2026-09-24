@@ -32,26 +32,28 @@ using namespace Firebolt::Device;
 DeviceTest::DeviceTest(fireboltVersion version)
     : TestModuleBase("Device")
 {
-    methods_.push_back("Device.chipsetId");
-    methods_.push_back("Device.hdr");
-    methods_.push_back("Device.timeInActiveState");
-    methods_.push_back("Device.uid");
-    methods_.push_back("Device.uptime");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
+    methods_.push_back("Device.unsubscribeAll");
     methods_.push_back("Device.onHdrChanged.subscribe");
     methods_.push_back("Device.onHdrChanged.unsubscribe");
     if (version >= FIREBOLT_VERSION_9)
     {
-        methods_.push_back("Device.deviceClass");
-        methods_.push_back("Device.dolbyAtmosExperienceAvailable");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.subscribe");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe");
+        methods_.push_back("Device.deviceClass");
+        methods_.push_back("Device.dolbyAtmosExperienceAvailable");
         methods_.push_back("Device.osName");
         methods_.push_back("Device.setOsName");
         methods_.push_back("Device.osVersion");
         methods_.push_back("Device.setOsVersion");
         methods_.push_back("Device.firmware");
     }
-    methods_.push_back("Device.unsubscribeAll");
+    methods_.push_back("Device.chipsetId");
+    methods_.push_back("Device.hdr");
+    methods_.push_back("Device.timeInActiveState");
+    methods_.push_back("Device.uid");
+    methods_.push_back("Device.uptime");
 }
 
 void DeviceTest::runMethod(const std::string& method)

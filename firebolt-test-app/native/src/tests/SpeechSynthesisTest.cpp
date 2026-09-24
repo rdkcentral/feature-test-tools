@@ -32,16 +32,18 @@ using namespace Firebolt::SpeechSynthesis;
 SpeechSynthesisTest::SpeechSynthesisTest(fireboltVersion /* version */)
     : TestModuleBase("SpeechSynthesis")
 {
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
+    methods_.push_back("SpeechSynthesis.unsubscribeAll");
+    methods_.push_back("SpeechSynthesis.onVoicesChanged.subscribe");
+    methods_.push_back("SpeechSynthesis.onVoicesChanged.unsubscribe");
+    methods_.push_back("SpeechSynthesis.onUtteranceEvent.subscribe");
+    methods_.push_back("SpeechSynthesis.onUtteranceEvent.unsubscribe");
     methods_.push_back("SpeechSynthesis.voices");
     methods_.push_back("SpeechSynthesis.speak");
     methods_.push_back("SpeechSynthesis.cancel");
     methods_.push_back("SpeechSynthesis.pause");
     methods_.push_back("SpeechSynthesis.resume");
-    methods_.push_back("SpeechSynthesis.onVoicesChanged.subscribe");
-    methods_.push_back("SpeechSynthesis.onVoicesChanged.unsubscribe");
-    methods_.push_back("SpeechSynthesis.onUtteranceEvent.subscribe");
-    methods_.push_back("SpeechSynthesis.onUtteranceEvent.unsubscribe");
-    methods_.push_back("SpeechSynthesis.unsubscribeAll");
 }
 
 void SpeechSynthesisTest::runMethod(const std::string& method)
@@ -67,7 +69,7 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
     }
     else if ("SpeechSynthesis.speak" == method)
     {
-        std::string text = "Hello World";
+        std::string text = "Hello, this is a test of the Speech Synthesis interface.";
         auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface()
                      .speak(text, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt);
         if (checkResult(r, method))

@@ -32,12 +32,9 @@ using namespace Firebolt::TextToSpeech;
 TextToSpeechTest::TextToSpeechTest()
     : TestModuleBase("TextToSpeech")
 {
-    methods_.push_back("TextToSpeech.speak");
-    methods_.push_back("TextToSpeech.getSpeechState");
-    methods_.push_back("TextToSpeech.listVoices");
-    methods_.push_back("TextToSpeech.pause");
-    methods_.push_back("TextToSpeech.resume");
-    methods_.push_back("TextToSpeech.cancel");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
+    methods_.push_back("TextToSpeech.unsubscribeAll");
     methods_.push_back("TextToSpeech.onSpeechStart.subscribe");
     methods_.push_back("TextToSpeech.onSpeechStart.unsubscribe");
     methods_.push_back("TextToSpeech.onSpeechPause.subscribe");
@@ -54,7 +51,13 @@ TextToSpeechTest::TextToSpeechTest()
     methods_.push_back("TextToSpeech.onNetworkError.unsubscribe");
     methods_.push_back("TextToSpeech.onPlaybackError.subscribe");
     methods_.push_back("TextToSpeech.onPlaybackError.unsubscribe");
-    methods_.push_back("TextToSpeech.unsubscribeAll");
+    methods_.push_back("TextToSpeech.getSpeechState");
+    methods_.push_back("TextToSpeech.listVoices");
+    methods_.push_back("TextToSpeech.speak");
+    methods_.push_back("TextToSpeech.pause");
+    methods_.push_back("TextToSpeech.resume");
+    methods_.push_back("TextToSpeech.cancel");
+
 }
 
 void TextToSpeechTest::runMethod(const std::string& method)
@@ -94,7 +97,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
     if ("TextToSpeech.speak" == method)
     {
-        const std::string text = paramFromConsole("text", "Hello from Firebolt test application.");
+        const std::string text = paramFromConsole("text", "Hello, testing text to speech speak module with intermittent pause, resume and cancel. You may hear it speak in parts.");
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .speak(text);
@@ -211,6 +214,35 @@ void TextToSpeechTest::runMethod(const std::string& method)
                     .subscribeOnSpeechStart([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechStart: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
+                        // Simulate other operations.
+                        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                        auto r = IFireboltAccessor::Instance()
+                                .TextToSpeechInterface()
+                                .getSpeechState(e.speechId);
+                        if (checkResult(r, method))
+                        {
+                            std::cout << "  speechState for id " << e.speechId
+                                    << ": " << static_cast<int>(r->speechState) << std::endl;
+                            if (r->speechState != SpeechState::IN_PROGRESS)
+                            {
+                                std::cout << "  [ERROR] onSpeechStart event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onSpeechStart", "Mismatch event payload != query response.");
+                            }
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
+                        auto r = IFireboltAccessor::Instance()
+                                    .TextToSpeechInterface()
+                                    .pause(e.speechId);
+                        if (checkResult(r, method))
+                        {
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
                     });
         if (checkResult(r, method))
         {
@@ -239,6 +271,35 @@ void TextToSpeechTest::runMethod(const std::string& method)
                     .subscribeOnSpeechPause([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechPause: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
+                        // Simulate other operations.
+                        auto r = IFireboltAccessor::Instance()
+                                .TextToSpeechInterface()
+                                .getSpeechState(e.speechId);
+                        if (checkResult(r, method))
+                        {
+                            std::cout << "  speechState for id " << e.speechId
+                                    << ": " << static_cast<int>(r->speechState) << std::endl;
+                            if (r->speechState != SpeechState::PAUSED)
+                            {
+                                std::cout << "  [ERROR] onSpeechPause event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onSpeechPause", "Mismatch event payload != query response.");
+                            }
+                            reportStepCompletion();
+                            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                            auto r = IFireboltAccessor::Instance()
+                                                .TextToSpeechInterface()
+                                                .resume(e.speechId);
+                            if (checkResult(r, method))
+                            {
+                                reportStepCompletion();
+                            } else {
+                                // Report step completion with failure if the call failed.
+                                reportStepCompletion(true);
+                            }
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
                     });
         if (checkResult(r, method))
         {
@@ -267,6 +328,18 @@ void TextToSpeechTest::runMethod(const std::string& method)
                     .subscribeOnSpeechResume([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechResume: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                        // Simulate other operations.
+                        auto r = IFireboltAccessor::Instance()
+                                    .TextToSpeechInterface()
+                                    .cancel(e.speechId);
+                        if (checkResult(r, method))
+                        {
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
                     });
         if (checkResult(r, method))
         {
@@ -351,6 +424,18 @@ void TextToSpeechTest::runMethod(const std::string& method)
                     .subscribeOnSpeechInterrupted([this](const SpeechIdEvent& e) {
                         std::cout << "  [EVENT] onSpeechInterrupted: speechId=" << e.speechId << std::endl;
                         reportStepCompletion();
+                        // Simulate other operations.
+                        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                        auto r = IFireboltAccessor::Instance()
+                                                .TextToSpeechInterface()
+                                                .resume(e.speechId);
+                        if (checkResult(r, method))
+                        {
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
                     });
         if (checkResult(r, method))
         {
