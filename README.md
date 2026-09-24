@@ -13,6 +13,3 @@ A sample AOWS Voice Test Server which can be used to test the RDK Voice Integrat
 ## 4. App Manager Test App
 Simple COMRPC-based test app to check various App Manager functionalities. Refer to [ReadMe](./ramtapp/README.md) for more details.
 
-## 5. Firebolt EGL Test App
-EGL test application with Firebolt LifeCycle support. See [ReadMe](./firebolt-egl-test-app/README.md) for more details.
-
