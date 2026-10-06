@@ -34,20 +34,23 @@ LocalizationTest::LocalizationTest(fireboltVersion version)
 {
     // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
     // Auto mode will only execute the unsubscribe when teardown is triggered.
-    methods_.push_back("Localization.unsubscribeAll");
     methods_.push_back("Localization.onCountryChanged.subscribe");
     methods_.push_back("Localization.onCountryChanged.unsubscribe");
     methods_.push_back("Localization.onPreferredAudioLanguagesChanged.subscribe");
     methods_.push_back("Localization.onPreferredAudioLanguagesChanged.unsubscribe");
     methods_.push_back("Localization.onPresentationLanguageChanged.subscribe");
     methods_.push_back("Localization.onPresentationLanguageChanged.unsubscribe");
+    if (version >= FIREBOLT_VERSION_9)
+    {
+        methods_.push_back("Localization.onTimeZoneChanged.subscribe");
+        methods_.push_back("Localization.onTimeZoneChanged.unsubscribe");
+    }
+    methods_.push_back("Localization.unsubscribeAll");
     methods_.push_back("Localization.country");
     methods_.push_back("Localization.preferredAudioLanguages");
     methods_.push_back("Localization.presentationLanguage");
     if (version >= FIREBOLT_VERSION_9)
     {
-        methods_.push_back("Localization.onTimeZoneChanged.subscribe");
-        methods_.push_back("Localization.onTimeZoneChanged.unsubscribe");
         methods_.push_back("Localization.timeZone");
     }
 }

@@ -33,9 +33,9 @@ NetworkTest::NetworkTest()
 {
     // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
     // Auto mode will only execute the unsubscribe when teardown is triggered.
-    methods_.push_back("Network.unsubscribeAll");
     methods_.push_back("Network.onConnectedChanged.subscribe");
     methods_.push_back("Network.onConnectedChanged.unsubscribe");
+    methods_.push_back("Network.unsubscribeAll");
     methods_.push_back("Network.connected");
 }
 

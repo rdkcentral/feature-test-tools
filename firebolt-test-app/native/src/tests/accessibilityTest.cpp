@@ -63,7 +63,6 @@ AccessibilityTest::AccessibilityTest()
 {
     // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
     // Auto mode will only execute the unsubscribe when teardown is triggered.
-    methods_.push_back("Accessibility.unsubscribeAll");
     methods_.push_back("Accessibility.onAudioDescriptionChanged.subscribe");
     methods_.push_back("Accessibility.onAudioDescriptionChanged.unsubscribe");
     methods_.push_back("Accessibility.onClosedCaptionsSettingsChanged.subscribe");
@@ -72,6 +71,7 @@ AccessibilityTest::AccessibilityTest()
     methods_.push_back("Accessibility.onHighContrastUIChanged.unsubscribe");
     methods_.push_back("Accessibility.onVoiceGuidanceSettingsChanged.subscribe");
     methods_.push_back("Accessibility.onVoiceGuidanceSettingsChanged.unsubscribe");
+    methods_.push_back("Accessibility.unsubscribeAll");
     methods_.push_back("Accessibility.audioDescription");
     methods_.push_back("Accessibility.closedCaptionsSettings");
     methods_.push_back("Accessibility.highContrastUI");

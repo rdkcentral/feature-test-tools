@@ -34,13 +34,16 @@ DeviceTest::DeviceTest(fireboltVersion version)
 {
     // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
     // Auto mode will only execute the unsubscribe when teardown is triggered.
-    methods_.push_back("Device.unsubscribeAll");
     methods_.push_back("Device.onHdrChanged.subscribe");
     methods_.push_back("Device.onHdrChanged.unsubscribe");
     if (version >= FIREBOLT_VERSION_9)
     {
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.subscribe");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe");
+    }
+    methods_.push_back("Device.unsubscribeAll");
+    if (version >= FIREBOLT_VERSION_9)
+    {
         methods_.push_back("Device.deviceClass");
         methods_.push_back("Device.dolbyAtmosExperienceAvailable");
         methods_.push_back("Device.osName");

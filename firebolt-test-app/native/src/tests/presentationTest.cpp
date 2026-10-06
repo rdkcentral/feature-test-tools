@@ -33,9 +33,9 @@ PresentationTest::PresentationTest()
 {
     // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
     // Auto mode will only execute the unsubscribe when teardown is triggered.
-    methods_.push_back("Presentation.unsubscribeAll");
     methods_.push_back("Presentation.onFocusedChanged.subscribe");
     methods_.push_back("Presentation.onFocusedChanged.unsubscribe");
+    methods_.push_back("Presentation.unsubscribeAll");
     methods_.push_back("Presentation.focused");
 }
 
