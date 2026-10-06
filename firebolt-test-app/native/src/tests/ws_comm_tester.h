@@ -182,8 +182,14 @@ public:
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", false} } },
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } },
             CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "720p"}, {"ignoreEdid", true} } },
-            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p30"}, {"ignoreEdid", true} } },
-            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } }
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "2160p60"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "STEREO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "SURROUND"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "PASSTHRU"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "DOLBYDIGITAL"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "DOLBYDIGITALPLUS"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "AUTO"}, {"persist", false} } }
         );
 
         for (const auto& [method, params] : testCalls) {
