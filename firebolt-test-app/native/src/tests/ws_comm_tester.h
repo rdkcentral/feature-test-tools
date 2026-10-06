@@ -170,8 +170,8 @@ public:
         shutdown();
     }
 
-    void start_thunder_tests(std::atomic<bool>& exitRequested) {
-        const auto testCalls = make_call_array(
+    void start_thunder_tests(std::atomic<bool>& exitRequested, bool isStb) {
+        const auto genericTestCalls = make_call_array(
             CallEntry{ "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
             CallEntry{ "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
             CallEntry{ "org.rdk.Xcast.setFriendlyName", { {"friendlyname", "FriendlyNameTest"} } },
@@ -180,7 +180,10 @@ public:
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", false} } },
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", true} } },
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", false} } },
-            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } },
+            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } }
+        );
+
+        const auto stbTestCalls = make_call_array(
             CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "720p"}, {"ignoreEdid", true} } },
             CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } },
             CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "2160p60"}, {"ignoreEdid", true} } },
@@ -189,29 +192,49 @@ public:
             CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "PASSTHRU"}, {"persist", false} } },
             CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "DOLBYDIGITAL"}, {"persist", false} } },
             CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "DOLBYDIGITALPLUS"}, {"persist", false} } },
-            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "AUTO"}, {"persist", false} } }
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "AUTO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.HdmiCecSource.setEnabled", { {"enabled", false} } },
+            CallEntry{ "org.rdk.HdmiCecSource.setEnabled", { {"enabled", true} } }
         );
 
-        for (const auto& [method, params] : testCalls) {
-            if (exitRequested.load(std::memory_order_acquire)) {
-                INFO("Thunder test execution interrupted by exit request.");
-                return;
-            }
-            json response;
-            DBG("Attempting connection to: {} for method: {}", m_uri, method);
+        const auto tvTestCalls = make_call_array(
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "STEREO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "SURROUND"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "PASSTHRU"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "DOLBYDIGITAL"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "DOLBYDIGITALPLUS"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "AUTO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.HdmiCecSink.setEnabled", { {"enabled", false} } },
+            CallEntry{ "org.rdk.HdmiCecSink.setEnabled", { {"enabled", true} } }
+        );
 
-            bool success = send_request(method, params, response);
-            if (success) {
-                if (response.contains("result")) {
-                    INFO("Test call '{}' succeeded! Result: {}", method, response["result"].dump(4));
-                } else {
-                    INFO("Test call '{}' succeeded with raw payload: {}", method, response.dump());
+        auto executeTestBatch = [this, &exitRequested](const auto& callBatch) -> bool {
+            for (const auto& [method, params] : callBatch) {
+                if (exitRequested.load(std::memory_order_acquire)) {
+                    INFO("Thunder test execution interrupted by exit request.");
+                    return false;
                 }
-            } else {
-                ERR("Test call '{}' failed to get a valid JSON-RPC response.", method);
+
+                json response;
+                DBG("Attempting connection to: {} for method: {}", m_uri, method);
+                if (send_request(std::string(method), params, response)) {
+                    if (response.contains("result")) {
+                        INFO("Test call '{}' succeeded! Result: {}", method, response["result"].dump(4));
+                    } else {
+                        INFO("Test call '{}' succeeded with raw payload: {}", method, response.dump());
+                    }
+                } else {
+                    ERR("Test call '{}' failed to get a valid JSON-RPC response.", method);
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(REQUEST_TIMEOUT_MS + 100));
             }
-            // Intentional delay between changes to ensure live change reports.
-            std::this_thread::sleep_for(std::chrono::milliseconds(REQUEST_TIMEOUT_MS + 100));
+            return true;
+        };
+
+        INFO("Starting Thunder test execution.");
+        if (!executeTestBatch(genericTestCalls) || (isStb && !executeTestBatch(stbTestCalls)) || (!isStb && !executeTestBatch(tvTestCalls))) {
+            return;
         }
     }
 
