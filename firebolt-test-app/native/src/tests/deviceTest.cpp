@@ -174,7 +174,23 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  setOsName succeeded." << std::endl;
-            reportStepCompletion();
+            // read back the value to confirm it was set correctly.
+            auto r2 = IFireboltAccessor::Instance().DeviceInterface().osName();
+            if (checkResult(r2, "Query Device.osName"))
+            {
+                if ("RDKE Linux" == *r2)
+                {
+                    std::cout << "  osName: " << *r2 << std::endl;
+                    reportStepCompletion();
+                }
+                else
+                {
+                    std::cout << "  [ERROR] setOsName did not set the expected value." << std::endl;
+                    reportEventValidationFailure("setOsName", "Mismatch set value != query response.");
+                }
+            } else {
+                reportStepCompletion(true);
+            }
         } else {
             // Report step completion with failure if the call failed.
             reportStepCompletion(true);
@@ -198,7 +214,23 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  setOsVersion succeeded." << std::endl;
-            reportStepCompletion();
+            // read back the value to confirm it was set correctly.
+            auto r2 = IFireboltAccessor::Instance().DeviceInterface().osVersion();
+            if (checkResult(r2, "Query Device.osVersion"))
+            {
+                if ("5.15.0" == *r2)
+                {
+                    std::cout << "  osVersion: " << *r2 << std::endl;
+                    reportStepCompletion();
+                }
+                else
+                {
+                    std::cout << "  [ERROR] setOsVersion did not set the expected value." << std::endl;
+                    reportEventValidationFailure("setOsVersion", "Mismatch set value != query response.");
+                }
+            } else {
+                reportStepCompletion(true);
+            }
         } else {
             // Report step completion with failure if the call failed.
             reportStepCompletion(true);
