@@ -147,8 +147,7 @@ public:
             if (failDetected) {
                 this->failDetected = true;
             }
-            DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}",
-                count, total, currentPercentage, this->failDetected);
+            //DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}", count, total, currentPercentage, this->failDetected);
         }
         cv.notify_one();
     }
@@ -231,6 +230,7 @@ public:
     std::vector<std::string> getValidationFailures() const
     {
         std::lock_guard<std::mutex> lock(mtx);
+        INFO("Progress: {}/{} => {:.2f}%, failDetected={}", count, total, currentPercentage, this->failDetected);
         return validationFailures_;
     }
 };
