@@ -151,11 +151,20 @@ public:
     explicit ThunderWSJRPC(std::size_t max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
         : m_request_queue(max_concurrent), m_shutdown(false) {
         const char* thunder_access_env = std::getenv("THUNDER_ACCESS");
-        m_uri = thunder_access_env ? ("ws://" + std::string(thunder_access_env) + "/jsonrpc") : "";
+        if (thunder_access_env) {
+            std::string access_str(thunder_access_env);
+            m_uri = "ws://" + access_str + "/jsonrpc";
+            DBG("ThunderWSJRPC: Initialized with THUNDER_ACCESS='{}', URI='{}'", access_str, m_uri);
+        } else {
+            m_uri = "";
+            DBG("ThunderWSJRPC: THUNDER_ACCESS environment variable not set");
+        }
     }
 
     explicit ThunderWSJRPC(std::string custom_uri, std::size_t max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
-        : m_uri(std::move(custom_uri)), m_request_queue(max_concurrent), m_shutdown(false) {}
+        : m_uri(std::move(custom_uri)), m_request_queue(max_concurrent), m_shutdown(false) {
+        DBG("ThunderWSJRPC: Initialized with custom_uri='{}'", m_uri);
+    }
 
     ~ThunderWSJRPC() {
         shutdown();
@@ -221,6 +230,15 @@ public:
 
     [[nodiscard]] const std::string& get_uri() const noexcept {
         return m_uri;
+    }
+
+    void set_uri(std::string new_uri) {
+        m_uri = std::move(new_uri);
+        if (!m_uri.empty()) {
+            INFO("ThunderWSJRPC: URI manually set to '{}'", m_uri);
+        } else {
+            INFO("ThunderWSJRPC: URI cleared");
+        }
     }
 
 private:
