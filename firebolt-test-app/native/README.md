@@ -225,31 +225,24 @@ Some modules expose additional methods depending on the selected Firebolt versio
 
 ## Covered modules
 
-The app tests all accessible Firebolt modules supported by the runtime version. The current implementation includes the following modules:
-
-### Base modules
+The app tests all accessible Firebolt modules supported by the runtime version. The current implementation includes the following modules (methods marked *v9+* are available only in Firebolt 9 and later):
 
 | Module | Methods / Events |
 |---|---|
 | `Accessibility` | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged`, `onClosedCaptionsSettingsChanged`, `onHighContrastUIChanged`, `onVoiceGuidanceSettingsChanged`, `unsubscribeAll` |
+| `Actions` *v9+* | `intent`, `start`, `onIntent` |
 | `Advertising` | `advertisingId` |
-| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` (v9+), `dolbyAtmosExperienceAvailable` (v9+), `onDolbyAtmosExperienceAvailableChanged` (v9+), `osName` (v9+), `setOsName` (v9+), `osVersion` (v9+), `setOsVersion` (v9+), `firmware` (v9+) |
+| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` *(v9+)*, `dolbyAtmosExperienceAvailable` *(v9+)*, `onDolbyAtmosExperienceAvailableChanged` *(v9+)*, `osName` *(v9+)*, `setOsName` *(v9+)*, `osVersion` *(v9+)*, `setOsVersion` *(v9+)*, `firmware` *(v9+)* |
 | `Discovery` | `watched`, `watchedV2` |
 | `Display` | `size`, `maxResolution`, `edid` |
-| `Localization` | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged`, `onPreferredAudioLanguagesChanged`, `onPresentationLanguageChanged`, `unsubscribeAll`, `timeZone` (v9+), `onTimeZoneChanged` (v9+) |
+| `Localization` | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged`, `onPreferredAudioLanguagesChanged`, `onPresentationLanguageChanged`, `unsubscribeAll`, `timeZone` *(v9+)*, `onTimeZoneChanged` *(v9+)* |
 | `Metrics` | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event`, `appInfo` |
 | `Network` | `connected`, `onConnectedChanged` |
 | `Presentation` | `focused`, `onFocusedChanged` |
+| `SpeechSynthesis` *v9+* | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged`, `onUtteranceEvent`, `unsubscribeAll` |
+| `Stats` *v9+* | `memoryUsage` |
 | `TextToSpeech` | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart`, `onSpeechPause`, `onSpeechResume`, `onWillSpeak`, `onSpeechComplete`, `onSpeechInterrupted`, `onNetworkError`, `onPlaybackError`, `unsubscribeAll` |
-
-### Additional v9+ modules
-
-| Module | Methods / Events |
-|---|---|
-| `Actions` | `intent`, `start`, `onIntent` |
-| `SpeechSynthesis` | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged`, `onUtteranceEvent`, `unsubscribeAll` |
-| `Stats` | `memoryUsage` |
-| `VideoOutput` | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged`, `onHdcpChanged`, `onCecStateChanged`, `onRefreshRateChanged`, `unsubscribeAll` |
+| `VideoOutput` *v9+* | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged`, `onHdcpChanged`, `onCecStateChanged`, `onRefreshRateChanged`, `unsubscribeAll` |
 
 ### Disabled by design
 
