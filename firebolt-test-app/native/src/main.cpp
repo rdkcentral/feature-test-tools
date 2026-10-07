@@ -476,6 +476,11 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
     for (auto& mod : modules)
     {
         std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
+        auto sleepDuration = std::chrono::milliseconds(200);
+        // TTS Test requires extended sleep of 3s to simulate the steps.
+        if ("TextToSpeech" == mod->name()) {
+            sleepDuration = std::chrono::seconds(3);
+        }
         for (const auto& m : mod->methods())
         {
             if (exitRequested.load(std::memory_order_acquire)) {
@@ -489,7 +494,7 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
             }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            std::this_thread::sleep_for(sleepDuration);
         }
     }
     // Simulate TestModules through thunder calls.
