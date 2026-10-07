@@ -69,9 +69,11 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
     }
     else if ("SpeechSynthesis.speak" == method)
     {
-        std::string text = "Hello, this is a test of the Speech Synthesis interface.";
+        std::string text = "Hello, this is a test of the Speech Synthesis interface in carol voice with a volume near highest at a rate of half pace with medium pitch.";
+        std::string speech_lang = "en-US";
+        double volume = 0.9, rate = 6.0, pitch = 1.0;
         auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface()
-                     .speak(text, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt);
+                     .speak(text, speech_lang, std::nullopt, volume, rate, pitch, std::nullopt);
         if (checkResult(r, method))
         {
             lastUtteranceId_ = *r;
