@@ -212,17 +212,6 @@ firebolt-test-app
 
 ---
 
-## Version-Aware Modules
-
-Some modules expose additional methods depending on the selected Firebolt version at runtime:
-
-| Module | Firebolt 8 methods | Additional Firebolt 9 methods |
-|---|---|---|
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timeZone`, `onTimeZoneChanged` (subscribe / unsubscribe) |
-
----
-
 ## Covered modules
 
 The app tests all accessible Firebolt modules supported by the runtime version. The current implementation includes the following modules (methods marked *v9+* are available only in Firebolt 9 and later):
