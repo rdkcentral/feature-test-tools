@@ -233,7 +233,7 @@ The app tests all accessible Firebolt modules supported by the runtime version. 
 |---|---|
 | `Accessibility` | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged`, `onClosedCaptionsSettingsChanged`, `onHighContrastUIChanged`, `onVoiceGuidanceSettingsChanged`, `unsubscribeAll` |
 | `Advertising` | `advertisingId` |
-| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` (v9+), `dolbyAtmosExperienceAvailable` (v9+), `onDolbyAtmosExperienceAvailableChanged` (v9+) |
+| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` (v9+), `dolbyAtmosExperienceAvailable` (v9+), `onDolbyAtmosExperienceAvailableChanged` (v9+), `osName` (v9+), `setOsName` (v9+), `osVersion` (v9+), `setOsVersion` (v9+), `firmware` (v9+) |
 | `Discovery` | `watched`, `watchedV2` |
 | `Display` | `size`, `maxResolution`, `edid` |
 | `Localization` | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged`, `onPreferredAudioLanguagesChanged`, `onPresentationLanguageChanged`, `unsubscribeAll`, `timeZone` (v9+), `onTimeZoneChanged` (v9+) |
