@@ -500,13 +500,13 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
     // Simulate TestModules through thunder calls.
     if (!thunderClient.get_uri().empty()) {
         char* deviceTypeEnv = std::getenv("PROFILE");
-        bool isStb = false;
+        bool isStb = true;
         if (deviceTypeEnv) {
             std::string deviceTypeStr(deviceTypeEnv);
             isStb = (deviceTypeStr == "stb" || deviceTypeStr == "STB");
             INFO("Detected device type from PROFILE env var: {}, isStb={}", deviceTypeStr, isStb);
         } else {
-            INFO("PROFILE environment variable not set, defaulting to isStb=false");
+            INFO("PROFILE environment variable not set, defaulting to STB Profile.");
         }
         INFO("Starting Thunder tests with URI: {}", thunderClient.get_uri());
         std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -549,18 +549,10 @@ int main(void)
     std::cout << "Firebolt Test App v" << PROJECT_VERSION << std::endl;
 
     auto& appConfig = GetAppConfig();
+    // No longer supports interactive mode, so always set autoRun to true.
+    appConfig.autoRun = true;
 
     Firebolt::LogLevel         logLevel = Firebolt::LogLevel::Notice;
-
-    // If the environment variable MODE_AUTO_RUN is set, enable auto-run mode.
-    // Keep interactive mode available by default; this env var should only be an
-    // optional convenience override, not a hard requirement that blocks normal use.
-    if (const char* runmode = std::getenv("MODE_AUTO_RUN")) {
-        const std::string modeValue = runmode;
-        if (!modeValue.empty() && modeValue != "0" && modeValue != "false" && modeValue != "FALSE") {
-            appConfig.autoRun = true;
-        }
-    }
 
     // -----------------------------------------------------------------------
     // Resolve firebolt endpoint URL
@@ -635,11 +627,9 @@ int main(void)
         std::string access_str(thunderAccess);
         std::string thunder_uri = "ws://" + access_str + "/jsonrpc";
         thunderClient.set_uri(thunder_uri);
-        INFO("THUNDER_ACCESS set to: {}", access_str);
         INFO("Thunder client URI configured: {}", thunderClient.get_uri());
     } else {
         INFO("THUNDER_ACCESS environment variable not set - Thunder tests will be skipped");
-        INFO("To enable Thunder tests, set: export THUNDER_ACCESS=<host>:<port>");
     }
 
     BackgroundPatternMode glAppPattern = PATTERN_NONE;

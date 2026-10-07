@@ -4,54 +4,79 @@ A native C++ firebolt test application that exercises the
 [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) APIs
 and events/notifications across all supported Firebolt modules.
 
-It uses thunder APIs to alter the system configurations to test the Firebolt events and it never restores to original.
-Explicitly do a device factory reset when the app exits.
+This app runs firebolt module tests automatically - executes the registered module methods and
+subscriptions in sequence after startup.
+
+It uses thunder APIs to alter the system configurations to test the Firebolt events and never restores to original.
+
+**Explicitly do a device factory reset when the app exits.**
 
 ---
 
-## Project Layout
+## Project layout
 
-```
+```text
 native/
-├── CMakeLists.txt              # Top-level CMake project
+├── CMakeLists.txt
+├── README.md
 ├── assets/
-│   ├── LiberationSans-Bold.ttf # Embedded font for the GL display window (OFL 1.1)
-│   └── LICENSE                 # License text installed from the Liberation font package (OFL 1.1)
-└── src/
-    ├── main.cpp                # Entry point, Firebolt connection, lifecycle monitoring, GL app management
-    ├── utils.h / utils.cpp     # Shared helpers: AppConfig, fireboltVersion, chooseFromList, TestModuleBase
-    ├── gl.h                    # GlApp class declaration (Wayland/EGL/GLES keycode display window)
-    ├── gl.cpp                  # GlApp implementation
-    ├── native_logger.hpp       # Shared logging infrastructure (DBG/INFO/WARN/ERR/FATAL macros)
-    └── tests/
-        ├── accessibilityTest.h/.cpp
-        ├── actionsTest.h/.cpp
-        ├── advertisingTest.h/.cpp
-        ├── deviceTest.h/.cpp
-        ├── discoveryTest.h/.cpp
-        ├── displayTest.h/.cpp
-        ├── lifecycleTest.h/.cpp           # *(Disabled — app itself is a lifecycle client)*
-        ├── localizationTest.h/.cpp
-        ├── metricsTest.h/.cpp
-        ├── networkTest.h/.cpp
-        ├── presentationTest.h/.cpp
-        ├── SpeechSynthesisTest.h/.cpp
-        ├── statsTest.h/.cpp
-        ├── texttospeechTest.h/.cpp
-        ├── VideoOutputTest.h/.cpp
-        └── ws_comm_tester.h    # Internal WebSocket/Thunder communication test helper
+│   ├── LiberationSans-Bold.ttf
+│   └── LICENSE
+├── cmake/
+│   └── FindWesterosSimpleShell.cmake
+├── src/
+│   ├── gl.cpp
+│   ├── gl.h
+│   ├── main.cpp
+│   ├── native_logger.hpp
+│   ├── utils.cpp
+│   ├── utils.h
+│   ├── gltest/
+│   │   └── gl_standalone_test.cpp
+│   └── tests/
+│       ├── accessibilityTest.cpp/.h
+│       ├── actionsTest.cpp/.h
+│       ├── advertisingTest.cpp/.h
+│       ├── deviceTest.cpp/.h
+│       ├── discoveryTest.cpp/.h
+│       ├── displayTest.cpp/.h
+│       ├── lifecycleTest.cpp/.h
+│       ├── localizationTest.cpp/.h
+│       ├── metricsTest.cpp/.h
+│       ├── networkTest.cpp/.h
+│       ├── presentationTest.cpp/.h
+│       ├── SpeechSynthesisTest.cpp/.h
+│       ├── statsTest.cpp/.h
+│       ├── texttospeechTest.cpp/.h
+│       ├── VideoOutputTest.cpp/.h
+│       └── ws_comm_tester.h
+└── build/
 ```
+
+---
+
+## Features
+
+- Connects to a Firebolt WebSocket endpoint using the installed Firebolt client libraries
+- Enumerates and exercises registered test modules
+- Supports Firebolt version-aware behavior for v8 and v9+ APIs
+- Runs all registered methods and event subscriptions automatically by default
+- Optionally exercises Thunder JSON-RPC connectivity using `THUNDER_ACCESS` dependent on `PROFILE` configured.
+- Initializes a GL/Wayland window for lifecycle and visual feedback
+- Uses a bundled Liberation Sans Bold font for display output
 
 ---
 
 ## Prerequisites
 
+The native app depends on the following system and CMake packages:
+
 | Requirement | Notes |
 |---|---|
 | **CMake ≥ 3.13** | |
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
-| **FireboltClient v0.7.0** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
-| **FireboltTransport v1.1.12** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
+| **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
+| **FireboltTransport** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
 | **nlohmann-json** installed | Used for JSON input/response validation in tests |
 | **OpenSSL ≥ 3.0** | Required for secure WebSocket transport (libssl, libcrypto) |
 | **websocketpp** | Required for WebSocket communication |
@@ -115,7 +140,7 @@ FILES:${PN} += " /usr/share/*"
   "packageType": "application",
   "entryPoint": "/usr/bin/firebolt-test-app",
   "dependencies": {
-    "com.rdkcentral.base": "0.3.1"
+    "com.rdkcentral.base": "0.4.0"
   },
   "permissions": [
       "urn:rdk:permission:firebolt",
@@ -127,11 +152,12 @@ FILES:${PN} += " /usr/share/*"
           "WIDTH": "1920",
           "HEIGHT": "1080",
           "GLLOGLEVEL":"DEBUG",
-          "MODE_AUTO_RUN":"true",
+          "PROFILE":"STB",
           "APPLOGLEVEL":"DEBUG"
       }
   }
 }
+
 ```
 
 </details>
@@ -145,7 +171,7 @@ FILES:${PN} += " /usr/share/*"
 
 ## Running
 
-This is a **lifecycle-driven Firebolt application** with automatic testing via environment variables. The app subscribes to lifecycle state changes and runs module tests only after an `INITIALIZING → PAUSED → ACTIVE` transition.
+This is a **lifecycle-driven Firebolt application** with automatic testing enabled by default. The app subscribes to lifecycle state changes and runs module tests automatically after startup and after an `INITIALIZING → PAUSED → ACTIVE` transition.
 
 ### Binary name
 ```
@@ -164,24 +190,20 @@ firebolt-test-app
 
 | Variable | Default | Description |
 |---|---|---|
-| `MODE_AUTO_RUN` | *(disabled)* | If set to a non-empty value other than `0`/`false`, runs all module tests automatically after app activation |
-| `APPLOGLEVEL` | `Info` | App logging level: `Debug`, `Info`, `Notice`, `Warning`, `Error`, `Fatal` |
-| `GLLOGLEVEL` | `Info` | GL module logging level: `Debug`, `Info`, `Notice`, `Warning`, `Error`, `Fatal` |
-| `WIDTH` | `1920` | GL window width in pixels |
-| `HEIGHT` | `1080` | GL window height in pixels |
-| `PATTERN_MODE` | *(none)* | GL background pattern: `GRID` or `DOT` |
+| `APPLOGLEVEL` | `Info` | App logger verbosity: `Debug`, `Info`, `Notice`, `Warning`, `Error`, `Fatal` |
+| `GLLOGLEVEL` | `Info` | GL logger verbosity |
+| `WIDTH` | `1920` | GL window width |
+| `HEIGHT` | `1080` | GL window height |
+| `PATTERN_MODE` | none | `GRID` or `DOT` background pattern |
+| `THUNDER_ACCESS` | unset | Optional host:port for Thunder JSON-RPC tests |
+| `PROFILE` | unset | Used to control Thunder JSONRPC API calls. Optional: `STB` (default) or `TV` |
 
-### GL display window
+Example:
 
-The app initializes a Wayland/EGL overlay window during lifecycle-driven startup and renders the last
-received key code using the bundled Liberation Sans Bold font. `XDG_RUNTIME_DIR` must be set for GL initialization.
-
-Example startup:
 ```bash
-export FIREBOLT_ENDPOINT="<valid firebolt session token having end-point>"
+export FIREBOLT_ENDPOINT="<valid firebolt session end-point>"
 export WAYLAND_DISPLAY="<provided by window manager>"
 export XDG_RUNTIME_DIR="<provided by window management framework>"
-export MODE_AUTO_RUN="true"
 export WIDTH="1920"
 export HEIGHT="1080"
 export PATTERN_MODE="DOT"
@@ -190,65 +212,32 @@ firebolt-test-app
 
 ---
 
-## Version-Aware Modules
+## Covered modules
 
-Some modules expose additional methods depending on the selected Firebolt version at runtime:
-
-| Module | Firebolt 8 methods | Additional Firebolt 9 methods |
-|---|---|---|
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll` | `deviceClass`, `dolbyAtmosExperienceAvailable`, `onDolbyAtmosExperienceAvailableChanged` (subscribe / unsubscribe) |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll` | `timeZone`, `onTimeZoneChanged` (subscribe / unsubscribe) |
-
----
-
-## Automatic Test Execution
-
-When `MODE_AUTO_RUN` is enabled (set to any non-empty value except `0` or `false`), the app automatically runs every registered method and event subscription/unsubscription for all modules sequentially after the app reaches the `ACTIVE` lifecycle state. In auto mode, `.unsubscribe` and `.unsubscribeAll` methods are deferred and executed during shutdown cleanup.
-
-Example:
-```bash
-export FIREBOLT_ENDPOINT="<valid firebolt session token having end-point>"
-export WAYLAND_DISPLAY="<provided by window manager>"
-export XDG_RUNTIME_DIR="<provided by window management framework>"
-export MODE_AUTO_RUN="true"
-firebolt-test-app
-```
-
----
-
-## Covered Modules & APIs
-
-The app tests all Firebolt modules across all supported versions. The following modules are currently enabled:
-
-### Base modules (Firebolt 8+)
+The app tests all accessible Firebolt modules supported by the runtime version. The current implementation includes the following modules (methods marked *v9+* are available only in Firebolt 9 and later):
 
 | Module | Methods / Events |
 |---|---|
-| **Accessibility** | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged` (subscribe / unsubscribe), `onClosedCaptionsSettingsChanged` (subscribe / unsubscribe), `onHighContrastUIChanged` (subscribe / unsubscribe), `onVoiceGuidanceSettingsChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Advertising** | `advertisingId` |
-| **Device** | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged` (subscribe / unsubscribe), `unsubscribeAll`, `deviceClass` *(v9+)*, `dolbyAtmosExperienceAvailable` *(v9+)*, `onDolbyAtmosExperienceAvailableChanged` *(v9+)* (subscribe / unsubscribe) |
-| **Discovery** | `watched`, `watchedV2` *(returns void; reports success/failure)* |
-| **Display** | `size`, `maxResolution`, `edid` |
-| **Localization** | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged` (subscribe / unsubscribe), `onPreferredAudioLanguagesChanged` (subscribe / unsubscribe), `onPresentationLanguageChanged` (subscribe / unsubscribe), `unsubscribeAll`, `timeZone` *(v9+)*, `onTimeZoneChanged` *(v9+)* (subscribe / unsubscribe) |
-| **Metrics** | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event` *(validates schema + JSON data input)*, `appInfo` |
-| **Network** | `connected`, `onConnectedChanged` (subscribe / unsubscribe / unsubscribeAll) |
-| **Presentation** | `focused`, `onFocusedChanged` (subscribe / unsubscribe / unsubscribeAll) |
-| **TextToSpeech** | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart` (subscribe / unsubscribe), `onSpeechPause` (subscribe / unsubscribe), `onSpeechResume` (subscribe / unsubscribe), `onWillSpeak` (subscribe / unsubscribe), `onSpeechComplete` (subscribe / unsubscribe), `onSpeechInterrupted` (subscribe / unsubscribe), `onNetworkError` (subscribe / unsubscribe), `onPlaybackError` (subscribe / unsubscribe), `unsubscribeAll` |
+| `Accessibility` | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged`, `onClosedCaptionsSettingsChanged`, `onHighContrastUIChanged`, `onVoiceGuidanceSettingsChanged`, `unsubscribeAll` |
+| `Actions` *v9+* | `intent`, `start`, `onIntent` |
+| `Advertising` | `advertisingId` |
+| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` *(v9+)*, `dolbyAtmosExperienceAvailable` *(v9+)*, `onDolbyAtmosExperienceAvailableChanged` *(v9+)*, `osName` *(v9+)*, `setOsName` *(v9+)*, `osVersion` *(v9+)*, `setOsVersion` *(v9+)*, `firmware` *(v9+)* |
+| `Discovery` | `watched`, `watchedV2` |
+| `Display` | `size`, `maxResolution`, `edid` |
+| `Localization` | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged`, `onPreferredAudioLanguagesChanged`, `onPresentationLanguageChanged`, `unsubscribeAll`, `timeZone` *(v9+)*, `onTimeZoneChanged` *(v9+)* |
+| `Metrics` | `ready`, `signIn`, `signOut`, `startContent`, `stopContent`, `page`, `error`, `mediaLoadStart`, `mediaPlay`, `mediaPlaying`, `mediaPause`, `mediaWaiting`, `mediaSeeking`, `mediaSeeked`, `mediaRateChanged`, `mediaRenditionChanged`, `mediaEnded`, `event`, `appInfo` |
+| `Network` | `connected`, `onConnectedChanged` |
+| `Presentation` | `focused`, `onFocusedChanged` |
+| `SpeechSynthesis` *v9+* | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged`, `onUtteranceEvent`, `unsubscribeAll` |
+| `Stats` *v9+* | `memoryUsage` |
+| `TextToSpeech` | `speak`, `getSpeechState`, `listVoices`, `pause`, `resume`, `cancel`, `onSpeechStart`, `onSpeechPause`, `onSpeechResume`, `onWillSpeak`, `onSpeechComplete`, `onSpeechInterrupted`, `onNetworkError`, `onPlaybackError`, `unsubscribeAll` |
+| `VideoOutput` *v9+* | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged`, `onHdcpChanged`, `onCecStateChanged`, `onRefreshRateChanged`, `unsubscribeAll` |
 
-### Firebolt 9+ additional modules
-
-| Module | Methods / Events |
-|---|---|
-| **Actions** | `intent` *(validates response schema)*, `start` *(validates JSON input)*, `onIntent` (subscribe / unsubscribe / unsubscribeAll). Intent payloads follow the `{ action, context.source?, intentId }` model. |
-| **SpeechSynthesis** | `voices`, `speak`, `cancel`, `pause`, `resume`, `onVoicesChanged` (subscribe / unsubscribe), `onUtteranceEvent` (subscribe / unsubscribe), `unsubscribeAll` |
-| **Stats** | `memoryUsage` |
-| **VideoOutput** | `resolution`, `hdcp`, `cecState`, `refreshRate`, `colorDepth`, `colorFormat`, `colorimetry`, `dynamicRange`, `quantizationRange`, `onResolutionChanged` (subscribe / unsubscribe), `onHdcpChanged` (subscribe / unsubscribe), `onCecStateChanged` (subscribe / unsubscribe), `onRefreshRateChanged` (subscribe / unsubscribe), `unsubscribeAll` |
-
-### Disabled modules
+### Disabled by design
 
 | Module | Status | Reason |
 |---|---|---|
-| **Lifecycle** | Disabled | Disabled in `buildModuleList()` — the app itself is a lifecycle client and should not directly test lifecycle APIs |
+| `Lifecycle` | Disabled | The app itself acts as a lifecycle client and should not directly test lifecycle APIs |
 
 ---
 
