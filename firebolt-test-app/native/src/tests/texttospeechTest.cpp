@@ -25,19 +25,25 @@
 
 #include <firebolt/firebolt.h>
 #include <iostream>
+#include <thread>
+#include <chrono>
+
+#include "native_logger.hpp"
 
 using namespace Firebolt;
 using namespace Firebolt::TextToSpeech;
 
+struct AppLoggerConfig {
+    static constexpr const char* kEnvVar = "TTSLOGLEVEL";
+    static constexpr const char* kTag = "[TTS]";
+};
+using LocalLogger = RuntimeLogger<AppLoggerConfig>;
+
 TextToSpeechTest::TextToSpeechTest()
     : TestModuleBase("TextToSpeech")
 {
-    methods_.push_back("TextToSpeech.speak");
-    methods_.push_back("TextToSpeech.getSpeechState");
-    methods_.push_back("TextToSpeech.listVoices");
-    methods_.push_back("TextToSpeech.pause");
-    methods_.push_back("TextToSpeech.resume");
-    methods_.push_back("TextToSpeech.cancel");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
     methods_.push_back("TextToSpeech.onSpeechStart.subscribe");
     methods_.push_back("TextToSpeech.onSpeechStart.unsubscribe");
     methods_.push_back("TextToSpeech.onSpeechPause.subscribe");
@@ -55,6 +61,12 @@ TextToSpeechTest::TextToSpeechTest()
     methods_.push_back("TextToSpeech.onPlaybackError.subscribe");
     methods_.push_back("TextToSpeech.onPlaybackError.unsubscribe");
     methods_.push_back("TextToSpeech.unsubscribeAll");
+    methods_.push_back("TextToSpeech.listVoices");
+    methods_.push_back("TextToSpeech.speak");
+    methods_.push_back("TextToSpeech.getSpeechState");
+    methods_.push_back("TextToSpeech.pause");
+    methods_.push_back("TextToSpeech.resume");
+    methods_.push_back("TextToSpeech.cancel");
 }
 
 void TextToSpeechTest::runMethod(const std::string& method)
@@ -94,14 +106,14 @@ void TextToSpeechTest::runMethod(const std::string& method)
 
     if ("TextToSpeech.speak" == method)
     {
-        const std::string text = paramFromConsole("text", "Hello from Firebolt test application.");
+        const std::string text = paramFromConsole("text", "Hello, testing text to speech speak module with intermittent pause, resume and cancel. You may hear it speak in parts.");
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .speak(text);
         if (checkResult(r, method))
         {
             lastSpeechId_ = r->speechId;
-            std::cout << "  speechId: " << r->speechId
+            std::cout << "  speechId: " << r->speechId << "/" << lastSpeechId_
                       << "  ttsStatus: " << r->ttsStatus << std::endl;
             reportStepCompletion();
         } else {
@@ -113,6 +125,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
@@ -151,6 +164,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
@@ -168,6 +182,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
@@ -185,6 +200,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
@@ -202,15 +218,33 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechStartSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnSpeechStart([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onSpeechStart: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onSpeechStart: speechId=" << e.speechId << " / "<< lastSpeechId_ << std::endl;
+
                         reportStepCompletion();
+                        auto r = IFireboltAccessor::Instance()
+                                .TextToSpeechInterface()
+                                .getSpeechState(e.speechId);
+                        if (checkResult(r, "Query getSpeechState from onSpeechStart"))
+                        {
+                            std::cout << "  speechState for id " << e.speechId
+                                    << ": " << static_cast<int>(r->speechState) << std::endl;
+                            if (r->speechState != SpeechState::IN_PROGRESS)
+                            {
+                                std::cout << "  [ERROR] onSpeechStart event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onSpeechStart", "Mismatch event payload != query response.");
+                            }
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
                     });
         if (checkResult(r, method))
         {
@@ -230,15 +264,33 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechPauseSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnSpeechPause([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onSpeechPause: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onSpeechPause: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
                         reportStepCompletion();
+                        // Simulate other operations.
+                        auto r = IFireboltAccessor::Instance()
+                                .TextToSpeechInterface()
+                                .getSpeechState(e.speechId);
+                        if (checkResult(r, "Query getSpeechState from onSpeechPause"))
+                        {
+                            std::cout << "  speechState for id " << e.speechId
+                                    << ": " << static_cast<int>(r->speechState) << std::endl;
+                            if (r->speechState != SpeechState::PAUSED)
+                            {
+                                std::cout << "  [ERROR] onSpeechPause event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onSpeechPause", "Mismatch event payload != query response.");
+                            }
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
                     });
         if (checkResult(r, method))
         {
@@ -258,14 +310,14 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechResumeSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnSpeechResume([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onSpeechResume: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onSpeechResume: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
                         reportStepCompletion();
                     });
         if (checkResult(r, method))
@@ -286,14 +338,14 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onWillSpeakSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnWillSpeak([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onWillSpeak: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onWillSpeak: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
                         reportStepCompletion();
                     });
         if (checkResult(r, method))
@@ -314,7 +366,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechCompleteSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
@@ -342,14 +394,14 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onSpeechInterruptedSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnSpeechInterrupted([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onSpeechInterrupted: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onSpeechInterrupted: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
                         reportStepCompletion();
                     });
         if (checkResult(r, method))
@@ -370,15 +422,14 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onNetworkErrorSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onNetworkError (ID: "
-                      << onNetworkErrorSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnNetworkError([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onNetworkError: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onNetworkError: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
                         reportStepCompletion();
                     });
         if (checkResult(r, method))
@@ -399,14 +450,14 @@ void TextToSpeechTest::runMethod(const std::string& method)
     {
         if (0 != onPlaybackErrorSubId_)
         {
-            // Already subscribed, drop to avoid multiple subscriptions.
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
                     .TextToSpeechInterface()
                     .subscribeOnPlaybackError([this](const SpeechIdEvent& e) {
-                        std::cout << "  [EVENT] onPlaybackError: speechId=" << e.speechId << std::endl;
+                        std::cout << "  [EVENT] onPlaybackError: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
                         reportStepCompletion();
                     });
         if (checkResult(r, method))

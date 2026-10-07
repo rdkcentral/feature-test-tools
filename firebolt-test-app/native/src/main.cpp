@@ -147,8 +147,7 @@ public:
             if (failDetected) {
                 this->failDetected = true;
             }
-            DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}",
-                count, total, currentPercentage, this->failDetected);
+            //DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}", count, total, currentPercentage, this->failDetected);
         }
         cv.notify_one();
     }
@@ -231,6 +230,7 @@ public:
     std::vector<std::string> getValidationFailures() const
     {
         std::lock_guard<std::mutex> lock(mtx);
+        INFO("Progress: {}/{} => {:.2f}%, failDetected={}", count, total, currentPercentage, this->failDetected);
         return validationFailures_;
     }
 };
@@ -476,6 +476,11 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
     for (auto& mod : modules)
     {
         std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
+        auto sleepDuration = std::chrono::milliseconds(200);
+        // TTS Test requires extended sleep of 3s to simulate the steps.
+        if ("TextToSpeech" == mod->name()) {
+            sleepDuration = std::chrono::seconds(3);
+        }
         for (const auto& m : mod->methods())
         {
             if (exitRequested.load(std::memory_order_acquire)) {
@@ -489,13 +494,25 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
             }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(sleepDuration);
         }
     }
     // Simulate TestModules through thunder calls.
     if (!thunderClient.get_uri().empty()) {
+        char* deviceTypeEnv = std::getenv("PROFILE");
+        bool isStb = false;
+        if (deviceTypeEnv) {
+            std::string deviceTypeStr(deviceTypeEnv);
+            isStb = (deviceTypeStr == "stb" || deviceTypeStr == "STB");
+            INFO("Detected device type from PROFILE env var: {}, isStb={}", deviceTypeStr, isStb);
+        } else {
+            INFO("PROFILE environment variable not set, defaulting to isStb=false");
+        }
+        INFO("Starting Thunder tests with URI: {}", thunderClient.get_uri());
         std::this_thread::sleep_for(std::chrono::seconds(5));
-        thunderClient.start_thunder_tests(exitRequested);
+        thunderClient.start_thunder_tests(exitRequested, isStb);
+    } else {
+        INFO("Thunder client URI is empty - skipping Thunder tests. THUNDER_ACCESS env var must be set.");
     }
     // Trigger auto mode deferred cleanup after all other methods have been executed.
     runAutoModeDeferredUnsubscribeCleanup(modules, progressController);
@@ -612,6 +629,19 @@ int main(void)
     // --------------------------- GL App Lifecycle -------------------------------
     ProgressController PC;
     ThunderWSJRPC thunderClient;
+
+    // Initialize Thunder client URI from environment variable
+    if (const char* thunderAccess = std::getenv("THUNDER_ACCESS")) {
+        std::string access_str(thunderAccess);
+        std::string thunder_uri = "ws://" + access_str + "/jsonrpc";
+        thunderClient.set_uri(thunder_uri);
+        INFO("THUNDER_ACCESS set to: {}", access_str);
+        INFO("Thunder client URI configured: {}", thunderClient.get_uri());
+    } else {
+        INFO("THUNDER_ACCESS environment variable not set - Thunder tests will be skipped");
+        INFO("To enable Thunder tests, set: export THUNDER_ACCESS=<host>:<port>");
+    }
+
     BackgroundPatternMode glAppPattern = PATTERN_NONE;
     int glAppWidth = 1920, glAppHeight = 1080;
 

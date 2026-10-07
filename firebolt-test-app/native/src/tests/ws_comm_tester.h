@@ -151,18 +151,27 @@ public:
     explicit ThunderWSJRPC(std::size_t max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
         : m_request_queue(max_concurrent), m_shutdown(false) {
         const char* thunder_access_env = std::getenv("THUNDER_ACCESS");
-        m_uri = thunder_access_env ? ("ws://" + std::string(thunder_access_env) + "/jsonrpc") : "";
+        if (thunder_access_env) {
+            std::string access_str(thunder_access_env);
+            m_uri = "ws://" + access_str + "/jsonrpc";
+            DBG("ThunderWSJRPC: Initialized with THUNDER_ACCESS='{}', URI='{}'", access_str, m_uri);
+        } else {
+            m_uri = "";
+            DBG("ThunderWSJRPC: THUNDER_ACCESS environment variable not set");
+        }
     }
 
     explicit ThunderWSJRPC(std::string custom_uri, std::size_t max_concurrent = DEFAULT_MAX_CONCURRENT_REQUESTS)
-        : m_uri(std::move(custom_uri)), m_request_queue(max_concurrent), m_shutdown(false) {}
+        : m_uri(std::move(custom_uri)), m_request_queue(max_concurrent), m_shutdown(false) {
+        DBG("ThunderWSJRPC: Initialized with custom_uri='{}'", m_uri);
+    }
 
     ~ThunderWSJRPC() {
         shutdown();
     }
 
-    void start_thunder_tests(std::atomic<bool>& exitRequested) {
-        const auto testCalls = make_call_array(
+    void start_thunder_tests(std::atomic<bool>& exitRequested, bool isStb) {
+        const auto genericTestCalls = make_call_array(
             CallEntry{ "org.rdk.System.setTerritory",   { {"territory", "USA"}, {"region", "US-NY"} } },
             CallEntry{ "org.rdk.System.setTimeZoneDST", { {"timeZone", "America/New_York"}, {"accuracy", "INITIAL"} } },
             CallEntry{ "org.rdk.Xcast.setFriendlyName", { {"friendlyname", "FriendlyNameTest"} } },
@@ -171,32 +180,61 @@ public:
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", false} } },
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "eth0"}, {"enabled", true} } },
             CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", false} } },
-            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } },
-            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "720p"}, {"ignoreEdid", true} } },
-            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p30"}, {"ignoreEdid", true} } },
-            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } }
+            CallEntry{ "org.rdk.NetworkManager.1.SetInterfaceState", { {"interface", "wlan0"}, {"enabled", true} } }
         );
 
-        for (const auto& [method, params] : testCalls) {
-            if (exitRequested.load(std::memory_order_acquire)) {
-                INFO("Thunder test execution interrupted by exit request.");
-                return;
-            }
-            json response;
-            DBG("Attempting connection to: {} for method: {}", m_uri, method);
+        const auto stbTestCalls = make_call_array(
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "720p"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "1080p60"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setCurrentResolution", { {"videoDisplay", "HDMI0"}, {"resolution", "2160p60"}, {"ignoreEdid", true} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "STEREO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "SURROUND"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "PASSTHRU"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "DOLBYDIGITAL"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "DOLBYDIGITALPLUS"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "HDMI0"}, {"soundMode", "AUTO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.HdmiCecSource.setEnabled", { {"enabled", false} } },
+            CallEntry{ "org.rdk.HdmiCecSource.setEnabled", { {"enabled", true} } }
+        );
 
-            bool success = send_request(method, params, response);
-            if (success) {
-                if (response.contains("result")) {
-                    INFO("Test call '{}' succeeded! Result: {}", method, response["result"].dump(4));
-                } else {
-                    INFO("Test call '{}' succeeded with raw payload: {}", method, response.dump());
+        const auto tvTestCalls = make_call_array(
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "STEREO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "SURROUND"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "PASSTHRU"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "DOLBYDIGITAL"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "DOLBYDIGITALPLUS"}, {"persist", false} } },
+            CallEntry{ "org.rdk.DisplaySettings.setSoundMode", { {"audioPort", "SPEAKER0"}, {"soundMode", "AUTO"}, {"persist", false} } },
+            CallEntry{ "org.rdk.HdmiCecSink.setEnabled", { {"enabled", false} } },
+            CallEntry{ "org.rdk.HdmiCecSink.setEnabled", { {"enabled", true} } }
+        );
+
+        auto executeTestBatch = [this, &exitRequested](const auto& callBatch) -> bool {
+            for (const auto& [method, params] : callBatch) {
+                if (exitRequested.load(std::memory_order_acquire)) {
+                    INFO("Thunder test execution interrupted by exit request.");
+                    return false;
                 }
-            } else {
-                ERR("Test call '{}' failed to get a valid JSON-RPC response.", method);
+
+                json response;
+                DBG("Attempting connection to: {} for method: {}", m_uri, method);
+                if (send_request(std::string(method), params, response)) {
+                    if (response.contains("result")) {
+                        INFO("Test call '{}' succeeded! Result: {}", method, response["result"].dump(4));
+                    } else {
+                        INFO("Test call '{}' succeeded with raw payload: {}", method, response.dump());
+                    }
+                } else {
+                    ERR("Test call '{}' failed to get a valid JSON-RPC response.", method);
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(REQUEST_TIMEOUT_MS + 100));
             }
-            // Intentional delay between changes to ensure live change reports.
-            std::this_thread::sleep_for(std::chrono::milliseconds(REQUEST_TIMEOUT_MS + 100));
+            return true;
+        };
+
+        INFO("Starting Thunder test execution.");
+        if (!executeTestBatch(genericTestCalls) || (isStb && !executeTestBatch(stbTestCalls)) || (!isStb && !executeTestBatch(tvTestCalls))) {
+            return;
         }
     }
 
@@ -221,6 +259,15 @@ public:
 
     [[nodiscard]] const std::string& get_uri() const noexcept {
         return m_uri;
+    }
+
+    void set_uri(std::string new_uri) {
+        m_uri = std::move(new_uri);
+        if (!m_uri.empty()) {
+            INFO("ThunderWSJRPC: URI manually set to '{}'", m_uri);
+        } else {
+            INFO("ThunderWSJRPC: URI cleared");
+        }
     }
 
 private:

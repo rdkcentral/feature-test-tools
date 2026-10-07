@@ -32,26 +32,31 @@ using namespace Firebolt::Device;
 DeviceTest::DeviceTest(fireboltVersion version)
     : TestModuleBase("Device")
 {
-    methods_.push_back("Device.chipsetId");
-    methods_.push_back("Device.hdr");
-    methods_.push_back("Device.timeInActiveState");
-    methods_.push_back("Device.uid");
-    methods_.push_back("Device.uptime");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
     methods_.push_back("Device.onHdrChanged.subscribe");
     methods_.push_back("Device.onHdrChanged.unsubscribe");
     if (version >= FIREBOLT_VERSION_9)
     {
-        methods_.push_back("Device.deviceClass");
-        methods_.push_back("Device.dolbyAtmosExperienceAvailable");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.subscribe");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe");
+    }
+    methods_.push_back("Device.unsubscribeAll");
+    if (version >= FIREBOLT_VERSION_9)
+    {
+        methods_.push_back("Device.deviceClass");
+        methods_.push_back("Device.dolbyAtmosExperienceAvailable");
         methods_.push_back("Device.osName");
         methods_.push_back("Device.setOsName");
         methods_.push_back("Device.osVersion");
         methods_.push_back("Device.setOsVersion");
         methods_.push_back("Device.firmware");
     }
-    methods_.push_back("Device.unsubscribeAll");
+    methods_.push_back("Device.chipsetId");
+    methods_.push_back("Device.hdr");
+    methods_.push_back("Device.timeInActiveState");
+    methods_.push_back("Device.uid");
+    methods_.push_back("Device.uptime");
 }
 
 void DeviceTest::runMethod(const std::string& method)
@@ -172,7 +177,23 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  setOsName succeeded." << std::endl;
-            reportStepCompletion();
+            // read back the value to confirm it was set correctly.
+            auto r2 = IFireboltAccessor::Instance().DeviceInterface().osName();
+            if (checkResult(r2, "Query Device.osName"))
+            {
+                if ("RDKE Linux" == *r2)
+                {
+                    std::cout << "  osName: " << *r2 << std::endl;
+                    reportStepCompletion();
+                }
+                else
+                {
+                    std::cout << "  [ERROR] setOsName did not set the expected value." << std::endl;
+                    reportEventValidationFailure("setOsName", "Mismatch set value != query response.");
+                }
+            } else {
+                reportStepCompletion(true);
+            }
         } else {
             // Report step completion with failure if the call failed.
             reportStepCompletion(true);
@@ -196,7 +217,23 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  setOsVersion succeeded." << std::endl;
-            reportStepCompletion();
+            // read back the value to confirm it was set correctly.
+            auto r2 = IFireboltAccessor::Instance().DeviceInterface().osVersion();
+            if (checkResult(r2, "Query Device.osVersion"))
+            {
+                if ("5.15.0" == *r2)
+                {
+                    std::cout << "  osVersion: " << *r2 << std::endl;
+                    reportStepCompletion();
+                }
+                else
+                {
+                    std::cout << "  [ERROR] setOsVersion did not set the expected value." << std::endl;
+                    reportEventValidationFailure("setOsVersion", "Mismatch set value != query response.");
+                }
+            } else {
+                reportStepCompletion(true);
+            }
         } else {
             // Report step completion with failure if the call failed.
             reportStepCompletion(true);

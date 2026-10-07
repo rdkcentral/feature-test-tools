@@ -32,15 +32,8 @@ using namespace Firebolt::VideoOutput;
 VideoOutputTest::VideoOutputTest(fireboltVersion /* version */)
     : TestModuleBase("VideoOutput")
 {
-    methods_.push_back("VideoOutput.resolution");
-    methods_.push_back("VideoOutput.hdcp");
-    methods_.push_back("VideoOutput.cecState");
-    methods_.push_back("VideoOutput.refreshRate");
-    methods_.push_back("VideoOutput.colorDepth");
-    methods_.push_back("VideoOutput.colorFormat");
-    methods_.push_back("VideoOutput.colorimetry");
-    methods_.push_back("VideoOutput.dynamicRange");
-    methods_.push_back("VideoOutput.quantizationRange");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
     methods_.push_back("VideoOutput.onResolutionChanged.subscribe");
     methods_.push_back("VideoOutput.onResolutionChanged.unsubscribe");
     methods_.push_back("VideoOutput.onHdcpChanged.subscribe");
@@ -50,6 +43,15 @@ VideoOutputTest::VideoOutputTest(fireboltVersion /* version */)
     methods_.push_back("VideoOutput.onRefreshRateChanged.subscribe");
     methods_.push_back("VideoOutput.onRefreshRateChanged.unsubscribe");
     methods_.push_back("VideoOutput.unsubscribeAll");
+    methods_.push_back("VideoOutput.resolution");
+    methods_.push_back("VideoOutput.hdcp");
+    methods_.push_back("VideoOutput.cecState");
+    methods_.push_back("VideoOutput.refreshRate");
+    methods_.push_back("VideoOutput.colorDepth");
+    methods_.push_back("VideoOutput.colorFormat");
+    methods_.push_back("VideoOutput.colorimetry");
+    methods_.push_back("VideoOutput.dynamicRange");
+    methods_.push_back("VideoOutput.quantizationRange");
 }
 
 void VideoOutputTest::runMethod(const std::string& method)
