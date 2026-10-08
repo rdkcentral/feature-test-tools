@@ -72,11 +72,14 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
         const std::string text = paramFromConsole("text", "Hello, testing the Speech Synthesis interface in carol voice with a volume near highest at a rate of half pace with medium pitch.");
         const std::string speech_lang = paramFromConsole("speech_lang", "en-US");
         const std::string speech_voice = paramFromConsole("speech_voice", "carol");
-        const double volume = paramFromConsole("volume", 0.9);
-        const double rate = paramFromConsole("rate", 6.0);
-        const double pitch = paramFromConsole("pitch", 1.0);
+        const std::string volumeStr = paramFromConsole("volume (0.0-1.0)", "0.9");
+        const double volume = parseDoubleOrDefault(volumeStr, 0.9, "volume");
+        const std::string rateStr = paramFromConsole("rate (0.0-10.0)", "6.0");
+        const double rate = parseDoubleOrDefault(rateStr, 6.0, "rate");
+        const std::string pitchStr = paramFromConsole("pitch (0-2)", "1.0");
+        const double pitch = parseDoubleOrDefault(pitchStr, 1.0, "pitch");
         auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface()
-                     .speak(text, speech_lang, speech_voice, volume, rate, pitch, std::nullopt);
+                    .speak(text, speech_lang, speech_voice, volume, rate, pitch, std::nullopt);
         if (checkResult(r, method))
         {
             lastUtteranceId_ = *r;
