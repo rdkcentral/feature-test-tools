@@ -41,9 +41,9 @@ SpeechSynthesisTest::SpeechSynthesisTest(fireboltVersion /* version */)
     methods_.push_back("SpeechSynthesis.unsubscribeAll");
     methods_.push_back("SpeechSynthesis.voices");
     methods_.push_back("SpeechSynthesis.speak");
-    methods_.push_back("SpeechSynthesis.cancel");
     methods_.push_back("SpeechSynthesis.pause");
     methods_.push_back("SpeechSynthesis.resume");
+    methods_.push_back("SpeechSynthesis.cancel");
 }
 
 void SpeechSynthesisTest::runMethod(const std::string& method)
@@ -69,11 +69,17 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
     }
     else if ("SpeechSynthesis.speak" == method)
     {
-        std::string text = "Hello, this is a test of the Speech Synthesis interface in carol voice with a volume near highest at a rate of half pace with medium pitch.";
-        std::string speech_lang = "en-US";
-        double volume = 0.9, rate = 6.0, pitch = 1.0;
+        const std::string text = paramFromConsole("text", "Hello, testing the Speech Synthesis interface in carol voice with a volume near highest at a rate of half pace with medium pitch.");
+        const std::string speech_lang = paramFromConsole("speech_lang", "en-US");
+        const std::string speech_voice = paramFromConsole("speech_voice", "carol");
+        const std::string volumeStr = paramFromConsole("volume (0.0-1.0)", "0.9");
+        const double volume = parseDoubleOrDefault(volumeStr, 0.9, "volume");
+        const std::string rateStr = paramFromConsole("rate (0.0-10.0)", "6.0");
+        const double rate = parseDoubleOrDefault(rateStr, 6.0, "rate");
+        const std::string pitchStr = paramFromConsole("pitch (0-2)", "1.0");
+        const double pitch = parseDoubleOrDefault(pitchStr, 1.0, "pitch");
         auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface()
-                     .speak(text, speech_lang, std::nullopt, volume, rate, pitch, std::nullopt);
+                    .speak(text, speech_lang, speech_voice, volume, rate, pitch, std::nullopt);
         if (checkResult(r, method))
         {
             lastUtteranceId_ = *r;
