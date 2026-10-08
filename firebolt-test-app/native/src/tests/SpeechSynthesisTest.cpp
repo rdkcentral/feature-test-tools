@@ -41,9 +41,9 @@ SpeechSynthesisTest::SpeechSynthesisTest(fireboltVersion /* version */)
     methods_.push_back("SpeechSynthesis.unsubscribeAll");
     methods_.push_back("SpeechSynthesis.voices");
     methods_.push_back("SpeechSynthesis.speak");
-    methods_.push_back("SpeechSynthesis.cancel");
     methods_.push_back("SpeechSynthesis.pause");
     methods_.push_back("SpeechSynthesis.resume");
+    methods_.push_back("SpeechSynthesis.cancel");
 }
 
 void SpeechSynthesisTest::runMethod(const std::string& method)
@@ -69,11 +69,14 @@ void SpeechSynthesisTest::runMethod(const std::string& method)
     }
     else if ("SpeechSynthesis.speak" == method)
     {
-        std::string text = "Hello, this is a test of the Speech Synthesis interface in carol voice with a volume near highest at a rate of half pace with medium pitch.";
-        std::string speech_lang = "en-US";
-        double volume = 0.9, rate = 6.0, pitch = 1.0;
+        const std::string text = paramFromConsole("text", "Hello, testing the Speech Synthesis interface in carol voice with a volume near highest at a rate of half pace with medium pitch.");
+        const std::string speech_lang = paramFromConsole("speech_lang", "en-US");
+        const std::string speech_voice = paramFromConsole("speech_voice", "carol");
+        const double volume = paramFromConsole("volume", 0.9);
+        const double rate = paramFromConsole("rate", 6.0);
+        const double pitch = paramFromConsole("pitch", 1.0);
         auto r = IFireboltAccessor::Instance().SpeechSynthesisInterface()
-                     .speak(text, speech_lang, std::nullopt, volume, rate, pitch, std::nullopt);
+                     .speak(text, speech_lang, speech_voice, volume, rate, pitch, std::nullopt);
         if (checkResult(r, method))
         {
             lastUtteranceId_ = *r;

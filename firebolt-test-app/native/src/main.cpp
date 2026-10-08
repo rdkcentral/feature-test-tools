@@ -475,12 +475,15 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
 
     for (auto& mod : modules)
     {
-        std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
-        auto sleepDuration = std::chrono::milliseconds(200);
-        // TTS Test requires extended sleep of 3s to simulate the steps.
-        if ("TextToSpeech" == mod->name()) {
-            sleepDuration = std::chrono::seconds(3);
-        }
+        const std::string& modName = mod->name();
+        std::cout << "\n=== Module: " << modName << " ===" << std::endl;
+        using namespace std::chrono_literals;
+        constexpr auto kSleepDefault = 200ms;
+        const auto kSleepExtended    = 2s;
+        // Speech related test requires extended sleep of 2s to simulate the steps.
+        const bool moduleNeedsExtendedSleep = ("TextToSpeech" == modName || "SpeechSynthesis" == modName);
+        const auto modDefaultSleep = moduleNeedsExtendedSleep ? kSleepExtended : kSleepDefault;
+
         for (const auto& m : mod->methods())
         {
             if (exitRequested.load(std::memory_order_acquire)) {
@@ -494,7 +497,8 @@ static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
             }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
-            std::this_thread::sleep_for(sleepDuration);
+            const auto currentSleep = (m.find("subscribe") != std::string::npos) ? kSleepDefault : modDefaultSleep;
+            std::this_thread::sleep_for(currentSleep);
         }
     }
     // Simulate TestModules through thunder calls.
