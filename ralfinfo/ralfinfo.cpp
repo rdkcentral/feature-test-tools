@@ -44,8 +44,10 @@ void printInputHandlingInfo(const InputHandlingInfo &inputInfo);
 void printVendorConfigKeys(const PackageMetaData &metadata);
 void printSigningCertificates(const Package &package);
 void printApplicationInfo(const ApplicationInfo &appInfo);
-
+bool printRawMetadata(const Package &package);
 const std::string SEPARATOR_LINE(60, '*');
+
+#define RDK_PACKAGE_CONFIG_MIME_TYPE "application/vnd.rdk.package.config.v1+json"
 
 bool loadCertificateFromFile(const std::string &certPath, VerificationBundle &bundle)
 {
@@ -117,10 +119,11 @@ bool loadCertificatesFromDirectory(const std::string &dirPath, VerificationBundl
 		{
 			const std::string certPath = entry.path().string();
 			std::string extension = entry.path().extension().string();
-			
+
 			// Convert extension to lowercase for case-insensitive comparison
 			std::transform(extension.begin(), extension.end(), extension.begin(),
-						   [](unsigned char c) { return std::tolower(c); });
+						   [](unsigned char c)
+						   { return std::tolower(c); });
 
 			// Skip files that don't have a valid certificate extension
 			if (validExtensions.find(extension) == validExtensions.end())
@@ -169,20 +172,14 @@ void printMetadataInformation(const PackageMetaData &metadata)
 			  << SEPARATOR_LINE << std::endl;
 	std::cout << "ID " << metadata.id() << std::endl;
 	std::cout << "Version " << metadata.version().toString() << std::endl;
-	std::cout << "Package Type " << mapMetadataType(metadata.type()) << std::endl;
-	std::cout << "Mime Type " << metadata.mimeType() << std::endl;
-	std::cout << "Title " << metadata.title().value_or("N/A") << std::endl;
-	std::cout << "Entry Point Path " << metadata.entryPointPath().string() << std::endl;
-	std::cout << "Entry Args ";
-	bool first = true;
-	for (const auto &arg : metadata.entryArgs())
-	{
-		if (!first) std::cout << ' ';
-		std::cout << arg;
-		first = false;
-	}
-	if (first) std::cout << "None";
-	std::cout << std::endl;
+	std::cout << "Type " << mapMetadataType(metadata.type()) << std::endl;
+	std::cout << "Platform Architecture " << metadata.platformInfo().architecture.value_or("unknown") << std::endl;
+	std::cout << "Platform variant " << metadata.platformInfo().variant.value_or("unknown") << std::endl;
+	std::cout << "Platform OS " << metadata.platformInfo().os.value_or("unknown") << std::endl;
+	std::cout << " Mime Type " << metadata.mimeType() << std::endl;
+	std::cout << " Package Specifier " << metadata.specifier().value_or("N/A") << std::endl;
+	std::cout << " Title " << metadata.title().value_or("N/A") << std::endl;
+	std::cout << " Entry Point Path " << metadata.entryPointPath().string() << std::endl;
 	std::cout << SEPARATOR_LINE << std::endl;
 }
 
@@ -196,21 +193,21 @@ void printMetadataDependenciesInfo(const std::map<std::string, VersionConstraint
 	}
 	for (auto &dep : dependencies)
 	{
-		std::cout << "ID: " << dep.first << ", Version Constraint: " << dep.second.toString() << std::endl;
+		std::cout << "  ID: " << dep.first << ", Version Constraint: " << dep.second.toString() << std::endl;
 	}
 }
 
 void printApplicationIconDetails(const std::list<Icon> &icons)
 {
-	std::cout << "Icons: " << std::endl;
+	std::cout << " Icons: " << std::endl;
 	if (icons.empty())
 	{
-		std::cout << "None" << std::endl;
+		std::cout << "  None" << std::endl;
 		return;
 	}
 	for (const auto &icon : icons)
 	{
-		std::cout << "Path: " << icon.path.string() << ", MimeType: " << icon.mimeType << ", Purpose: " << icon.purpose << ", Sizes: ";
+		std::cout << "  Path: " << icon.path.string() << ", MimeType: " << icon.mimeType << ", Purpose: " << icon.purpose << ", Sizes: ";
 		for (const auto &size : icon.sizes)
 		{
 			std::cout << size.first << "x" << size.second << " ";
@@ -219,16 +216,38 @@ void printApplicationIconDetails(const std::list<Icon> &icons)
 	}
 }
 
+void printRuntimeInfo(const RuntimeInfo &runtimeInfo)
+{
+	auto supportedApps = runtimeInfo.supportedApplicationTypes();
+	std::cout << " Supported Application Types: " << std::endl;
+	if (supportedApps.empty())
+	{
+		std::cout << "  None" << std::endl;
+	}
+	else
+	{
+		for (const auto &app : supportedApps)
+		{
+			// it is a struct with two params type and a JSON args
+			std::cout << " type: " << app.type << std::endl;
+			// args is optional
+			if (app.args && app.args->isObject())
+			{
+				auto jsonargs = app.args->asObject();
+				for (const auto &item : jsonargs)
+				{
+					std::cout << "    " << item.first << ": " << item.second << std::endl;
+				}
+			}
+		}
+	}
+	std::cout << SEPARATOR_LINE << std::endl;
+}
+
 int main(int argc, char *argv[])
 {
 	po::options_description desc("Allowed options");
-	desc.add_options()
-		("help,h", "Produce help message")
-		("verify,v", "Explicitly enable package signature verification. Requires certificates via --cert or --cert-dir (verification fails if used without either option). Automatically enabled if --cert or --cert-dir is provided.")
-		("cert,c", po::value<std::string>(), "Path to the certificate file (enables verification)")
-		("cert-dir,d", po::value<std::string>(), "Path to directory containing certificates (enables verification)")
-		("package_file,p", po::value<std::string>(), "Path to the package file")
-		("mount-package,m", po::value<std::string>(), "Mount the package if it is mountable");
+	desc.add_options()("help,h", "Produce help message")("verify,v", "Explicitly enable package signature verification. Requires certificates via --cert or --cert-dir (verification fails if used without either option). Automatically enabled if --cert or --cert-dir is provided.")("cert,c", po::value<std::string>(), "Path to the certificate file (enables verification)")("cert-dir,d", po::value<std::string>(), "Path to directory containing certificates (enables verification)")("package_file,p", po::value<std::string>(), "Path to the package file")("mount-package,m", po::value<std::string>(), "Mount the package if it is mountable")("print-raw-metadata,r", "Print the raw metadata of the package");
 
 	po::positional_options_description p;
 	p.add("package_file", 1);
@@ -292,6 +311,11 @@ int main(int argc, char *argv[])
 		std::cerr << "Failed to open package: " << package.error().what() << std::endl;
 		return 1;
 	}
+	if (vm.count("print-raw-metadata"))
+	{
+		printRawMetadata(package.value());
+		return 0;
+	}
 
 	std::cout << "Successfully opened package: " << packageFile << std::endl;
 	std::cout << "Package information:\n"
@@ -352,6 +376,8 @@ int main(int argc, char *argv[])
 
 	auto runtimeInfo = metadata->runtimeInfo();
 	std::cout << " Runtime Info: Present " << (runtimeInfo ? "Yes" : "No") << std::endl;
+	if (runtimeInfo)
+		printRuntimeInfo(runtimeInfo.value());
 
 	printVendorConfigKeys(metadata.value());
 
@@ -495,6 +521,7 @@ void printDialInfo(const DialInfo &dialInfo)
 	}
 	std::cout << std::endl;
 }
+
 void printVendorConfigKeys(const PackageMetaData &metadata)
 {
 	std::cout << "  Vendor Config Keys: " << std::endl;
@@ -504,4 +531,24 @@ void printVendorConfigKeys(const PackageMetaData &metadata)
 		auto value = metadata.vendorConfig(key); // just to test retrieval
 		std::cout << "    " << key << " <<" << value << ">>" << std::endl;
 	}
+}
+bool printRawMetadata(const Package &package)
+{
+
+	auto packagejson = package.auxMetaDataFile(RDK_PACKAGE_CONFIG_MIME_TYPE);
+	if (!packagejson)
+	{
+		std::cerr << " Failed to get auxMetaDataFile: " << packagejson.error().what() << std::endl;
+		return false;
+	}
+
+	const auto contents = packagejson->readAll();
+	if (!contents)
+	{
+		std::cerr << " Failed to read contents of auxMetaDataFile: " << std::endl;
+		return false;
+	}
+	std::string jsonContent(reinterpret_cast<const char *>(contents->data()), contents->size());
+	std::cout << jsonContent << std::endl;
+	return true;
 }
