@@ -313,8 +313,7 @@ int main(int argc, char *argv[])
 	}
 	if (vm.count("print-raw-metadata"))
 	{
-		printRawMetadata(package.value());
-		return 0;
+		return printRawMetadata(package.value()) ? 0 : 1;
 	}
 
 	std::cout << "Successfully opened package: " << packageFile << std::endl;
