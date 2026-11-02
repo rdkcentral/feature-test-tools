@@ -122,7 +122,7 @@ public:
     ~RDKWindowMgrCtrl();
     bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) override;
     bool checkPluginStatus() override;
-    void displayMenu() override;
+    void createMenu(Menu &menu) override;
 
 private:
     // Add private members and methods here

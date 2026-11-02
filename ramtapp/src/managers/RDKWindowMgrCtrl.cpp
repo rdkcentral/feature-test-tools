@@ -61,59 +61,24 @@ bool RDKWindowMgrCtrl::checkPluginStatus()
 {
     return (windowMgrCtrl != nullptr);
 }
-void RDKWindowMgrCtrl::displayMenu()
+void RDKWindowMgrCtrl::createMenu(Menu &menu)
 {
-
-    while (true)
-    {
-
-        std::cout << "RDK Window Manager Menu" << std::endl;
-        std::cout << "------------------------------------------------------------" << std::endl;
-        std::cout << "Enter your choice: \n";
-        std::cout << "1. Create new display \n";
-        std::cout << "2. Get Clients\n";
-        std::cout << "3. SetVisibility\n";
-        std::cout << "4. SetFocus \n";
-        std::cout << "5. GetVisibility\n";
-        std::cout << "6. GetScreenshot\n";
-        std::cout << "7. Send Key to Client\n";
-        std::cout << "8. Send Key Event\n";
-        std::cout << "0. Exit RDK Window Manager Menu\n";
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        switch (choice)
-        {
-        case 1:
-            handleCreateDisplayRequest();
-            break;
-        case 2:
-            handleGetClientsRequest();
-            break;
-        case 3:
-            handleSetVisibilityRequest();
-            break;
-        case 4:
-            handleSetFocusRequest();
-            break;
-        case 5:
-            handleGetVisibilityRequest();
-            break;
-        case 6:
-            handleGetScreenshotRequest();
-            break;
-        case 7:
-            handleKeyInjectionRequest();
-            break;
-        case 8:
-            handleKeyRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-        }
-    }
+    menu.addOption("Create new display", [this]()
+                   { handleCreateDisplayRequest(); });
+    menu.addOption("Get Clients", [this]()
+                   { handleGetClientsRequest(); });
+    menu.addOption("SetVisibility", [this]()
+                   { handleSetVisibilityRequest(); });
+    menu.addOption("SetFocus", [this]()
+                   { handleSetFocusRequest(); });
+    menu.addOption("GetVisibility", [this]()
+                   { handleGetVisibilityRequest(); });
+    menu.addOption("GetScreenshot", [this]()
+                   { handleGetScreenshotRequest(); });
+    menu.addOption("Send Key to Client", [this]()
+                   { handleKeyInjectionRequest(); });
+    menu.addOption("Send Key Event", [this]()
+                   { handleKeyRequest(); });
 }
 void RDKWindowMgrCtrl::handleCreateDisplayRequest()
 {
@@ -167,13 +132,13 @@ void RDKWindowMgrCtrl::handleGetClientsRequest()
 {
     assert(windowMgrCtrl != nullptr && "IRDKWindowManager interface is not initialized.");
     using IStringIterator = WPEFramework::RPC::IIteratorType<string, WPEFramework::RPC::ID_STRINGITERATOR>;
-    IStringIterator* clientsIterator = nullptr;
+    IStringIterator *clientsIterator = nullptr;
     Core::hresult result = windowMgrCtrl->GetApps(clientsIterator);
     if (result == Core::ERROR_NONE)
     {
         std::cout << "Connected Clients: ";
         std::string client;
-        while(clientsIterator->Next(client))
+        while (clientsIterator->Next(client))
         {
             std::cout << client << " ";
         }

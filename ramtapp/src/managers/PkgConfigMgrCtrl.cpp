@@ -51,33 +51,12 @@ bool PkgConfigMgrCtrl::checkPluginStatus()
     return (cfgCtrl != nullptr);
 }
 
-void PkgConfigMgrCtrl::displayMenu()
+void PkgConfigMgrCtrl::createMenu(Menu &menu)
 {
-    while (true)
-    {
-        std::cout << "------------------------------------------------------------" << std::endl;
-        std::cout << "Package Config Manager Menu:" << std::endl;
-        std::cout << "1. Get config for installed package" << std::endl;
-        std::cout << "2. Get config list for installed packages" << std::endl;
-        std::cout << "0. Return to Package Manager Menu" << std::endl;
-
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        switch (choice)
-        {
-        case 1:
-            handleGetConfigForInstalledPackageRequest();
-            break;
-        case 2:
-            handleGetConfigListForInstalledPackagesRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-        }
-    }
+    menu.addOption("Get config for installed package", [this]()
+                   { handleGetConfigForInstalledPackageRequest(); });
+    menu.addOption("Get config list for installed packages", [this]()
+                   { handleGetConfigListForInstalledPackagesRequest(); });
 }
 
 void PkgConfigMgrCtrl::handleGetConfigForInstalledPackageRequest()

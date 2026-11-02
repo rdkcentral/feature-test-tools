@@ -55,109 +55,51 @@ bool AppMgrControl::checkPluginStatus()
 {
     return (appManager != nullptr);
 }
-void AppMgrControl::displayMenu()
+void AppMgrControl::createMenu(Menu &menu)
 {
 
     assert(appManager != nullptr && "AppManager interface is not initialized.");
-    while (true)
-    {
-        std::cout << "------------------------------------------------------------" << std::endl;
 
-        std::cout << "App Manager Menu:" << std::endl;
-        std::cout << "0. Go back to main menu" << std::endl;
-        std::cout << "1. List Installed Applications" << std::endl;
-        std::cout << "2. Is App installed ? " << std::endl;
-        std::cout << "3. List Loaded apps" << std::endl;
-        std::cout << "4. Launch Application" << std::endl;
-        std::cout << "5. Preload Application" << std::endl;
-        std::cout << "6. Close Application" << std::endl;
-        std::cout << "7. Terminate Application" << std::endl;
-        std::cout << "8. Kill Application" << std::endl;
-        std::cout << "9. Start System app" << std::endl;
-        std::cout << "10. Stop System app" << std::endl;
-        std::cout << "11. Send App Intent" << std::endl;
-        std::cout << "12. Clear application data" << std::endl;
-        std::cout << "13. Clear all application data" << std::endl;
-        std::cout << "14. Get application metadata" << std::endl;
-        std::cout << "15. Get application property" << std::endl;
-        std::cout << "16. Set application property" << std::endl;
-        std::cout << "17. Get Max running applications" << std::endl;
-        std::cout << "18. Get Max Hibernated applications" << std::endl;
-        std::cout << "19. Get Min Hibernated flash usage" << std::endl;
-        std::cout << "20. Get Max inactive RAM usage" << std::endl;
-
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        switch (choice)
-        {
-        case 1:
-            std::cout << "Listing Installed Applications..." << std::endl;
-            listInstalledApplications();
-            break;
-        case 2:
-            handleIsAppInstalledRequest();
-            break;
-        case 3:
-            handleLoadedAppsRequest();
-            break;
-        case 4:
-            handleLaunchApplicationRequest();
-            break;
-        case 5:
-            handlePreloadApplicationRequest();
-            break;
-        case 6:
-            handleCloseApplicationRequest();
-            break;
-        case 7:
-            handleTerminateApplicationRequest();
-            break;
-        case 8:
-            handleKillApplicationRequest();
-            break;
-        case 9:
-            handleSystemAppStartRequest();
-            break;
-        case 10:
-            handleSystemAppStopRequest();
-            break;
-        case 11:
-            handleSendAppIntentRequest();
-            break;
-        case 12:
-            handleClearApplicationDataRequest();
-            break;
-        case 13:
-            handleClearAllApplicationDataRequest();
-            break;
-        case 14:
-            handleGetApplicationMetadataRequest();
-            break;
-        case 15:
-            handleGetApplicationPropertyRequest();
-            break;
-        case 16:
-            handleSetApplicationPropertyRequest();
-            break;
-        case 17:
-            handleGetMaxRunningApplicationsRequest();
-            break;
-        case 18:
-            handleGetMaxHibernatedApplicationsRequest();
-            break;
-        case 19:
-            handleGetMaxHibernatedFlashUsageRequest();
-            break;
-        case 20:
-            handleGetMaxInactiveRAMUsageRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-        }
-    }
+    menu.addOption("List Installed Applications", [this]()
+                   { listInstalledApplications(); });
+    menu.addOption("Is App installed ?", [this]()
+                   { handleIsAppInstalledRequest(); });
+    menu.addOption("List Loaded apps", [this]()
+                   { handleLoadedAppsRequest(); });
+    menu.addOption("Launch Application", [this]()
+                   { handleLaunchApplicationRequest(); });
+    menu.addOption("Preload Application", [this]()
+                   { handlePreloadApplicationRequest(); });
+    menu.addOption("Close Application", [this]()
+                   { handleCloseApplicationRequest(); });
+    menu.addOption("Terminate Application", [this]()
+                   { handleTerminateApplicationRequest(); });
+    menu.addOption("Kill Application", [this]()
+                   { handleKillApplicationRequest(); });
+    menu.addOption("Start System app", [this]()
+                   { handleSystemAppStartRequest(); });
+    menu.addOption("Stop System app", [this]()
+                   { handleSystemAppStopRequest(); });
+    menu.addOption("Send App Intent", [this]()
+                   { handleSendAppIntentRequest(); });
+    menu.addOption("Clear application data", [this]()
+                   { handleClearApplicationDataRequest(); });
+    menu.addOption("Clear all application data", [this]()
+                   { handleClearAllApplicationDataRequest(); });
+    menu.addOption("Get application metadata", [this]()
+                   { handleGetApplicationMetadataRequest(); });
+    menu.addOption("Get application property", [this]()
+                   { handleGetApplicationPropertyRequest(); });
+    menu.addOption("Set application property", [this]()
+                   { handleSetApplicationPropertyRequest(); });
+    menu.addOption("Get Max running applications", [this]()
+                   { handleGetMaxRunningApplicationsRequest(); });
+    menu.addOption("Get Max Hibernated applications", [this]()
+                   { handleGetMaxHibernatedApplicationsRequest(); });
+    menu.addOption("Get Max Hibernated flash usage", [this]()
+                   { handleGetMaxHibernatedFlashUsageRequest(); });
+    menu.addOption("Get Max inactive RAM usage", [this]()
+                   { handleGetMaxInactiveRAMUsageRequest(); });
 }
 void AppMgrControl::handleSystemAppStopRequest()
 {
@@ -422,7 +364,7 @@ void AppMgrControl::handleLaunchApplicationRequest()
 {
     assert(appManager != nullptr && "AppManager interface is not initialized.");
 
-    std::string appId,intent,launchParams;
+    std::string appId, intent, launchParams;
     appId = retrieveInputFromUser<std::string>("Enter the App ID to launch: ", false, "");
     intent = retrieveInputFromUser<std::string>("Enter the intent for launching (optional): ", true, "");
     launchParams = retrieveInputFromUser<std::string>("Enter the launch parameters (optional): ", true, "");

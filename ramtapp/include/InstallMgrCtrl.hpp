@@ -92,7 +92,7 @@ public:
     ~InstallMgrCtrl();
     bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) override;
     bool checkPluginStatus() override;
-    void displayMenu() override;
+    void createMenu(Menu &menu) override;
 };
 
 #endif // INSTALLMGRCTRL_HPP

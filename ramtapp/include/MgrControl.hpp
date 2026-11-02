@@ -22,18 +22,38 @@
 #ifndef MGRCONTROL_HPP
 #define MGRCONTROL_HPP
 #include "common.hpp"
+#include "Menu.hpp"
+
 class MgrCtrl
 {
 public:
-    MgrCtrl() {
+    MgrCtrl()
+    {
         std::cout << "MgrCtrl Constructor Called" << std::endl;
     }
-    virtual ~MgrCtrl() {
+    virtual ~MgrCtrl()
+    {
         std::cout << "MgrCtrl Destructor Called" << std::endl;
     }
     virtual bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) = 0;
     virtual bool checkPluginStatus() = 0;
 
-    virtual void displayMenu() = 0;
+    void displayMenu(std::string menuTitle)
+    {
+        Menu menu(menuTitle);
+        createMenu(menu);
+        bool exitRequested = false;
+        while (!exitRequested)
+        {
+            menu.display();
+            if (menu.handleInput())
+            {
+                exitRequested = true;
+                std::cout << "Exiting " << menuTitle << "..." << std::endl;
+            }
+        }
+    }
+
+    virtual void createMenu(Menu &menu) = 0;
 };
 #endif // MGRCONTROL_HPP

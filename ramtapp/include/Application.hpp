@@ -27,7 +27,8 @@
 #include "ManagerFactory.hpp"
 #include "PerfTestMgr.hpp"
 
-class Application {
+class Application
+{
 public:
     Application();
     void run();
@@ -35,10 +36,12 @@ public:
 private:
     void initialize();
     void createMainMenu();
-    void createPackageManagerMenu();
     void checkStatus();
     void showAppManagerMenu();
-    void showPackageManagerMenu();
+    void showDownloadManagerMenu();
+    void showInstallManagerMenu();
+    void showPackageHandlerMenu();
+    void showPackageConfigMenu();
     void showRDKWindowMgrCtrlMenu();
     void showAppActionsControlMenu();
     void showPerformanceTests();
@@ -47,11 +50,10 @@ private:
     ManagerRegistry managerRegistry;
     PerfTestMgr perfTestMgr;
     Menu mainMenu;
-    Menu packageManagerMenu;
     bool running = true;
 
-    public:
-        MgrCtrl* getManager(const std::string& name);
+public:
+    MgrCtrl *getManager(const std::string &name);
 };
 
 #endif // APPLICATION_HPP

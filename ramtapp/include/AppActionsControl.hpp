@@ -68,7 +68,7 @@ public:
     // Define specific actions for the AppActionsControl here
     bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) override;
     bool checkPluginStatus() override;
-    void displayMenu() override;
+    void createMenu(Menu &menu) override;
     void handleStartActionRequest();
 
     Exchange::IAppActions *getAppActions() { return appActions; }

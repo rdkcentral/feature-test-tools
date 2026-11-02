@@ -56,53 +56,22 @@ bool DownloadMgrControl::checkPluginStatus()
     return (dwldCtl != nullptr);
 }
 
-void DownloadMgrControl::displayMenu()
+void DownloadMgrControl::createMenu(Menu &menu)
 {
-    while (true)
-    {
-        std::cout<<"------------------------------------------------------------"<< std::endl;
-        std::cout << "Download Manager Control Menu:" << std::endl;
-        std::cout << "1. Start Download" << std::endl;
-        std::cout << "2. Pause Download" << std::endl;
-        std::cout << "3. Resume Download" << std::endl;
-        std::cout << "4. Cancel Download" << std::endl;
-        std::cout << "5. Check Download progress" << std::endl;
-        std::cout << "6. Delete Installer file" << std::endl;
-        std::cout << "7. Set RateLimit" << std::endl;
-        std::cout << "0. Return to Main Menu" << std::endl;
-        std::cout<<"------------------------------------------------------------"<< std::endl;
-
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-
-        switch (choice)
-        {
-        case 1:
-            handleStartDownloadRequest();
-            break;
-        case 2:
-            handlePauseDownloadRequest();
-            break;
-        case 3:
-            handleResumeDownloadRequest();
-            break;
-        case 4:
-            handleCancelDownloadRequest();
-            break;
-        case 5:
-            handleCheckDownloadProgressRequest();
-            break;
-        case 6:
-            handleDeleteInstallerFileRequest();
-            break;
-        case 7:
-            handleSetRateLimitRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-        }
-    }
+    menu.addOption("Start Download", [this]()
+                   { handleStartDownloadRequest(); });
+    menu.addOption("Pause Download", [this]()
+                   { handlePauseDownloadRequest(); });
+    menu.addOption("Resume Download", [this]()
+                   { handleResumeDownloadRequest(); });
+    menu.addOption("Cancel Download", [this]()
+                   { handleCancelDownloadRequest(); });
+    menu.addOption("Check Download progress", [this]()
+                   { handleCheckDownloadProgressRequest(); });
+    menu.addOption("Delete Installer file", [this]()
+                   { handleDeleteInstallerFileRequest(); });
+    menu.addOption("Set RateLimit", [this]()
+                   { handleSetRateLimitRequest(); });
 }
 void DownloadMgrControl::handleStartDownloadRequest()
 {
@@ -117,7 +86,6 @@ void DownloadMgrControl::handleStartDownloadRequest()
     params.priority = highPriority;
     params.rateLimit = maxSpeed;
     params.retries = retries;
-
 
     std::string downloadId;
 
@@ -177,7 +145,7 @@ void DownloadMgrControl::handleCheckDownloadProgressRequest()
     assert(dwldCtl != nullptr && "IDownloadManager interface is not initialized.");
 
     std::string downloadId = retrieveInputFromUser<std::string>("Enter Download ID to check progress: ", false, "");
-    uint8_t  percent;
+    uint8_t percent;
     uint32_t result = dwldCtl->Progress(downloadId, percent);
     if (result != Core::ERROR_NONE)
     {
