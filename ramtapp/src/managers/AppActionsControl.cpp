@@ -55,30 +55,12 @@ bool AppActionsControl::checkPluginStatus()
     return (appActions != nullptr);
 }
 
-void AppActionsControl::displayMenu()
+void AppActionsControl::createMenu(Menu &menu)
 {
     assert(appActions != nullptr && "AppActions interface is not initialized.");
-    while (true)
-    {
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        std::cout << "1. Start Action Request" << std::endl;
-        std::cout << "0. Exit" << std::endl;
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        switch (choice)
-        {
-        case 1:
-            handleStartActionRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-            break;
-        }
-    }
+    menu.addOption("Start Action Request", [this]()
+                   { handleStartActionRequest(); });
+    menu.setExitOption(true);
 }
 
 void AppActionsControl::handleStartActionRequest()

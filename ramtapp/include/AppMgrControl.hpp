@@ -161,8 +161,8 @@ public:
     ~AppMgrControl();
     bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) override;
     bool checkPluginStatus() override;
-    void displayMenu() override;
+    void createMenu(Menu &menu) override;
 
-     Exchange::IAppManager *getAppManager() { return appManager; }
+    Exchange::IAppManager *getAppManager() { return appManager; }
 };
 #endif // APPMGRCONTROL_HPP
