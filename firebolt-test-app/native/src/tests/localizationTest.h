@@ -28,7 +28,7 @@
 class LocalizationTest : public TestModuleBase
 {
 public:
-    LocalizationTest();
+    explicit LocalizationTest(fireboltVersion version = FIREBOLT_VERSION_ALL);
     ~LocalizationTest() override = default;
     void runMethod(const std::string& method) override;
 
@@ -36,4 +36,5 @@ private:
     Firebolt::SubscriptionId onCountryChangedSubId_{ 0 };
     Firebolt::SubscriptionId onPreferredAudioLanguagesChangedSubId_{ 0 };
     Firebolt::SubscriptionId onPresentationLanguageChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onTimezoneChangedSubId_{ 0 };
 };

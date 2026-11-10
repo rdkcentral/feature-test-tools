@@ -30,7 +30,7 @@ class DownloaderEvtHandler : public Exchange::IDownloadManager::INotification
 
 public:
     ~DownloaderEvtHandler() {}
-    void OnAppDownloadStatus(const std::string & downloadStatus)
+    void OnAppDownloadStatus(const std::string &downloadStatus)
     {
         cout << "[OnAppDownloadStatus] Download Status: " << downloadStatus << endl;
     }
@@ -71,6 +71,6 @@ public:
     ~DownloadMgrControl();
     bool initialize(Core::ProxyType<RPC::CommunicatorClient> &client) override;
     bool checkPluginStatus() override;
-    void displayMenu() override;
+    void createMenu(Menu &menu) override;
 };
 #endif // DOWNLOADMGRCTRL_HPP

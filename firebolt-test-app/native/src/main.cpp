@@ -38,12 +38,12 @@
 //   echo "Device.uid" | firebolt-test-app --url ws://127.0.0.1:9998
 // ---------------------------------------------------------------------------
 
+#include "gl.h"
 #include "utils.h"
+#include "native_logger.hpp"
 
 #include "tests/accessibilityTest.h"
-#ifdef ENABLE_FIREBOLT9
 #include "tests/actionsTest.h"
-#endif
 #include "tests/advertisingTest.h"
 #include "tests/deviceTest.h"
 #include "tests/discoveryTest.h"
@@ -53,274 +53,519 @@
 #include "tests/metricsTest.h"
 #include "tests/networkTest.h"
 #include "tests/presentationTest.h"
+#include "tests/ws_comm_tester.h"
+#include "tests/SpeechSynthesisTest.h"
 #include "tests/statsTest.h"
 #include "tests/texttospeechTest.h"
+#include "tests/VideoOutputTest.h"
 
 #include <firebolt/firebolt.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
+#include <condition_variable>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <deque>
 #include <future>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <thread>
+#include <type_traits>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <cerrno>
 #include <vector>
 
 #define ISATTY(fd) isatty(fd)
 #define STDIN_FD   fileno(stdin)
 
-// ---------------------------------------------------------------------------
-// printUsage
-// ---------------------------------------------------------------------------
-static void printUsage(const char* argv0)
+#ifndef APP_FONT_DIR
+#define APP_FONT_DIR "/usr/share/fonts/ttf/"
+#endif
+
+// Initialize logger for the application with environment variable "APPLOGLEVEL" and module tag "[APP]".
+struct AppLoggerConfig {
+    static constexpr const char* kEnvVar = "APPLOGLEVEL";
+    static constexpr const char* kTag = "[APP]";
+};
+using LocalLogger = RuntimeLogger<AppLoggerConfig>;
+
+class ProgressController : public ITestProgressTracker {
+private:
+    mutable std::mutex mtx;
+    std::condition_variable cv;
+
+    int total = 0;
+    int count = 0;
+    float currentPercentage = 0.0f;
+    bool hasChanged = false;
+    bool shutdownSignaled = false;
+    bool failDetected = false;
+    std::vector<std::string> validationFailures_;  // Track event validation failures
+
+public:
+    /**
+     * Sets the total number of steps for progress tracking.
+     * Resets the current count and percentage to zero.
+     * @param total The total number of steps.
+     */
+    void set_total(int total)
+    {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            this->total = total;
+            count = 0;
+            currentPercentage = 0.0f;
+            hasChanged = true;
+        }
+        cv.notify_all();
+    }
+
+    /**
+     * Increments the current progress count by one.
+     * Updates the current percentage and notifies waiting threads.
+     */
+    void increment_progress(bool failDetected = false)
+    {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (total <= 0) return;
+            count++;
+            currentPercentage = (static_cast<float>(count) / total) * 100.0f;
+            hasChanged = true;
+            if (failDetected) {
+                this->failDetected = true;
+            }
+            //DBG("Progress updated: {}/{} => {:.2f}%, failDetected={}", count, total, currentPercentage, this->failDetected);
+        }
+        cv.notify_one();
+    }
+
+    /**
+     * Waits for the progress percentage to change.
+     * @param failDetected Reference to a boolean that will be set to true if a failure was detected.
+     * @return The current progress percentage, or -1.0f if shutting down.
+     */
+    float wait_for_percentage_change(bool &failDetected)
+    {
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [this]() {
+            return hasChanged || shutdownSignaled;
+        });
+
+        if (shutdownSignaled) {
+            return -1.0f; // Clear sentinel value indicating exit
+        }
+
+        failDetected = this->failDetected;
+
+        hasChanged = false;
+        return currentPercentage;
+    }
+
+    /**
+     * Wakes up all waiting threads for shutdown.
+     */
+    void wake_for_shutdown()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            shutdownSignaled = true;
+        }
+        cv.notify_all();
+    }
+
+    /**
+     * Gets the current progress percentage.
+     * @param failDetected Reference to a boolean that will be set to true if a failure was detected.
+     * @return The current progress percentage.
+     */
+    float get_percentage(bool &failDetected)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        failDetected = this->failDetected;
+        return currentPercentage;
+    }
+
+    /**
+     * ITestProgressTracker override: Report step completion from test modules.
+     * @param failDetected Whether this step failed.
+     */
+    void reportStepCompleted(bool failDetected = false) override
+    {
+        increment_progress(failDetected);
+    }
+
+    /**
+     * ITestProgressTracker override: Report validation failures from event handlers.
+     * These are recorded, set the failDetected flag, and advance progress so auto-run doesn't stall on mismatches.
+     * @param details Description of the validation failure.
+     */
+    void reportValidationFailure(const std::string& details) override
+    {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            validationFailures_.push_back(details);
+            this->failDetected = true;
+        }
+        // Update the progress percentage to reflect the failure.
+        increment_progress(true);
+    }
+
+    /**
+     * Get all recorded validation failures.
+     * @return Vector of validation failure descriptions.
+     */
+    std::vector<std::string> getValidationFailures() const
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        INFO("Progress: {}/{} => {:.2f}%, failDetected={}", count, total, currentPercentage, this->failDetected);
+        return validationFailures_;
+    }
+};
+
+namespace {
+constexpr uint32_t kEscKeyCode = 1;
+constexpr uint32_t kBackspaceKeyCode = 14;
+std::atomic<bool> gGlExitKeyRequested{ false };
+
+void handleGlKeycode(const GlKeyEvent& keyEvent)
 {
-    std::cout
-        << argv0 << " version " << PROJECT_VERSION << "\n\n"
-        << "SYNOPSIS\n"
-        << "  " << argv0 << " [<options>]\n\n"
-        << "OPTIONS\n"
-        << "  --auto         Run all methods for all modules without user input\n"
-        << "  --url <URL>    Specify a custom WebSocket endpoint URL\n"
-        << "  --legacy       Force legacy (v1) RPC protocol\n"
-        << "  --rpc-v2       Force JSON-RPC v2 compliant protocol\n"
-        << "  --dbg          Enable debug logging\n"
-        << "  --firebolt8    Restrict to base API set only (default; excludes optional Actions/Intents module)\n"
-    #ifdef ENABLE_FIREBOLT9
-        << "  --firebolt9    Enable optional Actions/Intents module; base API set is the default\n"
-    #endif
-        << "  --help         Show this help and exit\n\n"
-        << "ENVIRONMENT\n"
-        << "  FIREBOLT_ENDPOINT  WebSocket URL used when --url\n"
-        << "                     is not supplied.\n";
+    if (keyEvent.hasUtf32 && keyEvent.utf32 >= 0x20 && keyEvent.utf32 <= 0x7E) {
+        INFO("GL key received: '{}' (utf32={}), evdev={}", static_cast<char>(keyEvent.utf32), keyEvent.utf32, keyEvent.evdevKeycode);
+    } else if (keyEvent.hasUtf32) {
+        INFO("GL key received: utf32={}, evdev={}", keyEvent.utf32, keyEvent.evdevKeycode);
+    } else {
+        INFO("GL keycode received: evdev={}", keyEvent.evdevKeycode);
+    }
+
+    if (kEscKeyCode == keyEvent.evdevKeycode || kBackspaceKeyCode == keyEvent.evdevKeycode) {
+        gGlExitKeyRequested.store(true, std::memory_order_release);
+    }
+}
+} // namespace
+
+static const char* lifecycleStateStr(Firebolt::Lifecycle::LifecycleState& state)
+{
+    using namespace Firebolt::Lifecycle;
+    switch (state)
+    {
+        case LifecycleState::INITIALIZING: return "INITIALIZING";
+        case LifecycleState::ACTIVE:       return "ACTIVE";
+        case LifecycleState::PAUSED:       return "PAUSED";
+        case LifecycleState::SUSPENDED:    return "SUSPENDED";
+        case LifecycleState::HIBERNATED:   return "HIBERNATED";
+        case LifecycleState::TERMINATING:  return "TERMINATING";
+        default:                           return "UNKNOWN";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LifeCycleState to AppState mapping
+// ---------------------------------------------------------------------------
+#define APP_STATE_LIST(X) \
+    X(INITIALIZING_TO_SUSPEND) \
+    X(INITIALIZING_TO_PAUSED) \
+    X(PAUSED_TO_ACTIVE) \
+    X(ACTIVE_TO_PAUSED) \
+    X(PAUSED_TO_SUSPENDED) \
+    X(SUSPENDED_TO_PAUSED) \
+    X(SUSPENDED_TO_HIBERNATED) \
+    X(HIBERNATED_TO_SUSPENDED) \
+    X(ACTIVE_TO_TERMINATING) \
+    X(PAUSED_TO_TERMINATING) \
+    X(SUSPENDED_TO_TERMINATING) \
+    X(UNKNOWN_STATE)
+
+#define GENERATE_ENUM(ENUM) ENUM,
+enum class AppState : uint8_t {
+    APP_STATE_LIST(GENERATE_ENUM)
+};
+#undef GENERATE_ENUM
+
+constexpr AppState getAppStateFromLifeCycleEvent(const Firebolt::Lifecycle::StateChange& stateChange) noexcept
+{
+    using LC = Firebolt::Lifecycle::LifecycleState;
+
+    // Deduce the fastest, safest integer key type based on the target architecture pointer size
+    using KeyType = std::conditional_t<sizeof(void*) == 8, uint64_t, uint32_t>;
+    constexpr size_t shift_bits = (sizeof(KeyType) == 8) ? 32 : 16;
+
+    constexpr auto unique_key = [](LC oldS, LC newS) constexpr -> KeyType {
+        // Masking with 0xFFFF protects 32-bit builds from unexpected external enum values > 65535
+        if constexpr (sizeof(KeyType) == 4) {
+            return ((static_cast<uint32_t>(oldS) & 0xFFFF) << shift_bits) | (static_cast<uint32_t>(newS) & 0xFFFF);
+        } else {
+            return (static_cast<uint64_t>(oldS) << shift_bits) | static_cast<uint64_t>(newS);
+        }
+    };
+
+    switch (unique_key(stateChange.oldState, stateChange.newState)) {
+        case unique_key(LC::INITIALIZING, LC::SUSPENDED):   return AppState::INITIALIZING_TO_SUSPEND;
+        case unique_key(LC::INITIALIZING, LC::PAUSED):      return AppState::INITIALIZING_TO_PAUSED;
+        case unique_key(LC::PAUSED,       LC::ACTIVE):      return AppState::PAUSED_TO_ACTIVE;
+        case unique_key(LC::ACTIVE,       LC::PAUSED):      return AppState::ACTIVE_TO_PAUSED;
+        case unique_key(LC::PAUSED,       LC::SUSPENDED):   return AppState::PAUSED_TO_SUSPENDED;
+        case unique_key(LC::SUSPENDED,    LC::PAUSED):      return AppState::SUSPENDED_TO_PAUSED;
+        case unique_key(LC::SUSPENDED,    LC::HIBERNATED):  return AppState::SUSPENDED_TO_HIBERNATED;
+        case unique_key(LC::HIBERNATED,   LC::SUSPENDED):   return AppState::HIBERNATED_TO_SUSPENDED;
+        case unique_key(LC::ACTIVE,       LC::TERMINATING): return AppState::ACTIVE_TO_TERMINATING;
+        case unique_key(LC::PAUSED,       LC::TERMINATING): return AppState::PAUSED_TO_TERMINATING;
+        case unique_key(LC::SUSPENDED,    LC::TERMINATING): return AppState::SUSPENDED_TO_TERMINATING;
+        default:                                            return AppState::UNKNOWN_STATE;
+    }
+}
+
+constexpr std::string_view to_string(AppState state) noexcept
+{
+    #define GENERATE_STRING(STRING) #STRING,
+    constexpr std::array state_strings{
+        APP_STATE_LIST(GENERATE_STRING)
+    };
+    #undef GENERATE_STRING
+
+    const auto idx = static_cast<size_t>(state);
+
+    if (idx >= state_strings.size()) {
+        return "UNKNOWN_STATE";
+    }
+    return state_strings[idx];
+}
+
+// Overloaded Stream Operator for Printing
+inline std::ostream& operator<<(std::ostream& os, AppState state)
+{
+    return os << to_string(state);
 }
 
 // ---------------------------------------------------------------------------
 // buildModuleList – registers all test modules
 //
-// firebolt8Only: when true, Firebolt 9-only modules (Actions) are excluded.
+// version: Firebolt version to filter modules by.
+//   FIREBOLT_VERSION_8:   Firebolt 8 base modules only (excludes all Firebolt 9 modules)
+//   FIREBOLT_VERSION_9:   Firebolt 8 base modules + Firebolt 9 modules (default)
+//   FIREBOLT_VERSION_ALL: All modules across all Firebolt versions
 // ---------------------------------------------------------------------------
-static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(bool firebolt8Only)
+static std::vector<std::unique_ptr<TestModuleBase>> buildModuleList(fireboltVersion version)
 {
- #ifndef ENABLE_FIREBOLT9
-    // fix for -Wunused-parameter when ActionsTest is not compiled in.
-    (void)firebolt8Only;
- #endif
     std::vector<std::unique_ptr<TestModuleBase>> modules;
-    modules.emplace_back(std::make_unique<AccessibilityTest>());
-    modules.emplace_back(std::make_unique<AdvertisingTest>());
-    modules.emplace_back(std::make_unique<DeviceTest>());
-    modules.emplace_back(std::make_unique<DiscoveryTest>());
-    modules.emplace_back(std::make_unique<DisplayTest>());
-    modules.emplace_back(std::make_unique<LifecycleTest>());
-    modules.emplace_back(std::make_unique<LocalizationTest>());
-    modules.emplace_back(std::make_unique<MetricsTest>());
-    modules.emplace_back(std::make_unique<NetworkTest>());
-    modules.emplace_back(std::make_unique<PresentationTest>());
-    modules.emplace_back(std::make_unique<StatsTest>());
-    modules.emplace_back(std::make_unique<TextToSpeechTest>());
-    // Firebolt 9 modules — omitted when --firebolt8 is set or not compiled in
-#ifdef ENABLE_FIREBOLT9
-    if (!firebolt8Only)
+
+    auto addModule = [&modules](const char* moduleName, auto&& factory) {
+        modules.emplace_back(factory());
+        INFO("TMT: constructed module {}", moduleName);
+    };
+
+    // Base API modules (Firebolt 8 and later)
+    if (version >= FIREBOLT_VERSION_8)
     {
-        modules.emplace_back(std::make_unique<ActionsTest>());
-    }
+        addModule("Accessibility", []() { return std::make_unique<AccessibilityTest>(); });
+        addModule("Advertising", []() { return std::make_unique<AdvertisingTest>(); });
+        addModule("Device", [version]() { return std::make_unique<DeviceTest>(version); });
+        addModule("Discovery", []() { return std::make_unique<DiscoveryTest>(); });
+        addModule("Display", []() { return std::make_unique<DisplayTest>(); });
+#if 0 // This app is running as Firebolt App.
+        addModule("Lifecycle", []() { return std::make_unique<LifecycleTest>(); });
 #endif
+        addModule("Localization", [version]() { return std::make_unique<LocalizationTest>(version); });
+        addModule("Metrics", []() { return std::make_unique<MetricsTest>(); });
+        addModule("Network", []() { return std::make_unique<NetworkTest>(); });
+        addModule("Presentation", []() { return std::make_unique<PresentationTest>(); });
+        addModule("TextToSpeech", []() { return std::make_unique<TextToSpeechTest>(); });
+    }
+
+    // Firebolt 9 modules (Actions/Intents)
+    if (version >= FIREBOLT_VERSION_9)
+    {
+        addModule("Actions", []() { return std::make_unique<ActionsTest>(); });
+        addModule("SpeechSynthesis", []() { return std::make_unique<SpeechSynthesisTest>(); });
+        addModule("Stats", []() { return std::make_unique<StatsTest>(); });
+        addModule("VideoOutput", []() { return std::make_unique<VideoOutputTest>(); });
+    }
+
+    INFO("TMT: module list build complete, total modules={}", modules.size());
+
     return modules;
 }
 
-// ---------------------------------------------------------------------------
-// runPipedMode – accepts "Module.method" names from stdin, one per line
-// ---------------------------------------------------------------------------
-static void runPipedMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
+/**
+ * @brief Runs every method of every module sequentially in auto mode.
+ *        Deferred unsubscribe/unsubscribeAll methods are skipped until the end.
+ * @param modules The list of test modules to run.
+ * @param progressController The progress controller to track progress.
+ */
+static void runAutoModeDeferredUnsubscribeCleanup(std::vector<std::unique_ptr<TestModuleBase>>& modules,
+                                                  ProgressController& progressController)
 {
-    std::string line;
-    while (std::getline(std::cin, line))
-    {
-        // Normalize stdin input so trailing spaces/CRLF do not break exact method matching.
-        const auto first = std::find_if_not(line.begin(), line.end(), [](unsigned char ch) {
-            return std::isspace(ch) != 0;
-        });
-        const auto last = std::find_if_not(line.rbegin(), line.rend(), [](unsigned char ch) {
-            return std::isspace(ch) != 0;
-        }).base();
-        const std::string methodName = (first < last) ? std::string(first, last) : std::string();
-
-        if (methodName.empty())
-        {
-            continue;
-        }
-        bool found = false;
-        for (auto& mod : modules)
-        {
-            for (const auto& m : mod->methods())
-            {
-                if (m == methodName)
-                {
-                    mod->runMethod(m);
-                    found = true;
-                    break;
-                }
-            }
-            if (found)
-            {
-                break;
-            }
-        }
-        if (!found)
-        {
-            std::cout << "Method not found: " << methodName << std::endl;
-        }
+    static bool autoDeferredCleanupDone = false;
+    if (autoDeferredCleanupDone) {
+        INFO("TMT: auto mode deferred cleanup already done, skipping.");
+        return;
     }
-}
+    const auto isDeferredCleanupMethod = [](const std::string& methodName) {
+        static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
+        static constexpr const char* kUnsubscribeAllSuffix = ".unsubscribeAll";
+        const size_t methodLen = methodName.size();
+        const size_t unsubscribeLen = std::strlen(kUnsubscribeSuffix);
+        const size_t unsubscribeAllLen = std::strlen(kUnsubscribeAllSuffix);
+        return (methodLen >= unsubscribeLen &&
+                methodName.compare(methodLen - unsubscribeLen, unsubscribeLen, kUnsubscribeSuffix) == 0) ||
+               (methodLen >= unsubscribeAllLen &&
+                methodName.compare(methodLen - unsubscribeAllLen, unsubscribeAllLen, kUnsubscribeAllSuffix) == 0);
+    };
 
-// ---------------------------------------------------------------------------
-// runAutoMode – runs every method of every module sequentially
-// ---------------------------------------------------------------------------
-static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
-{
+    std::cout << "\n=== Auto Mode Deferred Unsubscribe Cleanup ===" << std::endl;
     for (auto& mod : modules)
     {
-        std::cout << "\n=== Module: " << mod->name() << " ===" << std::endl;
         for (const auto& m : mod->methods())
         {
+            if (!isDeferredCleanupMethod(m))
+            {
+                continue;
+            }
             std::cout << "--- " << m << " ---" << std::endl;
             mod->runMethod(m);
         }
     }
+    //Print the failures if any
+    auto validationFailures = progressController.getValidationFailures();
+    if (!validationFailures.empty()) {
+        std::cout << "\n=== Detected Validation Failure Snapshots ===" << std::endl;
+        for (const auto& failure : validationFailures) {
+            std::cout << " - " << failure << std::endl;
+        }
+    }
+    autoDeferredCleanupDone = true;
 }
 
-// ---------------------------------------------------------------------------
-// runInteractiveMode – two-level interactive menu
-// ---------------------------------------------------------------------------
-static void runInteractiveMode(std::vector<std::unique_ptr<TestModuleBase>>& modules)
+/**
+ * @brief Runs every method of every module sequentially in auto mode.
+ *        Deferred unsubscribe/unsubscribeAll methods are skipped until the end.
+ * @param modules The list of test modules to run.
+ * @param progressController The progress controller to track progress.
+ * @param thunderClient The ThunderWSJRPC client for simulating test modules through Thunder calls.
+ * @param exitRequested Atomic flag to signal exit request.
+ */
+static void runAutoMode(std::vector<std::unique_ptr<TestModuleBase>>& modules,
+                        ProgressController& progressController,
+                        ThunderWSJRPC& thunderClient,
+                        std::atomic<bool>& exitRequested)
 {
-    std::vector<std::string> moduleNames;
-    moduleNames.reserve(modules.size());
-    for (const auto& mod : modules)
+    const auto isDeferredCleanupMethod = [](const std::string& methodName) {
+        static constexpr const char* kUnsubscribeSuffix = ".unsubscribe";
+        static constexpr const char* kUnsubscribeAllSuffix = ".unsubscribeAll";
+        const size_t methodLen = methodName.size();
+        const size_t unsubscribeLen = std::strlen(kUnsubscribeSuffix);
+        const size_t unsubscribeAllLen = std::strlen(kUnsubscribeAllSuffix);
+        return (methodLen >= unsubscribeLen &&
+                methodName.compare(methodLen - unsubscribeLen, unsubscribeLen, kUnsubscribeSuffix) == 0) ||
+               (methodLen >= unsubscribeAllLen &&
+                methodName.compare(methodLen - unsubscribeAllLen, unsubscribeAllLen, kUnsubscribeAllSuffix) == 0);
+    };
+
+    for (auto& mod : modules)
     {
-        moduleNames.push_back(mod->name());
-    }
+        const std::string& modName = mod->name();
+        std::cout << "\n=== Module: " << modName << " ===" << std::endl;
+        using namespace std::chrono_literals;
+        constexpr auto kSleepDefault = 200ms;
+        const auto kSleepExtended    = 2s;
+        // Speech related test requires extended sleep of 2s to simulate the steps.
+        const bool moduleNeedsExtendedSleep = ("TextToSpeech" == modName || "SpeechSynthesis" == modName);
+        const auto modDefaultSleep = moduleNeedsExtendedSleep ? kSleepExtended : kSleepDefault;
 
-    while (true)
-    {
-        int modIdx = chooseFromList(moduleNames, "Select a module to test:", "exit");
-        if (modIdx == -1)
+        for (const auto& m : mod->methods())
         {
-            return;
-        }
-
-        auto& selectedModule = modules[static_cast<size_t>(modIdx)];
-        const std::vector<std::string>& methodNames = selectedModule->methods();
-
-        while (true)
-        {
-            int methodIdx = chooseFromList(methodNames, "Select a method to run:");
-            if (methodIdx == -1)
-            {
-                break;
+            if (exitRequested.load(std::memory_order_acquire)) {
+                INFO("TMT: exit requested, stopping auto mode execution.");
+                return;
             }
-            selectedModule->runMethod(methodNames[static_cast<size_t>(methodIdx)]);
+            if (isDeferredCleanupMethod(m))
+            {
+                // In auto mode, defer unsubscribe/unsubscribeAll until app shutdown phase.
+                continue;
+            }
+            std::cout << "--- " << m << " ---" << std::endl;
+            mod->runMethod(m);
+            const auto currentSleep = (m.find("subscribe") != std::string::npos) ? kSleepDefault : modDefaultSleep;
+            std::this_thread::sleep_for(currentSleep);
         }
     }
+    // Simulate TestModules through thunder calls.
+    if (!thunderClient.get_uri().empty()) {
+        char* deviceTypeEnv = std::getenv("PROFILE");
+        bool isStb = true;
+        if (deviceTypeEnv) {
+            std::string deviceTypeStr(deviceTypeEnv);
+            isStb = (deviceTypeStr == "stb" || deviceTypeStr == "STB");
+            INFO("Detected device type from PROFILE env var: {}, isStb={}", deviceTypeStr, isStb);
+        } else {
+            INFO("PROFILE environment variable not set, defaulting to STB Profile.");
+        }
+        INFO("Starting Thunder tests with URI: {}", thunderClient.get_uri());
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        thunderClient.start_thunder_tests(exitRequested, isStb);
+    } else {
+        INFO("Thunder client URI is empty - skipping Thunder tests. THUNDER_ACCESS env var must be set.");
+    }
+    // Trigger auto mode deferred cleanup after all other methods have been executed.
+    runAutoModeDeferredUnsubscribeCleanup(modules, progressController);
+}
+
+/**
+ * @brief Initializes the GL context using the GlApp class and return its instance.
+ * @param width The width of the GL context.
+ * @param height The height of the GL context.
+ * @param fontPath The path to the font file to be used in the GL context.
+ * @param pattern The background pattern mode for the GL context.
+ * @return GlApp instance if initialization is successful, nullptr otherwise.
+ */
+static std::unique_ptr<GlApp> initGlApp(int width,
+                                        int height,
+                                        const std::string& fontPath,
+                                        BackgroundPatternMode pattern,
+                                        const char* waylandDisplay)
+{
+    auto glApp = std::make_unique<GlApp>(width, height, fontPath, pattern);
+    if (!glApp->init(waylandDisplay))
+    {
+        FATAL("Failed to initialize GL context.");
+        return nullptr;
+    }
+    return glApp;
 }
 
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
-int main(int argc, char** argv)
+int main(void)
 {
-    std::cout << "Firebolt Test App v" << PROJECT_VERSION;
-#ifdef ENABLE_FIREBOLT9
-    std::cout << " (base API set by default - use --firebolt9 to enable optional Actions/Intents)";
-#else
-    std::cout << " (base API set only; rebuild with -DENABLE_FIREBOLT9=ON for optional Actions/Intents)";
-#endif
-    std::cout << std::endl;
+    std::cout << "Firebolt Test App v" << PROJECT_VERSION << std::endl;
 
     auto& appConfig = GetAppConfig();
+    // No longer supports interactive mode, so always set autoRun to true.
+    appConfig.autoRun = true;
 
-    std::string                url;
-    std::optional<bool>        legacyRPCv1;
     Firebolt::LogLevel         logLevel = Firebolt::LogLevel::Notice;
 
     // -----------------------------------------------------------------------
-    // Parse command-line arguments
+    // Resolve firebolt endpoint URL
     // -----------------------------------------------------------------------
-    for (int i = 1; i < argc; ++i)
-    {
-        const std::string arg(argv[i]);
-
-        if (arg == "--auto")
-        {
-            appConfig.autoRun = true;
-        }
-        else if (arg == "--url")
-        {
-            if (i + 1 >= argc)
-            {
-                std::cerr << "Error: --url requires a URL argument.\n";
-                return 1;
-            }
-            url = argv[++i];
-        }
-        else if (arg == "--legacy")
-        {
-            legacyRPCv1 = true;
-        }
-        else if (arg == "--rpc-v2")
-        {
-            legacyRPCv1 = false;
-        }
-        else if (arg == "--dbg")
-        {
-            logLevel          = Firebolt::LogLevel::Debug;
-            appConfig.verbose = true;
-        }
-        else if (arg == "--firebolt9")
-        {
-#ifdef ENABLE_FIREBOLT9
-            appConfig.firebolt8Only = false;
-#else
-            std::cerr << "Error: --firebolt9 is unavailable in this build. "
-                      << "Rebuild with -DENABLE_FIREBOLT9=ON to enable Firebolt 9 modules.\n";
-            return 1;
-#endif
-        }
-        else if (arg == "--firebolt8")
-        {
-            appConfig.firebolt8Only = true;
-        }
-        else if (arg == "--help")
-        {
-            printUsage(argv[0]);
-            return 0;
-        }
-        else
-        {
-            std::cerr << "Unknown option: " << arg
-                      << "  (use --help for usage)\n";
-            return 1;
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Resolve endpoint URL
-    // -----------------------------------------------------------------------
+    const char* envUrl = std::getenv("FIREBOLT_ENDPOINT");
+    std::string url = envUrl ? envUrl : "";
     if (url.empty())
     {
-        const char* envUrl = std::getenv("FIREBOLT_ENDPOINT");
-        url = envUrl ? envUrl : "";
-    }
-    if (url.empty())
-    {
-        std::cerr << "Error: No Firebolt endpoint URL specified."
-                  << " Use --url, or set FIREBOLT_ENDPOINT environment variable.\n";
+        FATAL("No Firebolt endpoint URL specified. Use --url, or set FIREBOLT_ENDPOINT environment variable.");
         return 1;
     }
     std::cout << "Using Firebolt endpoint: " << url << std::endl;
@@ -332,10 +577,6 @@ int main(int argc, char** argv)
     config.wsUrl       = url;
     config.waitTime_ms = 1000;
     config.log.level   = logLevel;
-    if (legacyRPCv1.has_value())
-    {
-        config.legacyRPCv1 = legacyRPCv1.value();
-    }
 
     struct ConnectionState
     {
@@ -361,54 +602,350 @@ int main(int argc, char** argv)
 
     if (connectErr != Firebolt::Error::None)
     {
-        std::cerr << "Connect() call failed with error: "
-                  << static_cast<int>(connectErr) << std::endl;
+        FATAL("Failed to initiate Firebolt connection: error code {}", static_cast<int>(connectErr));
         return 1;
     }
 
     if (connFuture.wait_for(std::chrono::seconds(2)) == std::future_status::timeout)
     {
-        std::cerr << "Timed out waiting for Firebolt connection." << std::endl;
+        FATAL("Timed out waiting for Firebolt connection.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
     if (!connFuture.get())
     {
-        std::cerr << "Failed to connect to Firebolt endpoint." << std::endl;
+        FATAL("Failed to connect to Firebolt endpoint.");
         Firebolt::IFireboltAccessor::Instance().Disconnect();
         return 1;
     }
 
-    std::cout << "Connected to Firebolt." << std::endl;
+    INFO("Connected to Firebolt.");
 
-    if (appConfig.firebolt8Only)
-    {
-        std::cout << "[Mode] Base API set only (default) - Actions/Intents excluded." << std::endl;
-    }
-    else
-    {
-        std::cout << "[Mode] Extended set - all modules including Actions/Intents enabled." << std::endl;
-    }
+    // --------------------------- GL App Lifecycle -------------------------------
+    ProgressController PC;
+    ThunderWSJRPC thunderClient;
 
-    auto modules = buildModuleList(appConfig.firebolt8Only);
-
-    if (appConfig.autoRun)
-    {
-        runAutoMode(modules);
-    }
-    else if (!ISATTY(STDIN_FD))
-    {
-        // stdin is a pipe and --auto was not requested – treat as piped mode
-        runPipedMode(modules);
-    }
-    else
-    {
-        runInteractiveMode(modules);
+    // Initialize Thunder client URI from environment variable
+    if (const char* thunderAccess = std::getenv("THUNDER_ACCESS")) {
+        std::string access_str(thunderAccess);
+        std::string thunder_uri = "ws://" + access_str + "/jsonrpc";
+        thunderClient.set_uri(thunder_uri);
+        INFO("Thunder client URI configured: {}", thunderClient.get_uri());
+    } else {
+        INFO("THUNDER_ACCESS environment variable not set - Thunder tests will be skipped");
     }
 
+    BackgroundPatternMode glAppPattern = PATTERN_NONE;
+    int glAppWidth = 1920, glAppHeight = 1080;
+
+    std::atomic<bool> exitRequested{ false };
+    std::atomic<bool> autoDeferredCleanupAllowed{ false };
+    std::mutex appStateQueueMutex;
+    std::deque<AppState> pendingAppStates;
+    AppState currentAppState{AppState::UNKNOWN_STATE};
+
+    // GLApp context
+    std::unique_ptr<GlApp> glApp = nullptr;
+    std::mutex glAppMutex;
+    std::thread glAppRunThread;
+    std::thread glAppProgressUpdateThread;
+    bool glRunThreadStarted = false;
+    Firebolt::SubscriptionId lifecycleSubId = 0;
+    std::atomic<bool> sawLifecycleTerminating{ false };
+
+    if (const char* w = std::getenv("WIDTH"))  try { glAppWidth = std::stoi(w); } catch (...) {}
+    if (const char* h = std::getenv("HEIGHT")) try { glAppHeight = std::stoi(h); } catch (...) {}
+
+    if (const char* pm = std::getenv("PATTERN_MODE")) {
+        if (std::strcmp(pm, "GRID") == 0) glAppPattern = PATTERN_GRID;
+        else if (std::strcmp(pm, "DOT") == 0) glAppPattern = PATTERN_DOT;
+    }
+
+    const char* waylandDisp = std::getenv("WAYLAND_DISPLAY");
+    std::string fontFile = std::string(APP_FONT_DIR) + "LiberationSans-Bold.ttf";
+    if (access(fontFile.c_str(), F_OK | R_OK) != 0) {
+        FATAL("Font file not found or not readable at " + fontFile);
+        return 1;
+    }
+
+    auto stopGlApp = [&]() {
+        // Signal close under the lock so the raw pointer is never used after glApp is reset.
+        {
+            std::lock_guard<std::mutex> lock(glAppMutex);
+            if (glApp != nullptr) {
+                glApp->close();
+            }
+        }
+
+        if (glAppRunThread.joinable()) {
+            glAppRunThread.join();
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(glAppMutex);
+            if (glApp != nullptr) {
+                glApp->deinit();
+                glApp.reset();
+            }
+            glRunThreadStarted = false;
+        }
+    };
+
+    auto ensureGlAppInitialized = [&]() -> bool {
+        std::lock_guard<std::mutex> lock(glAppMutex);
+        if (glApp != nullptr) {
+            return true;
+        }
+
+        glApp = initGlApp(glAppWidth, glAppHeight, fontFile, glAppPattern, waylandDisp);
+        if (glApp == nullptr) {
+            return false;
+        }
+
+        return glApp->registerKeycodeCallback(&handleGlKeycode);
+    };
+
+    auto ensureGlRunThreadStarted = [&]() {
+        std::lock_guard<std::mutex> lock(glAppMutex);
+        if (glApp == nullptr) {
+            return false;
+        }
+
+        if (glRunThreadStarted) {
+            return true;
+        }
+
+        GlApp* glAppPtr = glApp.get();
+        glAppRunThread = std::thread([glAppPtr]() {
+            INFO("Starting GL render thread.");
+            glAppPtr->run();
+            INFO("GL render thread exited.");
+        });
+
+        // Keep a single progress thread for the process lifetime; it safely no-ops while glApp is null.
+        if (!glAppProgressUpdateThread.joinable()) {
+            glAppProgressUpdateThread = std::thread([&glApp, &glAppMutex, &exitRequested, &PC]() {
+                float progressPercentage = 0.0f;
+                bool failDetected = false;
+                INFO("Starting GL progress update thread.");
+                while (!exitRequested.load(std::memory_order_acquire)) {
+                    progressPercentage = PC.wait_for_percentage_change(failDetected);
+                    if (gGlExitKeyRequested.load(std::memory_order_acquire) ||
+                        exitRequested.load(std::memory_order_acquire)) {
+                        break;
+                    }
+
+                    std::lock_guard<std::mutex> lock(glAppMutex);
+                    if (GlApp* app = glApp.get(); app != nullptr) {
+                        // do not call updateProgress() if progressPercentage is -1.0f, which indicates shutdown.
+                        if (0.0f <= progressPercentage) {
+                            app->updateProgress(progressPercentage, failDetected);
+                        }
+                    }
+                }
+                INFO("GL progress update thread exited; Last progress percentage={}", progressPercentage);
+            });
+        }
+        glRunThreadStarted = true;
+        return true;
+    };
+
+    // ------------------------- Firebolt Test Modules ----------------------------
+    std::thread runTestModulesThread;
+
+    auto startRunTestModules = [&]() {
+        if (!appConfig.autoRun || runTestModulesThread.joinable()) {
+            return;
+        }
+
+        runTestModulesThread = std::thread([&PC,
+                                          &appConfig,
+                                          &thunderClient,
+                                          &exitRequested,
+                                          &autoDeferredCleanupAllowed]() {
+            // Register the progress controller so test modules can report progress
+            SetTestProgressTracker(&PC);
+
+            INFO("TMT: building module list for Firebolt version {}", static_cast<int>(appConfig.fireboltVersion));
+            auto testModules = buildModuleList(appConfig.fireboltVersion);
+            int totalSteps = 0;
+            int eventCount = 0;
+            for (const auto& mod : testModules) {
+                totalSteps += static_cast<int>(mod->methodCount());
+                eventCount += static_cast<int>(mod->methodCountContaining(".subscribe"));
+            }
+            DBG("TMT: total steps = {}, total event subscriptions = {}", totalSteps, eventCount);
+            PC.set_total(totalSteps + eventCount);
+
+            INFO("TMT: running auto mode, total steps = {}", totalSteps);
+            runAutoMode(testModules, PC, thunderClient, exitRequested);
+            INFO("TMT: auto mode completed, waiting for exit request to run deferred cleanup.");
+            while (!exitRequested.load(std::memory_order_acquire) &&
+                   !autoDeferredCleanupAllowed.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            INFO("TMT: running auto mode deferred cleanup.");
+            runAutoModeDeferredUnsubscribeCleanup(testModules, PC);
+
+            // Unregister the tracker on exit
+            SetTestProgressTracker(nullptr);
+        });
+    };
+
+    // ------------------------- App Lifecycle Subscription -------------------
+    auto subscriptionResult = Firebolt::IFireboltAccessor::Instance()
+                                  .LifecycleInterface()
+                                  .subscribeOnStateChanged([&](const std::vector<Firebolt::Lifecycle::StateChange>& changes) {
+                                      for (const auto& change : changes) {
+                                          std::lock_guard<std::mutex> lock(appStateQueueMutex);
+                                          pendingAppStates.push_back(getAppStateFromLifeCycleEvent(change));
+                                      }
+                                  });
+
+    if (!subscriptionResult) {
+        FATAL("Failed to subscribe to lifecycle state changes.");
+        Firebolt::IFireboltAccessor::Instance().Disconnect();
+        return 1;
+    }
+
+    lifecycleSubId = *subscriptionResult;
+
+    while (!exitRequested.load(std::memory_order_acquire)) {
+        AppState newAppState = AppState::UNKNOWN_STATE;
+        bool hasPendingState = false;
+        {
+            std::lock_guard<std::mutex> lock(appStateQueueMutex);
+            if (!pendingAppStates.empty()) {
+                newAppState = pendingAppStates.front();
+                pendingAppStates.pop_front();
+                hasPendingState = true;
+            }
+        }
+
+        if (hasPendingState && newAppState != currentAppState) {
+            DBG("Lifecycle derived state change requested: {} -> {}", to_string(currentAppState), to_string(newAppState));
+            auto lifecycleState = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().state();
+            INFO("Query Response Lifecycle.state = {}, {}",
+                    (lifecycleState ? static_cast<int>(*lifecycleState) : -1), lifecycleStateStr(*lifecycleState));
+            switch (newAppState) {
+                case AppState::INITIALIZING_TO_PAUSED:
+                {
+                    bool hasInternetAccess = PermissionTester::has_internet_access();
+                    bool hasThunderAccess = false;
+                    if (!thunderClient.get_uri().empty()) {
+                        hasThunderAccess = PermissionTester::has_thunder_access(thunderClient);
+                    }
+                    INFO("Permissions: Internet = {}, Thunder = {}", hasInternetAccess, hasThunderAccess);
+
+                    if (!ensureGlAppInitialized()) {
+                        FATAL("Failed to initialize GL context.");
+                        exitRequested.store(true, std::memory_order_release);
+                    }
+                    if (glApp != nullptr) {
+                        if (!ensureGlRunThreadStarted()) {
+                            WARN("Failed to start GL render thread during INITIALIZING_TO_PAUSED.");
+                            exitRequested.store(true, std::memory_order_release);
+                        }
+                    }
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::PAUSED_TO_ACTIVE:
+                {
+                    {
+                        std::lock_guard<std::mutex> lock(glAppMutex);
+                        if (glApp != nullptr) {
+                            glApp->resume();
+                        }
+                    }
+                    if (appConfig.autoRun) {
+                        startRunTestModules();
+                    }
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::ACTIVE_TO_PAUSED:
+                {
+                    std::lock_guard<std::mutex> lock(glAppMutex);
+                    if (glApp != nullptr) {
+                        glApp->pause();
+                    }
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::PAUSED_TO_SUSPENDED:
+                case AppState::SUSPENDED_TO_HIBERNATED:
+                {
+                    PC.wake_for_shutdown();
+                    stopGlApp();
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::ACTIVE_TO_TERMINATING:
+                case AppState::PAUSED_TO_TERMINATING:
+                case AppState::SUSPENDED_TO_TERMINATING:
+                {
+                    sawLifecycleTerminating.store(true, std::memory_order_release);
+                    exitRequested.store(true, std::memory_order_release);
+                    PC.wake_for_shutdown();
+                    stopGlApp();
+                    currentAppState = newAppState;
+                }
+                break;
+                case AppState::SUSPENDED_TO_PAUSED:
+                default:
+                    WARN("Lifecycle state changed: {} without specific action.", to_string(newAppState));
+                    currentAppState = newAppState;
+                    break;
+            }
+        }
+
+        if (gGlExitKeyRequested.load(std::memory_order_acquire)) {
+            PC.wake_for_shutdown();
+            stopGlApp();
+            exitRequested.store(true, std::memory_order_release);
+            continue;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    autoDeferredCleanupAllowed.store(true, std::memory_order_release);
+
+    // Wait for the test modules thread to exit if it was started.
+    if (runTestModulesThread.joinable()) {
+        runTestModulesThread.join();
+    }
+
+    // Wait for the GL render thread to exit if it was started.
+    if (glAppRunThread.joinable()) {
+        glAppRunThread.join();
+    }
+
+    // Wait for the GL progress update thread to exit if it was started.
+    if (glAppProgressUpdateThread.joinable()) {
+        glAppProgressUpdateThread.join();
+    }
+
+    INFO("Exiting Firebolt Test App.");
+    if (!sawLifecycleTerminating.load(std::memory_order_acquire)) {
+        auto closeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().close(Firebolt::Lifecycle::CloseType::DEACTIVATE);
+        if (!closeResult) {
+            WARN("Lifecycle.close(DEACTIVATE) failed during shutdown.");
+        }
+    }
+
+    if (lifecycleSubId != 0) {
+        auto unsubscribeResult = Firebolt::IFireboltAccessor::Instance().LifecycleInterface().unsubscribe(lifecycleSubId);
+        if (!unsubscribeResult) {
+            WARN("Failed to unsubscribe lifecycle state change handler.");
+        }
+        lifecycleSubId = 0;
+    }
     Firebolt::IFireboltAccessor::Instance().Disconnect();
-    std::cout << "Disconnected. Exiting." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    INFO("Exit complete.");
 
     return 0;
 }

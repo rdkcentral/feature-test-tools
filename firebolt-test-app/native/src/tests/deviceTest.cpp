@@ -29,33 +29,53 @@
 using namespace Firebolt;
 using namespace Firebolt::Device;
 
-DeviceTest::DeviceTest()
+DeviceTest::DeviceTest(fireboltVersion version)
     : TestModuleBase("Device")
 {
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
+    methods_.push_back("Device.onHdrChanged.subscribe");
+    methods_.push_back("Device.onHdrChanged.unsubscribe");
+    if (version >= FIREBOLT_VERSION_9)
+    {
+        methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.subscribe");
+        methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe");
+    }
+    methods_.push_back("Device.unsubscribeAll");
+    if (version >= FIREBOLT_VERSION_9)
+    {
+        methods_.push_back("Device.deviceClass");
+        methods_.push_back("Device.dolbyAtmosExperienceAvailable");
+        methods_.push_back("Device.osName");
+        methods_.push_back("Device.setOsName");
+        methods_.push_back("Device.osVersion");
+        methods_.push_back("Device.setOsVersion");
+        methods_.push_back("Device.firmware");
+    }
     methods_.push_back("Device.chipsetId");
-    methods_.push_back("Device.deviceClass");
     methods_.push_back("Device.hdr");
     methods_.push_back("Device.timeInActiveState");
     methods_.push_back("Device.uid");
     methods_.push_back("Device.uptime");
-    methods_.push_back("Device.onHdrChanged.subscribe");
-    methods_.push_back("Device.onHdrChanged.unsubscribe");
-    methods_.push_back("Device.unsubscribeAll");
 }
 
 void DeviceTest::runMethod(const std::string& method)
 {
     std::cout << "[Device] Running: " << method << std::endl;
 
-    if (method == "Device.chipsetId")
+    if ("Device.uid" == method)
     {
-        auto r = IFireboltAccessor::Instance().DeviceInterface().chipsetId();
+        auto r = IFireboltAccessor::Instance().DeviceInterface().uid();
         if (checkResult(r, method))
         {
-            std::cout << "  chipsetId: " << *r << std::endl;
+            std::cout << "  uid: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "Device.deviceClass")
+    else if ("Device.deviceClass" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().deviceClass();
         if (checkResult(r, method))
@@ -69,76 +89,227 @@ void DeviceTest::runMethod(const std::string& method)
                 default: break;
             }
             std::cout << "  deviceClass: " << classStr << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "Device.hdr")
-    {
-        auto r = IFireboltAccessor::Instance().DeviceInterface().hdr();
-        if (checkResult(r, method))
-        {
-            std::cout << std::boolalpha
-                      << "  HDR10:       " << r->hdr10      << "\n"
-                      << "  HDR10+:      " << r->hdr10Plus  << "\n"
-                      << "  DolbyVision: " << r->dolbyVision << "\n"
-                      << "  HLG:         " << r->hlg        << std::endl;
-        }
-    }
-    else if (method == "Device.timeInActiveState")
-    {
-        auto r = IFireboltAccessor::Instance().DeviceInterface().timeInActiveState();
-        if (checkResult(r, method))
-        {
-            std::cout << "  timeInActiveState (s): " << *r << std::endl;
-        }
-    }
-    else if (method == "Device.uid")
-    {
-        auto r = IFireboltAccessor::Instance().DeviceInterface().uid();
-        if (checkResult(r, method))
-        {
-            std::cout << "  uid: " << *r << std::endl;
-        }
-    }
-    else if (method == "Device.uptime")
+    else if ("Device.uptime" == method)
     {
         auto r = IFireboltAccessor::Instance().DeviceInterface().uptime();
         if (checkResult(r, method))
         {
             std::cout << "  uptime (s): " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "Device.onHdrChanged.subscribe")
+    else if ("Device.timeInActiveState" == method)
     {
-        if (onHdrChangedSubId_ != 0)
+        auto r = IFireboltAccessor::Instance().DeviceInterface().timeInActiveState();
+        if (checkResult(r, method))
         {
-            std::cout << "  [WARN] Already subscribed to Device.onHdrChanged (ID: "
-                      << onHdrChangedSubId_ << "). Unsubscribe first." << std::endl;
+            std::cout << "  timeInActiveState (s): " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.chipsetId" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().chipsetId();
+        if (checkResult(r, method))
+        {
+            std::cout << "  chipsetId: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.hdr" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().hdr();
+        if (checkResult(r, method))
+        {
+            std::cout << std::boolalpha
+                      << "  HDR10: " << r->hdr10
+                      << ", HDR10+: " << r->hdr10Plus
+                      << ", DolbyVision: " << r->dolbyVision
+                      << ", HLG: " << r->hlg << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.dolbyAtmosExperienceAvailable" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().dolbyAtmosExperienceAvailable();
+        if (checkResult(r, method))
+        {
+            std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.osName" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().osName();
+        if (checkResult(r, method))
+        {
+            std::cout << "  osName: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.setOsName" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().setOsName("RDKE Linux");
+        if (checkResult(r, method))
+        {
+            std::cout << "  setOsName succeeded." << std::endl;
+            // read back the value to confirm it was set correctly.
+            auto r2 = IFireboltAccessor::Instance().DeviceInterface().osName();
+            if (checkResult(r2, "Query Device.osName"))
+            {
+                if ("RDKE Linux" == *r2)
+                {
+                    std::cout << "  osName: " << *r2 << std::endl;
+                    reportStepCompletion();
+                }
+                else
+                {
+                    std::cout << "  [ERROR] setOsName did not set the expected value." << std::endl;
+                    reportEventValidationFailure("setOsName", "Mismatch set value != query response.");
+                }
+            } else {
+                reportStepCompletion(true);
+            }
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.osVersion" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().osVersion();
+        if (checkResult(r, method))
+        {
+            std::cout << "  osVersion: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.setOsVersion" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().setOsVersion("5.15.0");
+        if (checkResult(r, method))
+        {
+            std::cout << "  setOsVersion succeeded." << std::endl;
+            // read back the value to confirm it was set correctly.
+            auto r2 = IFireboltAccessor::Instance().DeviceInterface().osVersion();
+            if (checkResult(r2, "Query Device.osVersion"))
+            {
+                if ("5.15.0" == *r2)
+                {
+                    std::cout << "  osVersion: " << *r2 << std::endl;
+                    reportStepCompletion();
+                }
+                else
+                {
+                    std::cout << "  [ERROR] setOsVersion did not set the expected value." << std::endl;
+                    reportEventValidationFailure("setOsVersion", "Mismatch set value != query response.");
+                }
+            } else {
+                reportStepCompletion(true);
+            }
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.firmware" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().firmware();
+        if (checkResult(r, method))
+        {
+            std::cout << "  firmware: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.onHdrChanged.subscribe" == method)
+    {
+        if (0 != onHdrChangedSubId_)
+        {
+            // Already subscribed, drop to avoid duplicate subscriptions.
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .DeviceInterface()
-                     .subscribeOnHdrChanged([](const HDRFormat& fmt) {
-                         std::cout << std::boolalpha
-                                   << "  [EVENT] onHdrChanged:"
-                                   << " hdr10=" << fmt.hdr10
-                                   << " hdr10Plus=" << fmt.hdr10Plus
-                                   << " dolbyVision=" << fmt.dolbyVision
-                                   << " hlg=" << fmt.hlg
-                                   << std::endl;
-                     });
+                    .DeviceInterface()
+                    .subscribeOnHdrChanged([this](const HDRFormat& fmt) {
+                        std::cout << std::boolalpha
+                                  << "  [EVENT] onHdrChanged:"
+                                  << " HDR10: " << fmt.hdr10
+                                  << ", HDR10+: " << fmt.hdr10Plus
+                                  << ", DolbyVision: " << fmt.dolbyVision
+                                  << ", HLG: " << fmt.hlg
+                                  << std::endl;
+                        // Invoke related method to confirm what is the current state of HDR.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .DeviceInterface()
+                                        .hdr();
+                        if (checkResult(r2, "Query Device.hdr"))
+                        {
+                            std::cout << std::boolalpha
+                                      << "  HDR10: " << r2->hdr10
+                                      << ", HDR10+: " << r2->hdr10Plus
+                                      << ", DolbyVision: " << r2->dolbyVision
+                                      << ", HLG: " << r2->hlg
+                                      << std::endl;
+                            if (fmt.hdr10 != r2->hdr10 ||
+                                fmt.hdr10Plus != r2->hdr10Plus ||
+                                fmt.dolbyVision != r2->dolbyVision ||
+                                fmt.hlg != r2->hlg)
+                            {
+                                std::cout << "  [ERROR] onHdrChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onHdrChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             onHdrChangedSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << onHdrChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "Device.onHdrChanged.unsubscribe")
+    else if ("Device.onHdrChanged.unsubscribe" == method)
     {
-        if (onHdrChangedSubId_ == 0)
+        if (0 == onHdrChangedSubId_)
         {
             std::cout << "  [WARN] No active Device.onHdrChanged subscription. Subscribe first."
                       << std::endl;
+            reportStepCompletion(true);
             return;
         }
 
@@ -149,13 +320,81 @@ void DeviceTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             onHdrChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "Device.unsubscribeAll")
+    else if ("Device.onDolbyAtmosExperienceAvailableChanged.subscribe" == method)
+    {
+        if (0 != onDolbyAtmosExperienceAvailableChangedSubId_)
+        {
+            // Already subscribed, drop to avoid duplicate subscriptions.
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                    .DeviceInterface()
+                    .subscribeOnDolbyAtmosExperienceAvailableChanged([this](bool available) {
+                        std::cout << "  [EVENT] onDolbyAtmosExperienceAvailableChanged: available="
+                                  << std::boolalpha << available << std::endl;
+                        // Invoke related method to confirm what is the current state of Dolby Atmos Experience availability.
+                        auto r2 = IFireboltAccessor::Instance()
+                                        .DeviceInterface()
+                                        .dolbyAtmosExperienceAvailable();
+                        if (checkResult(r2, "Query Device.dolbyAtmosExperienceAvailable"))
+                        {
+                            std::cout << "  dolbyAtmosExperienceAvailable: " << std::boolalpha << *r2 << std::endl;
+                            if (available != *r2)
+                            {
+                                std::cout << "  [ERROR] onDolbyAtmosExperienceAvailableChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onDolbyAtmosExperienceAvailableChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
+                            }
+                        }
+                    });
+        if (checkResult(r, method))
+        {
+            onDolbyAtmosExperienceAvailableChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onDolbyAtmosExperienceAvailableChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe" == method)
+    {
+        if (0 == onDolbyAtmosExperienceAvailableChangedSubId_)
+        {
+            std::cout << "  [WARN] No active Device.onDolbyAtmosExperienceAvailableChanged subscription. Subscribe first."
+                      << std::endl;
+            reportStepCompletion(true);
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onDolbyAtmosExperienceAvailableChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .DeviceInterface()
+                     .unsubscribe(onDolbyAtmosExperienceAvailableChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.unsubscribeAll" == method)
     {
         IFireboltAccessor::Instance().DeviceInterface().unsubscribeAll();
         onHdrChangedSubId_ = 0;
+        onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
         std::cout << "  Unsubscribed from all Device events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

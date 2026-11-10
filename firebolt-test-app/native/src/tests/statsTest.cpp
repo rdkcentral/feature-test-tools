@@ -43,10 +43,14 @@ void StatsTest::runMethod(const std::string& method)
         auto r = IFireboltAccessor::Instance().StatsInterface().memoryUsage();
         if (checkResult(r, method))
         {
-            std::cout << "  User  memory: " << r->userMemoryUsed
+            std::cout << "  User  memory (used/limit): " << r->userMemoryUsed
                       << " / " << r->userMemoryLimit << " bytes" << std::endl;
-            std::cout << "  GPU   memory: " << r->gpuMemoryUsed
+            std::cout << "  GPU   memory (used/limit): " << r->gpuMemoryUsed
                       << " / " << r->gpuMemoryLimit << " bytes" << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else

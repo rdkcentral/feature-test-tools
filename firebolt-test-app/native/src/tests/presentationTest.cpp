@@ -31,10 +31,12 @@ using namespace Firebolt;
 PresentationTest::PresentationTest()
     : TestModuleBase("Presentation")
 {
-    methods_.push_back("Presentation.focused");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
     methods_.push_back("Presentation.onFocusedChanged.subscribe");
     methods_.push_back("Presentation.onFocusedChanged.unsubscribe");
     methods_.push_back("Presentation.unsubscribeAll");
+    methods_.push_back("Presentation.focused");
 }
 
 void PresentationTest::runMethod(const std::string& method)
@@ -49,35 +51,57 @@ void PresentationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  focused: " << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Presentation.onFocusedChanged.subscribe")
     {
         if (lastSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Presentation.onFocusedChanged (ID: "
-                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .PresentationInterface()
-                     .subscribeOnFocusedChanged([](bool focused) {
-                         std::cout << "  [EVENT] onFocusedChanged: focused="
-                                   << std::boolalpha << focused << std::endl;
-                     });
+                    .PresentationInterface()
+                    .subscribeOnFocusedChanged([this](bool focused) {
+                        std::cout << "  [EVENT] onFocusedChanged: focused="
+                                  << std::boolalpha << focused << std::endl;
+                        // Invoke related method to confirm what is the current state of focused.
+                        auto r2 = IFireboltAccessor::Instance()
+                                     .PresentationInterface()
+                                     .focused();
+                        if (checkResult(r2, "Query Presentation.focused"))
+                        {
+                            std::cout << "  Query Response focused: " << std::boolalpha << *r2 << std::endl;
+                            if (focused != *r2)
+                            {
+                                std::cout << "  [ERROR] onFocusedChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onFocusedChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             lastSubId_ = *r;
             std::cout << "  Subscribed onFocusedChanged, sub ID: " << lastSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Presentation.onFocusedChanged.unsubscribe")
     {
         if (lastSubId_ == 0)
         {
-            std::cout << "  [WARN] No active Presentation subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active Presentation subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;
@@ -87,6 +111,10 @@ void PresentationTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             lastSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Presentation.unsubscribeAll")
@@ -94,6 +122,7 @@ void PresentationTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().PresentationInterface().unsubscribeAll();
         lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Presentation events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

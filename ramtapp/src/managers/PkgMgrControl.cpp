@@ -49,38 +49,14 @@ bool PkgMgrControl::checkPluginStatus()
 {
     return (pkgCtrl != nullptr);
 }
-void PkgMgrControl::displayMenu()
+void PkgMgrControl::createMenu(Menu &menu)
 {
-
-    while (true)
-    {
-        std::cout << "------------------------------------------------------------" << std::endl;
-        std::cout << "Enter your choice: ";
-        std::cout << "1. Lock Package\n";
-        std::cout << "2. Unlock Package\n";
-        std::cout << "3. Get Lock Info\n";
-        std::cout << "0. Exit Package Manager Menu\n";
-
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        switch (choice)
-        {
-        case 1:
-            handleLockPackageRequest();
-            break;
-        case 2:
-            handleUnlockPackageRequest();
-            break;
-        case 3:
-            handleGetLockInfoRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-        }
-    }
+    menu.addOption("Lock Package", [this]()
+                   { handleLockPackageRequest(); });
+    menu.addOption("Unlock Package", [this]()
+                   { handleUnlockPackageRequest(); });
+    menu.addOption("Get Lock Info", [this]()
+                   { handleGetLockInfoRequest(); });
 }
 
 void PkgMgrControl::handleLockPackageRequest()
@@ -94,7 +70,7 @@ void PkgMgrControl::handleLockPackageRequest()
 
     uint32_t lockId;
     std::string unpackedPath;
-    Exchange::RuntimeConfig rtConfig;
+    std::string rtConfig;
     ILockIterator *lockIterator = nullptr;
 
     uint32_t result = pkgCtrl->Lock(packageId, version, static_cast<Exchange::IPackageHandler::LockReason>(lockReason), lockId, unpackedPath, rtConfig, lockIterator);
@@ -140,7 +116,7 @@ void PkgMgrControl::handleGetLockInfoRequest()
     std::string version = retrieveInputFromUser<std::string>("Enter package version to get lock info: ", false, "");
 
     std::string unpackedPath;
-    Exchange::RuntimeConfig rtConfig;
+    std::string rtConfig;
     std::string gatewayMetadataPath;
     bool locked;
 

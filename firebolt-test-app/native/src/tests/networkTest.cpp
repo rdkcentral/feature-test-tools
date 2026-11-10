@@ -31,10 +31,12 @@ using namespace Firebolt;
 NetworkTest::NetworkTest()
     : TestModuleBase("Network")
 {
-    methods_.push_back("Network.connected");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
     methods_.push_back("Network.onConnectedChanged.subscribe");
     methods_.push_back("Network.onConnectedChanged.unsubscribe");
     methods_.push_back("Network.unsubscribeAll");
+    methods_.push_back("Network.connected");
 }
 
 void NetworkTest::runMethod(const std::string& method)
@@ -47,35 +49,57 @@ void NetworkTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             std::cout << "  connected: " << std::boolalpha << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Network.onConnectedChanged.subscribe")
     {
         if (lastSubId_ != 0)
         {
-            std::cout << "  [WARN] Already subscribed to Network.onConnectedChanged (ID: "
-                      << lastSubId_ << "). Unsubscribe first." << std::endl;
+            // Already subscribed, drop to avoid multiple subscriptions.
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .NetworkInterface()
-                     .subscribeOnConnectedChanged([](bool connected) {
-                         std::cout << "  [EVENT] onConnectedChanged: connected="
-                                   << std::boolalpha << connected << std::endl;
-                     });
+                    .NetworkInterface()
+                    .subscribeOnConnectedChanged([this](bool connected) {
+                        std::cout << "  [EVENT] onConnectedChanged: connected="
+                                  << std::boolalpha << connected << std::endl;
+                        // Invoke related method to confirm what is the current state of network connectivity.
+                        auto r2 = IFireboltAccessor::Instance()
+                                     .NetworkInterface()
+                                     .connected();
+                        if (checkResult(r2, "Network.connected"))
+                        {
+                            std::cout << "  Query Response connected: " << std::boolalpha << *r2 << std::endl;
+                            if (connected != *r2)
+                            {
+                                std::cout << "  [ERROR] onConnectedChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onConnectedChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
+                            }
+                        }
+                    });
         if (checkResult(r, method))
         {
             lastSubId_ = *r;
             std::cout << "  Subscribed. Subscription ID: " << lastSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Network.onConnectedChanged.unsubscribe")
     {
         if (lastSubId_ == 0)
         {
-            std::cout << "  [WARN] No active Network subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active Network subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << lastSubId_ << std::endl;
@@ -85,6 +109,10 @@ void NetworkTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             lastSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
     else if (method == "Network.unsubscribeAll")
@@ -92,6 +120,7 @@ void NetworkTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().NetworkInterface().unsubscribeAll();
         lastSubId_ = 0;
         std::cout << "  Unsubscribed from all Network events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

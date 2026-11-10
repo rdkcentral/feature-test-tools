@@ -25,19 +25,25 @@
 
 #include <firebolt/firebolt.h>
 #include <iostream>
+#include <thread>
+#include <chrono>
+
+#include "native_logger.hpp"
 
 using namespace Firebolt;
 using namespace Firebolt::TextToSpeech;
 
+struct AppLoggerConfig {
+    static constexpr const char* kEnvVar = "TTSLOGLEVEL";
+    static constexpr const char* kTag = "[TTS]";
+};
+using LocalLogger = RuntimeLogger<AppLoggerConfig>;
+
 TextToSpeechTest::TextToSpeechTest()
     : TestModuleBase("TextToSpeech")
 {
-    methods_.push_back("TextToSpeech.speak");
-    methods_.push_back("TextToSpeech.getSpeechState");
-    methods_.push_back("TextToSpeech.listVoices");
-    methods_.push_back("TextToSpeech.pause");
-    methods_.push_back("TextToSpeech.resume");
-    methods_.push_back("TextToSpeech.cancel");
+    // Keep the event subscriptions at the top of the list so that they are run first in auto mode.
+    // Auto mode will only execute the unsubscribe when teardown is triggered.
     methods_.push_back("TextToSpeech.onSpeechStart.subscribe");
     methods_.push_back("TextToSpeech.onSpeechStart.unsubscribe");
     methods_.push_back("TextToSpeech.onSpeechPause.subscribe");
@@ -55,6 +61,12 @@ TextToSpeechTest::TextToSpeechTest()
     methods_.push_back("TextToSpeech.onPlaybackError.subscribe");
     methods_.push_back("TextToSpeech.onPlaybackError.unsubscribe");
     methods_.push_back("TextToSpeech.unsubscribeAll");
+    methods_.push_back("TextToSpeech.listVoices");
+    methods_.push_back("TextToSpeech.speak");
+    methods_.push_back("TextToSpeech.getSpeechState");
+    methods_.push_back("TextToSpeech.pause");
+    methods_.push_back("TextToSpeech.resume");
+    methods_.push_back("TextToSpeech.cancel");
 }
 
 void TextToSpeechTest::runMethod(const std::string& method)
@@ -72,10 +84,10 @@ void TextToSpeechTest::runMethod(const std::string& method)
     };
 
     auto unsubscribeById = [&](Firebolt::SubscriptionId& subId, const std::string& label) {
-        if (subId == 0)
+        if (0 == subId)
         {
-            std::cout << "  [WARN] No active " << label << " subscription. Subscribe first."
-                      << std::endl;
+            std::cout << "  [WARN] No active " << label << " subscription. Subscribe first." << std::endl;
+            reportStepCompletion(true);
             return;
         }
         std::cout << "  Unsubscribing ID: " << subId << std::endl;
@@ -85,26 +97,35 @@ void TextToSpeechTest::runMethod(const std::string& method)
         if (checkResult(r, method))
         {
             subId = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     };
 
-    if (method == "TextToSpeech.speak")
+    if ("TextToSpeech.speak" == method)
     {
-        const std::string text = paramFromConsole("text", "Hello from Firebolt test application.");
+        const std::string text = paramFromConsole("text", "Hello, testing text to speech speak module with intermittent pause, resume and cancel. You may hear it speak in parts.");
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .speak(text);
         if (checkResult(r, method))
         {
             lastSpeechId_ = r->speechId;
-            std::cout << "  speechId: " << r->speechId
+            std::cout << "  speechId: " << r->speechId << "/" << lastSpeechId_
                       << "  ttsStatus: " << r->ttsStatus << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.getSpeechState")
+    else if ("TextToSpeech.getSpeechState" == method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
@@ -114,9 +135,13 @@ void TextToSpeechTest::runMethod(const std::string& method)
         {
             std::cout << "  speechState for id " << lastSpeechId_
                       << ": " << static_cast<int>(r->speechState) << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.listVoices")
+    else if ("TextToSpeech.listVoices" == method)
     {
         const std::string locale = paramFromConsole("locale", "en-US");
         auto r = IFireboltAccessor::Instance()
@@ -129,242 +154,327 @@ void TextToSpeechTest::runMethod(const std::string& method)
             {
                 std::cout << "    " << v << std::endl;
             }
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.pause")
+    else if ("TextToSpeech.pause" == method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .pause(lastSpeechId_);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
-    else if (method == "TextToSpeech.resume")
+    else if ("TextToSpeech.resume" == method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .resume(lastSpeechId_);
-        checkResult(r, method);
+        if (checkResult(r, method))
+        {
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
     }
-    else if (method == "TextToSpeech.cancel")
+    else if ("TextToSpeech.cancel" == method)
     {
         if (!hasSpeechId())
         {
+            DBG("No speechId available. Run TextToSpeech.speak first.");
             return;
         }
         auto r = IFireboltAccessor::Instance()
                      .TextToSpeechInterface()
                      .cancel(lastSpeechId_);
-        checkResult(r, method);
-    }
-    else if (method == "TextToSpeech.onSpeechStart.subscribe")
-    {
-        if (onSpeechStartSubId_ != 0)
+        if (checkResult(r, method))
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechStart (ID: "
-                      << onSpeechStartSubId_ << "). Unsubscribe first." << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("TextToSpeech.onSpeechStart.subscribe" == method)
+    {
+        if (0 != onSpeechStartSubId_)
+        {
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechStart([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechStart: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechStart([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechStart: speechId=" << e.speechId << " / "<< lastSpeechId_ << std::endl;
+
+                        reportStepCompletion();
+                        auto r = IFireboltAccessor::Instance()
+                                .TextToSpeechInterface()
+                                .getSpeechState(e.speechId);
+                        if (checkResult(r, "Query getSpeechState from onSpeechStart"))
+                        {
+                            std::cout << "  speechState for id " << e.speechId
+                                    << ": " << static_cast<int>(r->speechState) << std::endl;
+                            if (r->speechState != SpeechState::IN_PROGRESS)
+                            {
+                                std::cout << "  [ERROR] onSpeechStart event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onSpeechStart", "Mismatch event payload != query response.");
+                            }
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
+                    });
         if (checkResult(r, method))
         {
             onSpeechStartSubId_ = *r;
             std::cout << "  Subscribed onSpeechStart, sub ID: " << onSpeechStartSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onSpeechStart.unsubscribe")
+    else if ("TextToSpeech.onSpeechStart.unsubscribe" == method)
     {
         unsubscribeById(onSpeechStartSubId_, "onSpeechStart");
     }
-    else if (method == "TextToSpeech.onSpeechPause.subscribe")
+    else if ("TextToSpeech.onSpeechPause.subscribe" == method)
     {
-        if (onSpeechPauseSubId_ != 0)
+        if (0 != onSpeechPauseSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechPause (ID: "
-                      << onSpeechPauseSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechPause([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechPause: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechPause([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechPause: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
+                        reportStepCompletion();
+                        // Simulate other operations.
+                        auto r = IFireboltAccessor::Instance()
+                                .TextToSpeechInterface()
+                                .getSpeechState(e.speechId);
+                        if (checkResult(r, "Query getSpeechState from onSpeechPause"))
+                        {
+                            std::cout << "  speechState for id " << e.speechId
+                                    << ": " << static_cast<int>(r->speechState) << std::endl;
+                            if (r->speechState != SpeechState::PAUSED)
+                            {
+                                std::cout << "  [ERROR] onSpeechPause event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onSpeechPause", "Mismatch event payload != query response.");
+                            }
+                            reportStepCompletion();
+                        } else {
+                            // Report step completion with failure if the call failed.
+                            reportStepCompletion(true);
+                        }
+                    });
         if (checkResult(r, method))
         {
             onSpeechPauseSubId_ = *r;
             std::cout << "  Subscribed onSpeechPause, sub ID: " << onSpeechPauseSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onSpeechPause.unsubscribe")
+    else if ("TextToSpeech.onSpeechPause.unsubscribe" == method)
     {
         unsubscribeById(onSpeechPauseSubId_, "onSpeechPause");
     }
-    else if (method == "TextToSpeech.onSpeechResume.subscribe")
+    else if ("TextToSpeech.onSpeechResume.subscribe" == method)
     {
-        if (onSpeechResumeSubId_ != 0)
+        if (0 != onSpeechResumeSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechResume (ID: "
-                      << onSpeechResumeSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechResume([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechResume: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechResume([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechResume: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechResumeSubId_ = *r;
             std::cout << "  Subscribed onSpeechResume, sub ID: " << onSpeechResumeSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onSpeechResume.unsubscribe")
+    else if ("TextToSpeech.onSpeechResume.unsubscribe" == method)
     {
         unsubscribeById(onSpeechResumeSubId_, "onSpeechResume");
     }
-    else if (method == "TextToSpeech.onWillSpeak.subscribe")
+    else if ("TextToSpeech.onWillSpeak.subscribe" == method)
     {
-        if (onWillSpeakSubId_ != 0)
+        if (0 != onWillSpeakSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onWillSpeak (ID: "
-                      << onWillSpeakSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnWillSpeak([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onWillSpeak: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnWillSpeak([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onWillSpeak: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onWillSpeakSubId_ = *r;
             std::cout << "  Subscribed onWillSpeak, sub ID: " << onWillSpeakSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onWillSpeak.unsubscribe")
+    else if ("TextToSpeech.onWillSpeak.unsubscribe" == method)
     {
         unsubscribeById(onWillSpeakSubId_, "onWillSpeak");
     }
-    else if (method == "TextToSpeech.onSpeechComplete.subscribe")
+    else if ("TextToSpeech.onSpeechComplete.subscribe" == method)
     {
-        if (onSpeechCompleteSubId_ != 0)
+        if (0 != onSpeechCompleteSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechComplete (ID: "
-                      << onSpeechCompleteSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechComplete([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechComplete: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechComplete([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechComplete: speechId=" << e.speechId << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechCompleteSubId_ = *r;
             std::cout << "  Subscribed onSpeechComplete, sub ID: " << onSpeechCompleteSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onSpeechComplete.unsubscribe")
+    else if ("TextToSpeech.onSpeechComplete.unsubscribe" == method)
     {
         unsubscribeById(onSpeechCompleteSubId_, "onSpeechComplete");
     }
-    else if (method == "TextToSpeech.onSpeechInterrupted.subscribe")
+    else if ("TextToSpeech.onSpeechInterrupted.subscribe" == method)
     {
-        if (onSpeechInterruptedSubId_ != 0)
+        if (0 != onSpeechInterruptedSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onSpeechInterrupted (ID: "
-                      << onSpeechInterruptedSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnSpeechInterrupted([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onSpeechInterrupted: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnSpeechInterrupted([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onSpeechInterrupted: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onSpeechInterruptedSubId_ = *r;
             std::cout << "  Subscribed onSpeechInterrupted, sub ID: " << onSpeechInterruptedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onSpeechInterrupted.unsubscribe")
+    else if ("TextToSpeech.onSpeechInterrupted.unsubscribe" == method)
     {
         unsubscribeById(onSpeechInterruptedSubId_, "onSpeechInterrupted");
     }
-    else if (method == "TextToSpeech.onNetworkError.subscribe")
+    else if ("TextToSpeech.onNetworkError.subscribe" == method)
     {
-        if (onNetworkErrorSubId_ != 0)
+        if (0 != onNetworkErrorSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onNetworkError (ID: "
-                      << onNetworkErrorSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnNetworkError([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onNetworkError: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnNetworkError([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onNetworkError: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onNetworkErrorSubId_ = *r;
             std::cout << "  Subscribed onNetworkError, sub ID: " << onNetworkErrorSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onNetworkError.unsubscribe")
+    else if ("TextToSpeech.onNetworkError.unsubscribe" == method)
     {
         unsubscribeById(onNetworkErrorSubId_, "onNetworkError");
     }
-    else if (method == "TextToSpeech.onPlaybackError.subscribe")
+    else if ("TextToSpeech.onPlaybackError.subscribe" == method)
     {
-        if (onPlaybackErrorSubId_ != 0)
+        if (0 != onPlaybackErrorSubId_)
         {
-            std::cout << "  [WARN] Already subscribed to TextToSpeech.onPlaybackError (ID: "
-                      << onPlaybackErrorSubId_ << "). Unsubscribe first." << std::endl;
+            DBG("Already subscribed, drop to avoid multiple subscriptions.");
             return;
         }
 
         auto r = IFireboltAccessor::Instance()
-                     .TextToSpeechInterface()
-                     .subscribeOnPlaybackError([](const SpeechIdEvent& e) {
-                         std::cout << "  [EVENT] onPlaybackError: speechId="
-                                   << e.speechId << std::endl;
-                     });
+                    .TextToSpeechInterface()
+                    .subscribeOnPlaybackError([this](const SpeechIdEvent& e) {
+                        std::cout << "  [EVENT] onPlaybackError: speechId=" << e.speechId << " / " << lastSpeechId_ << std::endl;
+                        reportStepCompletion();
+                    });
         if (checkResult(r, method))
         {
             onPlaybackErrorSubId_ = *r;
             std::cout << "  Subscribed onPlaybackError, sub ID: " << onPlaybackErrorSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
         }
     }
-    else if (method == "TextToSpeech.onPlaybackError.unsubscribe")
+    else if ("TextToSpeech.onPlaybackError.unsubscribe" == method)
     {
         unsubscribeById(onPlaybackErrorSubId_, "onPlaybackError");
     }
-    else if (method == "TextToSpeech.unsubscribeAll")
+    else if ("TextToSpeech.unsubscribeAll" == method)
     {
         IFireboltAccessor::Instance().TextToSpeechInterface().unsubscribeAll();
         onSpeechStartSubId_ = 0;
@@ -376,6 +486,7 @@ void TextToSpeechTest::runMethod(const std::string& method)
         onNetworkErrorSubId_ = 0;
         onPlaybackErrorSubId_ = 0;
         std::cout << "  Unsubscribed from all TextToSpeech events." << std::endl;
+        reportStepCompletion();
     }
     else
     {

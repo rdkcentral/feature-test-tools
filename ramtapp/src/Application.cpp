@@ -22,11 +22,10 @@
 #include "ConcreteManagerFactory.hpp"
 #include <iostream>
 
-Application::Application() : mainMenu("RDK App Managers Test Utility"), packageManagerMenu("Package Manager Menu")
+Application::Application() : mainMenu("RDK App Managers Test Utility")
 {
     initialize();
     createMainMenu();
-    createPackageManagerMenu();
 }
 
 void Application::initialize()
@@ -37,15 +36,17 @@ void Application::initialize()
     auto pkgManagerFactory = std::make_unique<PkgManagerFactory>();
     auto downloadManagerFactory = std::make_unique<DownloadManagerFactory>();
     auto installManagerFactory = std::make_unique<InstallManagerFactory>();
+    auto pkgConfigManagerFactory = std::make_unique<PkgConfigManagerFactory>();
     auto rdkWindowManagerFactory = std::make_unique<RDKWindowMgrCtrlFactory>();
+    auto appActionsControlFactory = std::make_unique<AppActionsControlFactory>();
 
     managerRegistry.add("AppManager", appManagerFactory->createManager(thunderBridge));
     managerRegistry.add("PkgManager", pkgManagerFactory->createManager(thunderBridge));
     managerRegistry.add("DownloadManager", downloadManagerFactory->createManager(thunderBridge));
     managerRegistry.add("InstallManager", installManagerFactory->createManager(thunderBridge));
+    managerRegistry.add("PkgConfigManager", pkgConfigManagerFactory->createManager(thunderBridge));
     managerRegistry.add("RDKWindowMgrCtrl", rdkWindowManagerFactory->createManager(thunderBridge));
-
-
+    managerRegistry.add("AppActionsControl", appActionsControlFactory->createManager(thunderBridge));
 
     perfTestMgr.initialize(&managerRegistry);
 }
@@ -56,29 +57,24 @@ void Application::createMainMenu()
                        { this->checkStatus(); });
     mainMenu.addOption("App Manager related functions", [this]()
                        { this->showAppManagerMenu(); });
-    mainMenu.addOption("Package Manager related functions", [this]()
-                       { this->showPackageManagerMenu(); });
+
+    mainMenu.addOption("Package Downloader Menu", [this]()
+                       { this->showDownloadManagerMenu(); });
+    mainMenu.addOption("Package Installer Menu", [this]()
+                       { this->showInstallManagerMenu(); });
+    mainMenu.addOption("Package Handler Menu", [this]()
+                       { this->showPackageHandlerMenu(); });
+    mainMenu.addOption("Package Config Menu", [this]()
+                       { this->showPackageConfigMenu(); });
+
     mainMenu.addOption("RDK Window Manager related functions", [this]()
                        { this->showRDKWindowMgrCtrlMenu(); });
+    mainMenu.addOption("App Actions Control related functions", [this]()
+                       { this->showAppActionsControlMenu(); });
     mainMenu.addOption("Performance tests", [this]()
                        { this->showPerformanceTests(); });
     mainMenu.setExitOption(true);
 }
-
-void Application::createPackageManagerMenu()
-{
-    packageManagerMenu.addOption("Package Downloader Menu", [this]()
-                                 {
-        if (auto* manager = managerRegistry.get("DownloadManager")) manager->displayMenu(); });
-    packageManagerMenu.addOption("Package Installer Menu", [this]()
-                                 {
-        if (auto* manager = managerRegistry.get("InstallManager")) manager->displayMenu(); });
-    packageManagerMenu.addOption("Package Handler Menu", [this]()
-                                 {
-        if (auto* manager = managerRegistry.get("PkgManager")) manager->displayMenu(); });
-    packageManagerMenu.setExitOption(true);
-}
-
 void Application::run()
 {
     while (running)
@@ -102,7 +98,7 @@ void Application::showAppManagerMenu()
 {
     if (auto *manager = managerRegistry.get("AppManager"))
     {
-        manager->displayMenu();
+        manager->displayMenu("App Manager Menu");
     }
     else
     {
@@ -110,11 +106,59 @@ void Application::showAppManagerMenu()
     }
 }
 
+void Application::showDownloadManagerMenu()
+{
+    if (auto *manager = managerRegistry.get("DownloadManager"))
+    {
+        manager->displayMenu("Download Manager Control Menu");
+    }
+    else
+    {
+        std::cout << "DownloadManager is not initialized." << std::endl;
+    }
+}
+
+void Application::showInstallManagerMenu()
+{
+    if (auto *manager = managerRegistry.get("InstallManager"))
+    {
+        manager->displayMenu("Install Manager Control Menu");
+    }
+    else
+    {
+        std::cout << "InstallManager is not initialized." << std::endl;
+    }
+}
+
+void Application::showPackageHandlerMenu()
+{
+    if (auto *manager = managerRegistry.get("PkgManager"))
+    {
+        manager->displayMenu("Package Manager Control Menu");
+    }
+    else
+    {
+        std::cout << "PkgManager is not initialized." << std::endl;
+    }
+}
+
+void Application::showPackageConfigMenu()
+{
+    if (auto *manager = managerRegistry.get("PkgConfigManager"))
+    {
+        manager->displayMenu("Package Config Manager Menu");
+    }
+    else
+    {
+        std::cout << "PkgConfigManager is not initialized." << std::endl;
+    }
+}
+
 void Application::showRDKWindowMgrCtrlMenu()
 {
     if (auto *manager = managerRegistry.get("RDKWindowMgrCtrl"))
     {
-        manager->displayMenu();
+        manager->displayMenu("RDK Window Manager Menu");
     }
     else
     {
@@ -122,18 +166,17 @@ void Application::showRDKWindowMgrCtrlMenu()
     }
 }
 
-void Application::showPackageManagerMenu()
+void Application::showAppActionsControlMenu()
 {
-    while (true)
+    if (auto *manager = managerRegistry.get("AppActionsControl"))
     {
-        packageManagerMenu.display();
-        if(packageManagerMenu.handleInput())
-        {
-            break;
-        }
+        manager->displayMenu("App Actions Control Menu");
+    }
+    else
+    {
+        std::cout << "AppActionsControl is not initialized." << std::endl;
     }
 }
-
 
 void Application::showPerformanceTests()
 {

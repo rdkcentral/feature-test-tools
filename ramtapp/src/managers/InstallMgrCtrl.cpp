@@ -59,50 +59,20 @@ bool InstallMgrCtrl::checkPluginStatus()
     return instlCtl != nullptr;
 }
 
-void InstallMgrCtrl::displayMenu()
+void InstallMgrCtrl::createMenu(Menu &menu)
 {
-    while (true)
-    {
-        std::cout << "------------------------------------------------------------" << std::endl;
-        std::cout << "Install Manager Control Menu:" << std::endl;
-        std::cout << "1. Install Package" << std::endl;
-        std::cout << "2. Uninstall Package" << std::endl;
-        std::cout << "3. List Packages" << std::endl;
-        std::cout << "4. Package install state " << std::endl;
-        std::cout << "5. Package Metadata " << std::endl;
-        std::cout << "6. Package  Configuration " << std::endl;
-        std::cout << "0. Return to Main Menu" << std::endl;
-
-        int choice = retrieveInputFromUser<int>("Enter your choice: ", false, 0);
-        std::cout << "------------------------------------------------------------" << std::endl;
-
-        switch (choice)
-        {
-        case 1:
-            handleStartInstallRequest();
-            break;
-        case 2:
-            handleUninstallRequest();
-            break;
-        case 3:
-            handleListPackagesRequest();
-            break;
-        case 4:
-            handlePackageInstallStateRequest();
-
-            break;
-        case 5:
-            handlePackageMetadataRequest();
-            break;
-        case 6:
-            handlePackageConfigurationRequest();
-            break;
-        case 0:
-            return;
-        default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
-        }
-    }
+    menu.addOption("Install Package", [this]()
+                   { handleStartInstallRequest(); });
+    menu.addOption("Uninstall Package", [this]()
+                   { handleUninstallRequest(); });
+    menu.addOption("List Packages", [this]()
+                   { handleListPackagesRequest(); });
+    menu.addOption("Package install state", [this]()
+                   { handlePackageInstallStateRequest(); });
+    menu.addOption("Package Metadata", [this]()
+                   { handlePackageMetadataRequest(); });
+    menu.addOption("Package Configuration", [this]()
+                   { handlePackageConfigurationRequest(); });
 }
 
 void InstallMgrCtrl::handleStartInstallRequest()
@@ -113,7 +83,7 @@ void InstallMgrCtrl::handleStartInstallRequest()
     // Collect additional information for installation as needed
     std::string packageId, version;
 
-    Exchange::RuntimeConfig rtConfig;
+    std::string rtConfig;
 
     uint32_t result = instlCtl->GetConfigForPackage(fileLocator, packageId, version, rtConfig);
 
@@ -206,7 +176,7 @@ void InstallMgrCtrl::handlePackageMetadataRequest()
     std::string packageId = retrieveInputFromUser<std::string>("Enter the package Id to get metadata: ", false, "");
     std::string version = retrieveInputFromUser<std::string>("Enter the package version: ", false, "");
 
-    Exchange::RuntimeConfig rtConfig;
+    std::string rtConfig;
 
     uint32_t result = instlCtl->Config(packageId, version, rtConfig);
 
@@ -228,7 +198,7 @@ void InstallMgrCtrl::handlePackageConfigurationRequest()
     std::string packageId;
     std::string version;
 
-    Exchange::RuntimeConfig config;
+    std::string config;
 
     uint32_t result = instlCtl->GetConfigForPackage(fileLocator, packageId, version, config);
     if (result == Core::ERROR_NONE)
