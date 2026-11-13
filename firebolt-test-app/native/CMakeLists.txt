@@ -284,7 +284,7 @@ if(BUILD_FIREBOLT_APP)
     # Dependencies: find installed FireboltClient (and its transport)
     # -----------------------------------------------------------------------
     find_package(FireboltTransport CONFIG REQUIRED)
-    find_package(FireboltClient    CONFIG REQUIRED)
+    find_package(FireboltClient 0.7.1 CONFIG REQUIRED)
     find_package(nlohmann_json     CONFIG REQUIRED)
     find_package(websocketpp       CONFIG REQUIRED)
     find_package(OpenSSL           REQUIRED)
