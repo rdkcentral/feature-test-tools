@@ -198,7 +198,7 @@ void ActionsTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .ActionsInterface()
-                    .subscribeOnIntentChanged([](const Intent& intent) {
+                    .subscribeOnIntentChanged([this](const Intent& intent) {
                         Json eventResponse;
                         std::string schemaError;
                         if (!toIntentResponseJson(intent, eventResponse, schemaError))
