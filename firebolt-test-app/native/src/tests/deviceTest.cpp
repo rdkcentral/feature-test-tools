@@ -276,7 +276,7 @@ void DeviceTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .DeviceInterface()
-                    .subscribeOnNameChanged([](const std::string& name) {
+                    .subscribeOnNameChanged([this](const std::string& name) {
                         std::cout << "  [EVENT] onNameChanged: " << name << std::endl;
                         auto r2 = IFireboltAccessor::Instance().DeviceInterface().name();
                         if (checkResult(r2, "Query Device.name"))
