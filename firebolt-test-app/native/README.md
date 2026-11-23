@@ -75,7 +75,7 @@ The native app depends on the following system and CMake packages:
 |---|---|
 | **CMake ≥ 3.13** | |
 | **C++17 compiler** | GCC 7+ or Clang 5+ |
-| **FireboltClient** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
+| **FireboltClient ≥ 0.7.1** installed | Build from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-client) |
 | **FireboltTransport** installed | Bundled from [firebolt-cpp-client](https://github.com/rdkcentral/firebolt-cpp-transport) |
 | **nlohmann-json** installed | Used for JSON input/response validation in tests |
 | **OpenSSL ≥ 3.0** | Required for secure WebSocket transport (libssl, libcrypto) |
@@ -219,9 +219,9 @@ The app tests all accessible Firebolt modules supported by the runtime version. 
 | Module | Methods / Events |
 |---|---|
 | `Accessibility` | `audioDescription`, `closedCaptionsSettings`, `highContrastUI`, `voiceGuidanceSettings`, `onAudioDescriptionChanged`, `onClosedCaptionsSettingsChanged`, `onHighContrastUIChanged`, `onVoiceGuidanceSettingsChanged`, `unsubscribeAll` |
-| `Actions` *v9+* | `intent`, `start`, `onIntent` |
+| `Actions` *v9+* | `intent` (serialized JSON payload), `start` (validated JSON with a non-empty `action` and optional object `context`), `onIntent` |
 | `Advertising` | `advertisingId` |
-| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` *(v9+)*, `dolbyAtmosExperienceAvailable` *(v9+)*, `onDolbyAtmosExperienceAvailableChanged` *(v9+)*, `osName` *(v9+)*, `setOsName` *(v9+)*, `osVersion` *(v9+)*, `setOsVersion` *(v9+)*, `firmware` *(v9+)* |
+| `Device` | `chipsetId`, `hdr`, `timeInActiveState`, `uid`, `uptime`, `onHdrChanged`, `unsubscribeAll`, `deviceClass` *(v9+)*, `dolbyAtmosExperienceAvailable` *(v9+)*, `onDolbyAtmosExperienceAvailableChanged` *(v9+)*, `osName` *(v9+)*, `setOsName` *(v9+)*, `osVersion` *(v9+)*, `setOsVersion` *(v9+)*, `firmware` *(v9+)*, `name` *(v9+)*, `onNameChanged` *(v9+)* |
 | `Discovery` | `watched`, `watchedV2` |
 | `Display` | `size`, `maxResolution`, `edid` |
 | `Localization` | `country`, `preferredAudioLanguages`, `presentationLanguage`, `onCountryChanged`, `onPreferredAudioLanguagesChanged`, `onPresentationLanguageChanged`, `unsubscribeAll`, `timeZone` *(v9+)*, `onTimeZoneChanged` *(v9+)* |

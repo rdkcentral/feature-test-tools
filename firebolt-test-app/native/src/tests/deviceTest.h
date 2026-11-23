@@ -35,4 +35,5 @@ public:
 private:
     Firebolt::SubscriptionId onHdrChangedSubId_{ 0 };
     Firebolt::SubscriptionId onDolbyAtmosExperienceAvailableChangedSubId_{ 0 };
+    Firebolt::SubscriptionId onNameChangedSubId_{ 0 };
 };

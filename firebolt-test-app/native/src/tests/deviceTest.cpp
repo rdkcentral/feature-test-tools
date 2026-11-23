@@ -40,6 +40,8 @@ DeviceTest::DeviceTest(fireboltVersion version)
     {
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.subscribe");
         methods_.push_back("Device.onDolbyAtmosExperienceAvailableChanged.unsubscribe");
+        methods_.push_back("Device.onNameChanged.subscribe");
+        methods_.push_back("Device.onNameChanged.unsubscribe");
     }
     methods_.push_back("Device.unsubscribeAll");
     if (version >= FIREBOLT_VERSION_9)
@@ -51,6 +53,7 @@ DeviceTest::DeviceTest(fireboltVersion version)
         methods_.push_back("Device.osVersion");
         methods_.push_back("Device.setOsVersion");
         methods_.push_back("Device.firmware");
+        methods_.push_back("Device.name");
     }
     methods_.push_back("Device.chipsetId");
     methods_.push_back("Device.hdr");
@@ -251,6 +254,75 @@ void DeviceTest::runMethod(const std::string& method)
             reportStepCompletion(true);
         }
     }
+    else if ("Device.name" == method)
+    {
+        auto r = IFireboltAccessor::Instance().DeviceInterface().name();
+        if (checkResult(r, method))
+        {
+            std::cout << "  name: " << *r << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.onNameChanged.subscribe" == method)
+    {
+        if (0 != onNameChangedSubId_)
+        {
+            // Already subscribed, drop to avoid duplicate subscriptions.
+            return;
+        }
+
+        auto r = IFireboltAccessor::Instance()
+                    .DeviceInterface()
+                    .subscribeOnNameChanged([this](const std::string& name) {
+                        std::cout << "  [EVENT] onNameChanged: " << name << std::endl;
+                        auto r2 = IFireboltAccessor::Instance().DeviceInterface().name();
+                        if (checkResult(r2, "Query Device.name"))
+                        {
+                            if (name != *r2)
+                            {
+                                std::cout << "  [ERROR] onNameChanged event value does not match query response." << std::endl;
+                                reportEventValidationFailure("onNameChanged", "Mismatch event payload != query response.");
+                            } else {
+                                reportStepCompletion();
+                            }
+                        }
+                    });
+        if (checkResult(r, method))
+        {
+            onNameChangedSubId_ = *r;
+            std::cout << "  Subscribed. Subscription ID: " << onNameChangedSubId_ << std::endl;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
+    else if ("Device.onNameChanged.unsubscribe" == method)
+    {
+        if (0 == onNameChangedSubId_)
+        {
+            std::cout << "  [WARN] No active Device.onNameChanged subscription. Subscribe first."
+                      << std::endl;
+            reportStepCompletion(true);
+            return;
+        }
+
+        std::cout << "  Unsubscribing ID: " << onNameChangedSubId_ << std::endl;
+        auto r = IFireboltAccessor::Instance()
+                     .DeviceInterface()
+                     .unsubscribe(onNameChangedSubId_);
+        if (checkResult(r, method))
+        {
+            onNameChangedSubId_ = 0;
+            reportStepCompletion();
+        } else {
+            // Report step completion with failure if the call failed.
+            reportStepCompletion(true);
+        }
+    }
     else if ("Device.onHdrChanged.subscribe" == method)
     {
         if (0 != onHdrChangedSubId_)
@@ -393,6 +465,7 @@ void DeviceTest::runMethod(const std::string& method)
         IFireboltAccessor::Instance().DeviceInterface().unsubscribeAll();
         onHdrChangedSubId_ = 0;
         onDolbyAtmosExperienceAvailableChangedSubId_ = 0;
+        onNameChangedSubId_ = 0;
         std::cout << "  Unsubscribed from all Device events." << std::endl;
         reportStepCompletion();
     }

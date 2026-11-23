@@ -38,21 +38,6 @@ using Json = nlohmann::json;
 
 namespace
 {
-Json toIntentResponseJson(const Intent& intent)
-{
-    Json response = {
-        { "intent", { { "action", intent.intent.action } } },
-        { "intentId", intent.intentId }
-    };
-
-    if (intent.intent.context && intent.intent.context->source)
-    {
-        response["intent"]["context"] = { { "source", *intent.intent.context->source } };
-    }
-
-    return response;
-}
-
 bool validateIntentResponseSchema(const Json& response, std::string& error)
 {
     if (!response.is_object())
@@ -97,28 +82,39 @@ bool validateIntentResponseSchema(const Json& response, std::string& error)
     return true;
 }
 
-void printIntentSummary(const Intent& intent, const std::string& prefix)
+bool toIntentResponseJson(const Intent& intent, Json& response, std::string& error)
 {
-    const Json responseJson = toIntentResponseJson(intent);
-    std::string schemaError;
-    if (!validateIntentResponseSchema(responseJson, schemaError))
+    try
     {
-        std::cout << prefix << " [ERROR] Invalid response schema: " << schemaError << std::endl;
-        return;
+        response = {
+            { "intent", Json::parse(intent.intent) },
+            { "intentId", intent.intentId }
+        };
+    }
+    catch (const Json::parse_error& exception)
+    {
+        error = std::string("Intent payload is not valid JSON: ") + exception.what();
+        return false;
     }
 
-    std::cout << prefix << " validated response JSON: " << responseJson.dump() << std::endl;
-    std::cout << prefix << " action=" << intent.intent.action
+    return validateIntentResponseSchema(response, error);
+}
+
+void printIntentSummary(const Json& response, const std::string& prefix)
+{
+    const Json& intent = response["intent"];
+    std::cout << prefix << " validated response JSON: " << response.dump() << std::endl;
+    std::cout << prefix << " action=" << intent["action"].get<std::string>()
               << ", source=";
-    if (intent.intent.context && intent.intent.context->source)
+    if (intent.contains("context") && intent["context"].contains("source"))
     {
-        std::cout << *intent.intent.context->source;
+        std::cout << intent["context"]["source"].get<std::string>();
     }
     else
     {
         std::cout << "(none)";
     }
-    std::cout << ", intentId=" << intent.intentId << std::endl;
+    std::cout << ", intentId=" << response["intentId"].get<uint32_t>() << std::endl;
 }
 } // namespace
 
@@ -145,8 +141,18 @@ void ActionsTest::runMethod(const std::string& method)
                      .intent();
         if (checkResult(r, method))
         {
-            printIntentSummary(*r, "  intent");
-            reportStepCompletion();
+            Json response;
+            std::string schemaError;
+            if (toIntentResponseJson(*r, response, schemaError))
+            {
+                printIntentSummary(response, "  intent");
+                reportStepCompletion();
+            }
+            else
+            {
+                std::cout << "  [ERROR] Invalid intent response: " << schemaError << std::endl;
+                reportStepCompletion(true);
+            }
         } else {
             // Report step completion with failure if the call failed.
             reportStepCompletion(true);
@@ -158,11 +164,10 @@ void ActionsTest::runMethod(const std::string& method)
         const std::string contextSrc     = paramFromConsole("intent.context.source (leave empty to omit)", "system");
         const std::string handlerAppIdIn = paramFromConsole("handlerAppId (leave empty to use default)", "com.rdkcentral.refui");
 
-        IntentData intentData{};
-        intentData.action = action;
+        Json intentData = { { "action", action } };
         if (!contextSrc.empty())
         {
-            intentData.context = IntentContext{ contextSrc };
+            intentData["context"] = { { "source", contextSrc } };
         }
 
         std::optional<std::string> handlerAppId;
@@ -173,7 +178,7 @@ void ActionsTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                      .ActionsInterface()
-                     .start(intentData, handlerAppId);
+                     .start(intentData.dump(), handlerAppId);
         if (checkResult(r, method))
         {
             std::cout << "  Actions.start completed." << std::endl;
@@ -193,20 +198,32 @@ void ActionsTest::runMethod(const std::string& method)
 
         auto r = IFireboltAccessor::Instance()
                     .ActionsInterface()
-                    .subscribeOnIntent([this](const Intent& intent) {
-                        printIntentSummary(intent, "  [EVENT] onIntent");
+                    .subscribeOnIntentChanged([this](const Intent& intent) {
+                        Json eventResponse;
+                        std::string schemaError;
+                        if (!toIntentResponseJson(intent, eventResponse, schemaError))
+                        {
+                            std::cout << "  [ERROR] Invalid onIntent event: " << schemaError << std::endl;
+                            reportEventValidationFailure("onIntent", schemaError);
+                            return;
+                        }
+                        printIntentSummary(eventResponse, "  [EVENT] onIntent");
                         // Invoke related method to confirm what is the current state of the intent.
                         auto r2 = IFireboltAccessor::Instance()
                                         .ActionsInterface()
                                         .intent();
                         if (checkResult(r2, "Actions.intent"))
                         {
-                            printIntentSummary(*r2, "  Querying Actions.intent");
-                            if (intent.intentId != r2->intentId || intent.intent.action != r2->intent.action ||
-                                (intent.intent.context && r2->intent.context &&
-                                 intent.intent.context->source != r2->intent.context->source) ||
-                                (intent.intent.context && !r2->intent.context) ||
-                                (!intent.intent.context && r2->intent.context))
+                            Json queryResponse;
+                            if (!toIntentResponseJson(*r2, queryResponse, schemaError))
+                            {
+                                std::cout << "  [ERROR] Invalid Actions.intent response: " << schemaError << std::endl;
+                                reportEventValidationFailure("onIntent", schemaError);
+                                return;
+                            }
+                            printIntentSummary(queryResponse, "  Querying Actions.intent");
+                            if (eventResponse["intentId"] != queryResponse["intentId"] ||
+                                eventResponse["intent"] != queryResponse["intent"])
                             {
                                 std::cout << "  [ERROR] onIntent event intentId does not match Actions.intent query response." << std::endl;
                                 reportEventValidationFailure("onIntent", "Mismatch event payload != query response.");
